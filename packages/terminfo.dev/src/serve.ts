@@ -1928,6 +1928,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 ...(input && { input }),
                 ...(viewportScroll && { viewportScroll }),
                 ...(ownedTerminal && { ownedTerminal }),
+                ...(ownedTerminal?.witnessWindow && { witnessWindow: ownedTerminal.witnessWindow }),
                 ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(ordinaryOpen && {

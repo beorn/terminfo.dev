@@ -39,7 +39,7 @@ import {
   shadowCollectedRun,
   writeCollectedRun,
 } from "./collected-run.ts"
-import { serveCommand } from "./serve-command.ts"
+import { serveCommand, witnessCommand } from "./serve-command.ts"
 import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { APP_BUNDLE_IDS } from "../../terminfo.dev/src/app-bundles.ts"
@@ -62,9 +62,15 @@ import {
   resolveOwnedProcessByMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
+  type TerminalAppWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
-import type { ProcessOwnerAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
+import type { ProcessOwnerAssertion, TerminalAppWitnessAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
 import { runScopedMarker, tty, type ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
+import {
+  parseWitnessRegistration,
+  stopWitnessResponder,
+  type WitnessRegistration,
+} from "../../terminfo.dev/src/witness-window.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 
@@ -584,6 +590,9 @@ export interface AppLaunch {
   /** Actual spawn input, in memory only until the receipt owner transforms it. */
   invocation?: readonly string[]
   terminalWindow?: OwnedTerminalWindow
+  /** Read-only witness window B for Terminal.app window-scoped ownership (#34080 Slice 2). */
+  witnessWindow?: TerminalAppWindow
+  witnessRegistrationPath?: string
   /** The owned iTerm2 launch record, resolved into its window once the daemon registers. */
   iterm2?: Iterm2Launch
   identityPath?: string
@@ -798,7 +807,26 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
   }
 
   if (app.id === "terminal-app") {
-    return { proc: null, terminalWindow: launchTerminalWindow(run.scriptPath) }
+    const terminalWindow = launchTerminalWindow(run.scriptPath)
+    const witnessScriptPath = join(run.directory, `witness-${run.id}.sh`)
+    const witnessRegistrationPath = join(run.directory, "witness.json")
+    writeFileSync(witnessScriptPath, `#!/bin/bash -p\n${witnessCommand(run, witnessRegistrationPath)}\n`, {
+      flag: "wx",
+      mode: 0o700,
+    })
+    let witnessWindow: TerminalAppWindow
+    try {
+      witnessWindow = launchTerminalWindow(witnessScriptPath)
+      if (witnessWindow.windowId === terminalWindow.windowId || witnessWindow.tty === terminalWindow.tty) {
+        throw new Error(
+          `Terminal.app witness window B collided with window A (windowId=${witnessWindow.windowId}, tty=${witnessWindow.tty})`,
+        )
+      }
+    } catch (error) {
+      closeOwnedTerminalWindow(terminalWindow)
+      throw error
+    }
+    return { proc: null, terminalWindow, witnessWindow, witnessRegistrationPath }
   }
 
   throw new Error(`${app.name} requires manually starting the probe server`)
@@ -865,6 +893,8 @@ interface ProbeOptions {
   ids?: string[]
   /** The window this run launched and must still own. An app the probe launched never runs without one. */
   ownedWindow: OwnedTerminalWindow
+  /** Verified read-only witness window B for Terminal.app window-scoped ownership (#34080 Slice 2). */
+  witness?: TerminalAppWitnessAssertion
   invocation?: readonly string[]
   outputDirectory?: string
   /** The detached kitty launcher's stderr, retained with the run whether or not it is empty. */
@@ -879,7 +909,7 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
+  const { appId, version, ownedWindow, witness, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
   const appLaunch =
     invocation === undefined
       ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
@@ -898,6 +928,7 @@ async function probeDaemon(
             windowId: ownedWindow.windowId,
             tabTty: ownedWindow.tty,
             intendedVersion: version,
+            ...(witness !== undefined && { witness }),
           },
         }
       : {
@@ -1256,6 +1287,33 @@ function readOwnedWeztermPane(
   if (read.text.status === "refused") throw new Error(read.text.reason)
 }
 
+async function waitForWitnessRegistration(
+  registrationPath: string,
+  expectedRunId: string,
+  expectedTty: string,
+  timeoutMs = 30_000,
+): Promise<WitnessRegistration> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (existsSync(registrationPath)) {
+      const reg = parseWitnessRegistration(readFileSync(registrationPath, "utf8"))
+      if (reg.runId !== expectedRunId) {
+        throw new Error(`Witness registration runId ${reg.runId} differs from launch runId ${expectedRunId}`)
+      }
+      if (reg.tty !== expectedTty) {
+        throw new Error(`Witness registration TTY ${reg.tty} differs from launched witness window TTY ${expectedTty}`)
+      }
+      return reg
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Terminal.app witness responder did not register at ${registrationPath} within ${timeoutMs}ms`)
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100)
+    })
+  }
+}
+
 async function runApp(
   app: AppDef,
   opts: { force?: boolean; output?: string; probeIds?: string[]; runId?: string; mode?: "probe" | "hand-read" },
@@ -1293,8 +1351,11 @@ async function runApp(
       : undefined
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
+  let witnessReg: WitnessRegistration | null = null
   let daemonStopAttempted = false
+  let witnessStopAttempted = false
   let windowCloseAttempted = false
+  let witnessWindowCloseAttempted = false
   let iterm2TeardownAttempted = false
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
@@ -1313,6 +1374,22 @@ async function runApp(
           : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
+    let witnessAssertion: TerminalAppWitnessAssertion | undefined
+    if (
+      ownedWindow.provider === "terminal-app" &&
+      launch.witnessWindow !== undefined &&
+      launch.witnessRegistrationPath !== undefined
+    ) {
+      witnessReg = await waitForWitnessRegistration(launch.witnessRegistrationPath, run.id, launch.witnessWindow.tty)
+      assertOwnedTerminalWindow(launch.witnessWindow, witnessReg.pid)
+      witnessAssertion = {
+        windowId: launch.witnessWindow.windowId,
+        tabTty: launch.witnessWindow.tty,
+        pid: witnessReg.pid,
+        port: witnessReg.port,
+        token: witnessReg.token,
+      }
+    }
     const iterm2SuiteLiveReadBytes = iterm2Launch === undefined ? undefined : assertIterm2SuiteLive(iterm2Launch)
     if (hand) {
       hand.owner = ownedWindow
@@ -1338,11 +1415,13 @@ async function runApp(
       console.log(`  Probing on port ${daemon.registration.port}...`)
       const capturedDaemon = daemon
       const capturedLaunch = launch
+      const capturedWitnessReg = witnessReg
       const result = await probeDaemon(daemon.registration, {
         captureBundleRoot: run.directory,
         appId: app.id,
         version,
         ownedWindow,
+        ...(witnessAssertion !== undefined && { witness: witnessAssertion }),
         invocation: launch.invocation,
         outputDirectory: opts.output,
         ids: opts.probeIds,
@@ -1352,6 +1431,14 @@ async function runApp(
           beforeSave: async (captured: Parameters<typeof writeCollectedRun>[0]) => {
             daemonStopAttempted = true
             await stopOwnedDaemon(capturedDaemon)
+            if (capturedWitnessReg !== null) {
+              witnessStopAttempted = true
+              await stopWitnessResponder({
+                runId: run.id,
+                port: capturedWitnessReg.port,
+                token: capturedWitnessReg.token,
+              })
+            }
             windowCloseAttempted = true
             const proof = stopLaunchedApp(app, capturedLaunch)
             if (proof === undefined) {
@@ -1360,6 +1447,16 @@ async function runApp(
               })
             }
             captured.rawReplies["collector.windowDisposal"] = proof
+            if (capturedLaunch.witnessWindow !== undefined) {
+              witnessWindowCloseAttempted = true
+              const witnessProof = closeOwnedTerminalWindow(capturedLaunch.witnessWindow)
+              if (witnessProof === undefined) {
+                throw Object.assign(new Error("Terminal.app witness window B close returned no absence proof"), {
+                  name: "CaptureRestoreFailed",
+                })
+              }
+              captured.rawReplies["collector.witnessWindowDisposal"] = witnessProof
+            }
             captured.rawReplies["collector.workerStderr"] = readFileSync(
               join(run.directory, "worker.stderr.log"),
               "utf8",
@@ -1409,6 +1506,13 @@ async function runApp(
         if (hand) hand.cleanup.daemon = "failed"
       }
     }
+    if (witnessReg && !witnessStopAttempted) {
+      try {
+        await stopWitnessResponder({ runId: run.id, port: witnessReg.port, token: witnessReg.token })
+      } catch (err) {
+        cleanupErrors.push(`witness: ${String(err)}`)
+      }
+    }
     if (launch) {
       if (app.id === "kitty" && launch.terminalWindow === undefined) {
         try {
@@ -1442,6 +1546,13 @@ async function runApp(
       } catch (err) {
         cleanupErrors.push(`window: ${String(err)}`)
         if (hand) hand.cleanup.window = "failed"
+      }
+      if (launch.witnessWindow !== undefined && !witnessWindowCloseAttempted) {
+        try {
+          closeOwnedTerminalWindow(launch.witnessWindow)
+        } catch (err) {
+          cleanupErrors.push(`witness-window: ${String(err)}`)
+        }
       }
       if (launch.iterm2 !== undefined && !iterm2TeardownAttempted) {
         try {

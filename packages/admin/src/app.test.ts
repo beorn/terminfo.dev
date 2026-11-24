@@ -42,6 +42,7 @@ import {
   resolveOwnedProcessByMarker,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
+import { parseWitnessRegistration, stopWitnessResponder } from "../../terminfo.dev/src/witness-window.ts"
 import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./cursor-onboarding.ts"
 import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
@@ -141,8 +142,21 @@ vi.mock("../../terminfo.dev/src/owned-process.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../terminfo.dev/src/owned-process.ts")>()),
   runScopedMarker: vi.fn(({ flag, value }: { flag: string; value: string }) => ({ flag, value })),
 }))
+vi.mock("../../terminfo.dev/src/witness-window.ts", () => ({
+  parseWitnessRegistration: vi.fn(),
+  stopWitnessResponder: vi.fn(),
+}))
 
 const window = { provider: "terminal-app" as const, windowId: 14, tty: "/dev/ttys003" }
+const witnessWindow = { provider: "terminal-app" as const, windowId: 15, tty: "/dev/ttys004" }
+const witnessToken = "b".repeat(64)
+const witnessRegistration = {
+  runId: "private-run",
+  pid: 556,
+  port: 4321,
+  token: witnessToken,
+  tty: "/dev/ttys004",
+}
 const registration = {
   pid: 555,
   port: 1234,
@@ -189,7 +203,11 @@ beforeEach(() => {
     directory: "/private/run",
     scriptPath: "/private/run/serve.sh",
   })
-  vi.mocked(launchTerminalWindow).mockReturnValue(window)
+  vi.mocked(launchTerminalWindow).mockImplementation((scriptPath) =>
+    String(scriptPath).includes("witness-") ? witnessWindow : window,
+  )
+  vi.mocked(parseWitnessRegistration).mockReturnValue(witnessRegistration)
+  vi.mocked(stopWitnessResponder).mockResolvedValue()
   vi.mocked(findOwnedDaemon).mockResolvedValue({ filepath: "/private/registration", registration })
   vi.mocked(requestDaemonProbe).mockResolvedValue(new Response("{}"))
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
@@ -1333,10 +1351,11 @@ test.each([
 )
 
 describe("Terminal.app app collection", () => {
-  test("attaches measured receipt and trace before the single exclusive raw write", async () => {
+  test("attaches measured receipt, witness window B assertion, and both window disposal proofs before the single exclusive raw write", async () => {
     await handleApp("terminal-app", {})
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "terminal-app")
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(window, 555, "2.15")
+    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow, 556)
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
     expect(requestDaemonProbe).toHaveBeenCalledWith(
       registration,
@@ -1348,6 +1367,13 @@ describe("Terminal.app app collection", () => {
           windowId: 14,
           tabTty: "/dev/ttys003",
           intendedVersion: "2.15",
+          witness: {
+            windowId: 15,
+            tabTty: "/dev/ttys004",
+            pid: 556,
+            port: 4321,
+            token: witnessToken,
+          },
         },
       },
       undefined,
@@ -1371,7 +1397,13 @@ describe("Terminal.app app collection", () => {
       },
     })
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+    expect(stopWitnessResponder).toHaveBeenCalledWith({
+      runId: "private-run",
+      port: 4321,
+      token: witnessToken,
+    })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow)
     expect(vi.mocked(readRetainedDaemonProbeResponse).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(stopOwnedDaemon).mock.invocationCallOrder[0]!,
     )
@@ -1381,13 +1413,20 @@ describe("Terminal.app app collection", () => {
     expect(vi.mocked(closeOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(saveDaemonProbeRun).mock.invocationCallOrder[0]!,
     )
-    expect(closeOwnedTerminalWindow).toHaveBeenCalledOnce()
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledTimes(2)
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0].rawReplies["collector.windowDisposal"]).toContain(
+      '"remaining":0',
+    )
+    expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0].rawReplies["collector.witnessWindowDisposal"]).toContain(
       '"remaining":0',
     )
     const script = vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]
     expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
     expect(script).toContain("2> '/private/run/worker.stderr.log'")
+    const witnessScript = vi
+      .mocked(writeFileSync)
+      .mock.calls.find(([path]) => path === "/private/run/witness-private-run.sh")?.[1]
+    expect(witnessScript).toContain("probe witness --run-id 'private-run' --registration '/private/run/witness.json'")
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
 
@@ -1412,7 +1451,8 @@ describe("Terminal.app app collection", () => {
               : /owned close failed/,
         )
         expect(saveDaemonProbeRun).not.toHaveBeenCalled()
-        expect(closeOwnedTerminalWindow).toHaveBeenCalledOnce()
+        expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+        expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow)
         expect(stopOwnedDaemon).toHaveBeenCalledTimes(failure === "daemon startup" ? 0 : 1)
         expect(writeFileSync).toHaveBeenCalledWith("/private/run/collection-error.json", expect.any(String), {
           flag: "wx",
@@ -1426,7 +1466,7 @@ describe("Terminal.app app collection", () => {
     },
   )
 
-  test("a failed receipt refuses raw write and closes only the newly owned window", async () => {
+  test("a failed receipt refuses raw write and closes only the newly owned windows", async () => {
     vi.mocked(captureTerminalAppReceipt).mockImplementationOnce(() => {
       throw new Error("unsealed snapshot")
     })
@@ -1434,17 +1474,21 @@ describe("Terminal.app app collection", () => {
     expect(requestDaemonProbe).not.toHaveBeenCalled()
     expect(saveDaemonProbeRun).not.toHaveBeenCalled()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow)
   })
 
   test("a refused window assertion prevents the probe request and raw write", async () => {
-    vi.mocked(assertOwnedTerminalWindow).mockImplementationOnce(() => {
-      throw new Error("owned Terminal tab TTY changed")
-    })
+    vi.mocked(assertOwnedTerminalWindow)
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => {
+        throw new Error("owned Terminal tab TTY changed")
+      })
     await expect(handleApp("terminal-app", {})).rejects.toThrow(/tab TTY changed/)
     expect(requestDaemonProbe).not.toHaveBeenCalled()
     expect(saveDaemonProbeRun).not.toHaveBeenCalled()
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow)
   })
 
   test("retention failure blocks the enriched save", async () => {
@@ -1473,6 +1517,7 @@ describe("Terminal.app app collection", () => {
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[1]).toBe("/private/http-responses")
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(witnessWindow)
   })
 })
 

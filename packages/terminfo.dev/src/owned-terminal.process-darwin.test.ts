@@ -14,7 +14,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
 import type { ProbeResult, Observation, ProbeAssertion } from "@terminfo/probe-defs"
-import { createOwnedTerminal, parseProcessOwnerAssertion } from "./owned-terminal.ts"
+import { createOwnedTerminal, parseProcessOwnerAssertion, parseTerminalAppOwner } from "./owned-terminal.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -900,6 +900,37 @@ test("the process assertion has one strict shape: exact keys, known provider and
     { ...valid, extra: true },
   ]) {
     expect(() => parseProcessOwnerAssertion(assertion)).toThrow(/Invalid process owner assertion/)
+  }
+})
+
+test("parseTerminalAppOwner accepts an optional distinct witness window B and refuses colliding or malformed witness claims", () => {
+  const base = {
+    asserter: "terminfo-admin" as const,
+    launchRunId,
+    workerPid: 555,
+    windowId: 14,
+    tabTty: "/dev/ttys003",
+    intendedVersion: "2.15",
+  }
+  const witness = {
+    windowId: 15,
+    tabTty: "/dev/ttys004",
+    pid: 556,
+    port: 4321,
+    token: "a".repeat(64),
+  }
+  expect(parseTerminalAppOwner(base)).toEqual(base)
+  expect(parseTerminalAppOwner({ ...base, witness })).toEqual({ ...base, witness })
+  for (const bad of [
+    { ...base, witness: { ...witness, windowId: 14 } },
+    { ...base, witness: { ...witness, tabTty: "/dev/ttys003" } },
+    { ...base, witness: { ...witness, pid: 555 } },
+    { ...base, witness: { ...witness, port: 0 } },
+    { ...base, witness: { ...witness, token: "short" } },
+    { ...base, witness: { ...witness, extra: 1 } },
+    { ...base, witness: null },
+  ]) {
+    expect(() => parseTerminalAppOwner(bad)).toThrow(/Invalid Terminal\.app owner assertion/)
   }
 })
 

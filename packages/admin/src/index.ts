@@ -87,6 +87,28 @@ probe
     await handleServer(opts.daemon, opts)
   })
 
+// ── probe witness ──
+
+probe
+  .command("witness")
+  .description("Run the read-only loopback witness responder inside Terminal.app witness window B (#34080)")
+  .option("--run-id <id>", "Launch run id (32 lowercase hex characters)")
+  .option("--registration <path>", "Absolute path to write the witness registration JSON")
+  .actionMerged(async (opts: { runId?: string; registration?: string }) => {
+    if (!opts.runId || !opts.registration) {
+      throw new Error("probe witness requires both --run-id and --registration")
+    }
+    const { execFileSync } = await import("node:child_process")
+    const { startWitnessResponder } = await import("../../terminfo.dev/src/witness-window.ts")
+    const ttyPath = String(execFileSync("/usr/bin/tty", [], { encoding: "utf8", timeout: 5_000 })).trim()
+    const responder = await startWitnessResponder({
+      runId: opts.runId,
+      registrationPath: opts.registration,
+      ttyPath,
+    })
+    await responder.closed
+  })
+
 // ── probe app ──
 
 probe

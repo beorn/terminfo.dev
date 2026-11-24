@@ -33,3 +33,11 @@ export function serveCommand(run: Run, captureDirectory?: string): string {
     `exec ${shellQuote(BUN)} --no-env-file ${shellQuote(CLI_ENTRY)} probe server --start`,
   ].join(" ")
 }
+
+/** Read-only witness window B command for Terminal.app window-scoped ownership (#34080 Slice 2). */
+export function witnessCommand(run: Run, registrationPath: string): string {
+  return [
+    `TERMINFO_RUN_ID=${run.id}`,
+    `exec ${shellQuote(BUN)} --no-env-file ${shellQuote(CLI_ENTRY)} probe witness --run-id ${shellQuote(run.id)} --registration ${shellQuote(registrationPath)}`,
+  ].join(" ")
+}

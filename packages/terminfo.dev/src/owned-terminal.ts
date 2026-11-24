@@ -120,6 +120,8 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
+import { createWitnessClient } from "./witness-window.ts"
+import type { LedgerAttribute } from "./probes/attribute-ledger.ts"
 import {
   assertOwnedAppOwner,
   assertOwnedTerminalWindow,
@@ -177,6 +179,14 @@ export type GeometryMeasurement =
     }
   | { status: "unavailable"; at: string; source: GeometrySource; diagnostic: string; stdout: string; stderr: string }
 
+export interface TerminalAppWitnessAssertion {
+  windowId: number
+  tabTty: string
+  pid: number
+  port: number
+  token: string
+}
+
 export interface TerminalAppOwnerAssertion {
   asserter: "terminfo-admin"
   launchRunId: string
@@ -184,6 +194,8 @@ export interface TerminalAppOwnerAssertion {
   windowId: number
   tabTty: string
   intendedVersion: string
+  /** Read-only witness window B owned by the same run (#34080 Slice 2, @cto d43c34cc). */
+  witness?: TerminalAppWitnessAssertion
 }
 
 /**
@@ -337,7 +349,16 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
   const invalid = () => new Error("Invalid Terminal.app owner assertion")
   if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid()
   const object = value as Record<string, unknown>
-  const keys = ["asserter", "launchRunId", "workerPid", "windowId", "tabTty", "intendedVersion"]
+  const hasWitness = Object.hasOwn(object, "witness")
+  const keys = [
+    "asserter",
+    "launchRunId",
+    "workerPid",
+    "windowId",
+    "tabTty",
+    "intendedVersion",
+    ...(hasWitness ? ["witness"] : []),
+  ]
   if (Object.keys(object).length !== keys.length || keys.some((key) => !Object.hasOwn(object, key))) throw invalid()
   if (
     object.asserter !== "terminfo-admin" ||
@@ -356,6 +377,35 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
   ) {
     throw invalid()
   }
+  let witness: TerminalAppWitnessAssertion | undefined
+  if (hasWitness) {
+    const raw = object.witness
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw invalid()
+    const w = raw as Record<string, unknown>
+    if (
+      !exactKeys(w, ["windowId", "tabTty", "pid", "port", "token"]) ||
+      typeof w.windowId !== "number" ||
+      !Number.isSafeInteger(w.windowId) ||
+      w.windowId < 1 ||
+      w.windowId === object.windowId ||
+      typeof w.tabTty !== "string" ||
+      !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(w.tabTty) ||
+      w.tabTty === object.tabTty ||
+      typeof w.pid !== "number" ||
+      !Number.isSafeInteger(w.pid) ||
+      w.pid < 1 ||
+      w.pid === object.workerPid ||
+      typeof w.port !== "number" ||
+      !Number.isSafeInteger(w.port) ||
+      w.port < 1 ||
+      w.port > 65535 ||
+      typeof w.token !== "string" ||
+      !/^[0-9a-f]{64}$/.test(w.token)
+    ) {
+      throw invalid()
+    }
+    witness = { windowId: w.windowId, tabTty: w.tabTty, pid: w.pid, port: w.port, token: w.token }
+  }
   return {
     asserter: object.asserter,
     launchRunId: object.launchRunId,
@@ -363,6 +413,7 @@ export function parseTerminalAppOwner(value: unknown): TerminalAppOwnerAssertion
     windowId: object.windowId,
     tabTty: object.tabTty,
     intendedVersion: object.intendedVersion,
+    ...(witness !== undefined && { witness }),
   }
 }
 
@@ -481,6 +532,11 @@ export interface OwnedTerminal {
   readonly appPid?: number
   /** Window identity already proved by this arm's launch/owner evidence. */
   readonly expectedWindowId?: number
+  /** Read-only witness window B client for Terminal.app window-scoped ownership (#34080 Slice 2). */
+  readonly witnessWindow?: {
+    readonly app: string
+    readonly read: (attribute: LedgerAttribute) => Promise<string | undefined>
+  }
   /** Legacy hosted arms retain their census policy; new PID-only routes require a unique window. */
   readonly captureWindowSelection?: "largest" | "unique"
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
@@ -1856,6 +1912,7 @@ export async function createOwnedTerminal(options: {
   let processOwnerBasis: string | undefined
   /** The process arm issues a basis that covers its whole instance; a window arm would issue "window". */
   let processOwnerBasisScope: OwnerBasisScope | undefined
+  let terminalWitnessWindow: OwnedTerminal["witnessWindow"]
   let darwinAttachment: DarwinMuxAttachmentProof | undefined
   /** The owned-process arm's own proof, re-run before a later history read (31741). */
   let processOwnerRecheck: (() => void) | undefined
@@ -1888,6 +1945,32 @@ export async function createOwnedTerminal(options: {
       terminalAppPid = requireHostedDarwinAppAncestor("Terminal", readProcessAncestry(process.pid)).pid
     } catch (error) {
       process.stderr.write(`Terminal.app pid not read: ${error instanceof Error ? error.message : String(error)}\n`)
+    }
+    if (assertion.witness !== undefined) {
+      const windowA = { provider: "terminal-app" as const, windowId: assertion.windowId, tty: assertion.tabTty }
+      const windowB = {
+        provider: "terminal-app" as const,
+        windowId: assertion.witness.windowId,
+        tty: assertion.witness.tabTty,
+      }
+      const witnessPid = assertion.witness.pid
+      // Window scope is issued ONLY when BOTH window A and witness window B are verified owned (#34080, @cto d43c34cc (e)).
+      const assertBothWindowsOwned = () => {
+        assertOwnedTerminalWindow(windowA, process.pid)
+        assertOwnedTerminalWindow(windowB, witnessPid)
+      }
+      assertBothWindowsOwned()
+      processOwnerBasis = `Disposable prerequisite satisfied by owned Terminal.app window ${assertion.windowId} with read-only witness window ${assertion.witness.windowId}`
+      processOwnerBasisScope = "window"
+      terminalWitnessWindow = createWitnessClient({
+        app: "terminal-app",
+        endpoint: {
+          runId: assertion.launchRunId,
+          port: assertion.witness.port,
+          token: assertion.witness.token,
+        },
+        check: assertBothWindowsOwned,
+      })
     }
   } else if (processOwner) {
     if (process.platform !== "darwin") throw new Error("Owned process owner requires Darwin")
@@ -3340,6 +3423,7 @@ export async function createOwnedTerminal(options: {
             })
           },
         }),
+      ...(terminalWitnessWindow !== undefined && { witnessWindow: terminalWitnessWindow }),
       async dispose() {
         verifiedTerminalOwners.delete(owner)
         await clipboard?.dispose()
