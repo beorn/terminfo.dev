@@ -49,7 +49,7 @@ function sentinelOutcome(sequence: string, mode: Mode): unknown {
     return { match: null, reason: "sentinel", raw: "\u001b[?6c", rawBase64: "G1s/NmM=" }
   }
   if (sequence === "\u001b[16t") {
-    return { match: ["6;18;36", "18", "36"], reason: "reply", raw: sequence, rawBase64: "" }
+    return { match: ["6;20;8", "20", "8"], reason: "reply", raw: sequence, rawBase64: "" }
   }
   if (sequence === "\u001b[14t") {
     return { match: ["4;480;640", "480", "640"], reason: "reply", raw: sequence, rawBase64: "" }

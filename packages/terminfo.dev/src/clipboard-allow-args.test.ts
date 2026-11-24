@@ -128,7 +128,7 @@ test("WezTerm's no-setting allow run reads its exact-version absent default; no 
   expect(clipboardReadDefault("wezterm", "default", "0-unstable-2026-11-08")).toEqual(cited)
   expect(clipboardReadDefault("wezterm", "allow", "0-unstable-2026-10-10")).toEqual({
     readDefaultRefusal:
-      "default not established: this tree cites wezterm 0-unstable-2026-11-08 or 20240203-110809-5046fc22, this run measured 0-unstable-2026-10-10",
+      "default not established: this tree cites wezterm 0-unstable-2026-11-08 or 0-unstable-2026-11-20 or 20240203-110809-5046fc22, this run measured 0-unstable-2026-10-10",
   })
   expect(clipboardReadDefault("wezterm", "allow", undefined).readDefaultRefusal).toContain("(no version recorded)")
   for (const app of ["kitty", "ghostty", "alacritty", "xterm"] as const) {

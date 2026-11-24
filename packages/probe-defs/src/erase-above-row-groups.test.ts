@@ -113,7 +113,7 @@ function terminal(frames: Record<"seed" | "target" | "expected", FrameDigests>) 
     sequence === "\u001b[16t"
       ? { match: ["6;18;10", "18", "10"], reason: "reply", raw: sequence, rawBase64: "" }
       : sequence === "\u001b[14t"
-        ? { match: ["4;600;800", "600", "800"], reason: "reply", raw: sequence, rawBase64: "" }
+        ? { match: ["4;432;800", "432", "800"], reason: "reply", raw: sequence, rawBase64: "" }
         : { match: null, reason: "sentinel", raw: "\u001b[?6c", rawBase64: "G1s/NmM=" }
   const ctx: TermProbeSource = {
     kind: "live",
