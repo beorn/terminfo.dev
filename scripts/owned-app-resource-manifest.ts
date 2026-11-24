@@ -23,6 +23,7 @@ export function manifestScan(
   entries: readonly string[],
   missing: string,
   also: readonly string[] = [],
+  excludedRelPaths: ReadonlySet<string> = new Set(),
 ): { lines: string[]; linkTargets: string[] } {
   const lines: string[] = []
   // Staged-relative paths every link depends on: each hop's own lexical target AND the final real
@@ -41,13 +42,14 @@ export function manifestScan(
     return undefined
   }
   const walk = (path: string): void => {
+    const relative = path === root ? "" : path.slice(root.length + 1)
+    if (relative !== "" && excludedRelPaths.has(relative)) return
     let info
     try {
       info = lstatSync(path)
     } catch {
-      fail(missing, `declared resource ${JSON.stringify(path.slice(root.length + 1))} is absent`)
+      fail(missing, `declared resource ${JSON.stringify(relative)} is absent`)
     }
-    const relative = path.slice(root.length + 1)
     if (info.isSymbolicLink()) {
       const target = readlinkSync(path)
       // A link's text is what the stage will hold, and the host resolves it from a different

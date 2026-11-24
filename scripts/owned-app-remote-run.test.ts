@@ -1463,4 +1463,100 @@ describe("run identity on the output path, per-call rsync counters, phase interv
     const afterSeal = proof(result).afterSeal as { phases: Array<{ name: string; within: string | null }> }
     expect(afterSeal.phases.map((phase) => [phase.name, phase.within])).toEqual([["copy-back", null]])
   }, 60_000)
+
+  it("skips bundle creation and transfer on a clean warm stage at the same revision while keeping full witness (#33797)", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const beforeRsync = lines(rsyncLog).length
+    const second = run({}, [], undefined, "kitty", stage, OTHER_RUN)
+    expect(second.status, second.stderr).toBe(0)
+    const secondTransfers = lines(rsyncLog).slice(beforeRsync)
+    expect(secondTransfers.some((line) => line.includes("source.bundle"))).toBe(false)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      check: string
+      resourceManifestSha256: string
+      transfers: Array<{ label: string }>
+      phases: Array<{ name: string }>
+    }
+    expect(receipt.check).toBe("full")
+    expect(receipt.resourceManifestSha256).toBe(proof(first).resourceManifestSha256)
+    expect(receipt.transfers.map((transfer) => transfer.label)).not.toContain("bundle transfer")
+    expect(receipt.phases.map((phase) => phase.name)).not.toContain("bundle transfer")
+    expect(receipt.phases.map((phase) => phase.name)).not.toContain("stage checkout")
+    expect(
+      existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "transport-receipt.json")),
+    ).toBe(true)
+  }, 60_000)
+
+  it("prunes unrelated monorepo workspace links and their .bin entries while keeping transitive required deps (#33797)", () => {
+    // Wire workspace root package.json + one required transitive workspace dep + one unrelated workspace pkg.
+    writeFileSync(
+      join(code, "package.json"),
+      JSON.stringify({ name: "monorepo", private: true, workspaces: ["vendor/*", "needed/*", "unrelated/*"] }, null, 2),
+    )
+    writeFileSync(
+      join(source, "package.json"),
+      JSON.stringify(
+        { name: "terminfo.dev", private: true, type: "module", dependencies: { "@needed/dep": "workspace:*" } },
+        null,
+        2,
+      ),
+    )
+    git(source, "add", "package.json")
+    git(source, "commit", "-q", "-m", "declare required workspace dep")
+    revision = git(source, "rev-parse", "HEAD")
+
+    mkdirSync(join(code, "needed", "dep"), { recursive: true })
+    writeFileSync(
+      join(code, "needed", "dep", "package.json"),
+      JSON.stringify({ name: "@needed/dep", version: "0.0.0" }),
+    )
+    writeFileSync(join(code, "needed", "dep", "index.ts"), "export const needed = true\n")
+
+    mkdirSync(join(code, "unrelated", "pkg"), { recursive: true })
+    writeFileSync(
+      join(code, "unrelated", "pkg", "package.json"),
+      JSON.stringify({ name: "@unrelated/pkg", version: "0.0.0" }),
+    )
+    writeFileSync(join(code, "unrelated", "pkg", "bin.ts"), "#!/usr/bin/env bun\n")
+
+    git(code, "add", "needed", "unrelated", "package.json")
+    git(code, "commit", "-q", "-m", "workspace packages")
+
+    mkdirSync(join(code, "node_modules", "@needed"), { recursive: true })
+    symlinkSync(join("..", "..", "needed", "dep"), join(code, "node_modules", "@needed", "dep"))
+    mkdirSync(join(code, "node_modules", "@unrelated"), { recursive: true })
+    symlinkSync(join("..", "..", "unrelated", "pkg"), join(code, "node_modules", "@unrelated", "pkg"))
+    mkdirSync(join(code, "node_modules", ".bin"), { recursive: true })
+    symlinkSync(join("..", "@unrelated", "pkg", "bin.ts"), join(code, "node_modules", ".bin", "unrelated-cli"))
+
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    expect(existsSync(join(stage, "source", "needed", "dep", "index.ts"))).toBe(true)
+    expect(existsSync(join(stage, "source", "node_modules", "@needed", "dep"))).toBe(true)
+    expect(existsSync(join(stage, "source", "unrelated"))).toBe(false)
+    expect(existsSync(join(stage, "source", "node_modules", "@unrelated", "pkg"))).toBe(false)
+    expect(existsSync(join(stage, "source", "node_modules", ".bin", "unrelated-cli"))).toBe(false)
+
+    // Pre-existing legacy stage with stale unrelated symlink + root is cleaned up automatically on warm run.
+    mkdirSync(join(stage, "source", "unrelated", "pkg"), { recursive: true })
+    writeFileSync(join(stage, "source", "unrelated", "pkg", "stale.ts"), "stale\n")
+    mkdirSync(join(stage, "source", "node_modules", "@unrelated"), { recursive: true })
+    symlinkSync(join("..", "..", "unrelated", "pkg"), join(stage, "source", "node_modules", "@unrelated", "pkg"))
+    const second = run({}, [], undefined, "kitty", stage, OTHER_RUN)
+    expect(second.status, second.stderr).toBe(0)
+    expect(existsSync(join(stage, "source", "unrelated"))).toBe(false)
+    expect(existsSync(join(stage, "source", "node_modules", "@unrelated", "pkg"))).toBe(false)
+  }, 60_000)
+
+  it("refuses a broken required symlink even in workspace pruning mode (#33797)", () => {
+    writeFileSync(
+      join(code, "package.json"),
+      JSON.stringify({ name: "monorepo", private: true, workspaces: ["vendor/*"] }, null, 2),
+    )
+    symlinkSync(join("..", "..", "does-not-exist"), join(code, "node_modules", "@terminfo", "dangling"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("broken staged symlink")
+  }, 60_000)
 })

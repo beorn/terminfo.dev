@@ -40,12 +40,14 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join, relative as relativePath, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import {
@@ -82,6 +84,135 @@ const KITTY = rootOverride("OWNED_APP_TRANSPORT_KITTY_PATH", KITTY_BINARY_PATH)
 const RESOURCE_DIRS = ["node_modules", "vendor/silvery", "vendor/termless"] as const
 const RESOURCE_FILES = ["package.json", "bun.lock", "tsconfig.json"] as const
 const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const
+
+function readJsonObject(path: string): Record<string, unknown> | undefined {
+  if (!existsSync(path)) return undefined
+  const raw = readFileSync(path, "utf8").trim()
+  if (!raw.startsWith("{")) return undefined
+  const parsed: unknown = JSON.parse(raw)
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined
+}
+
+/**
+ * #33797: In a multi-package workspace monorepo (root package.json declares `workspaces`),
+ * `CODE_ROOT/node_modules` holds workspace symlinks for every package in the repo (ag, km, tools,
+ * yrd, tribe, ...), pulling ~12 unrelated monorepo trees (~32k files / ~2.4 GB) into the staging
+ * manifest, rsync transfer, and remote witness. Exclude workspace symlinks (and their `.bin`
+ * entries) that are NOT in the transitive dependency closure of `vendor/terminfo.dev` and the
+ * declared resource roots (`vendor/silvery`, `vendor/termless`). Broken, absolute, escaping, or
+ * non-workspace symlinks are NEVER excluded so `manifestScan` still refuses them loudly.
+ */
+export function excludedWorkspaceLinks(codeRoot: string): {
+  readonly excludedRelPaths: ReadonlySet<string>
+  readonly rsyncExcludes: readonly string[]
+} {
+  const rootPkg = readJsonObject(join(codeRoot, "package.json"))
+  if (rootPkg === undefined || !Array.isArray(rootPkg.workspaces)) {
+    return { excludedRelPaths: new Set(), rsyncExcludes: [] }
+  }
+  const nodeModules = join(codeRoot, "node_modules")
+  if (!existsSync(nodeModules) || !lstatSync(nodeModules).isDirectory()) {
+    return { excludedRelPaths: new Set(), rsyncExcludes: [] }
+  }
+  const physicalRoot = realpathSync(codeRoot)
+  const wsByName = new Map<string, { relDir: string; pkg: Record<string, unknown> }>()
+
+  const inspectDir = (dir: string, scopePrefix: string): void => {
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith(".")) continue
+      const full = join(dir, name)
+      const info = lstatSync(full)
+      const pkgName = scopePrefix === "" ? name : `${scopePrefix}/${name}`
+      if (info.isSymbolicLink()) {
+        // Broken symlinks return false from existsSync; never exclude them so manifestScan refuses them.
+        if (!existsSync(full)) continue
+        const real = realpathSync(full)
+        if (real === physicalRoot || !real.startsWith(`${physicalRoot}${sep}`)) continue
+        const relDir = relativePath(physicalRoot, real).split(sep).join("/")
+        if (relDir === "" || relDir.startsWith("node_modules/")) continue
+        const pkg = readJsonObject(join(real, "package.json"))
+        if (pkg !== undefined && pkg.name === pkgName) {
+          wsByName.set(pkgName, { relDir, pkg })
+        }
+      } else if (info.isDirectory() && scopePrefix === "" && name.startsWith("@")) {
+        inspectDir(full, name)
+      }
+    }
+  }
+  inspectDir(nodeModules, "")
+
+  if (wsByName.size === 0) return { excludedRelPaths: new Set(), rsyncExcludes: [] }
+
+  const kept = new Set<string>()
+  const queue: Record<string, unknown>[] = []
+  const seedPackageDir = (dir: string): void => {
+    const pkg = readJsonObject(join(dir, "package.json"))
+    if (pkg === undefined) return
+    if (typeof pkg.name === "string") kept.add(pkg.name)
+    queue.push(pkg)
+  }
+  const requiredRoots = [STAGED_FROM_BUNDLE, ...RESOURCE_DIRS.filter((entry) => entry !== "node_modules")]
+  for (const base of requiredRoots) {
+    const baseDir = join(codeRoot, base)
+    seedPackageDir(baseDir)
+    const packagesDir = join(baseDir, "packages")
+    if (existsSync(packagesDir) && lstatSync(packagesDir).isDirectory()) {
+      for (const child of readdirSync(packagesDir)) seedPackageDir(join(packagesDir, child))
+    }
+  }
+  for (const [pkgName, info] of wsByName) {
+    if (requiredRoots.some((base) => info.relDir === base || info.relDir.startsWith(`${base}/`))) {
+      if (!kept.has(pkgName)) {
+        kept.add(pkgName)
+        queue.push(info.pkg)
+      }
+    }
+  }
+  while (queue.length > 0) {
+    const pkg = queue.shift()
+    if (pkg === undefined) break
+    for (const field of DEPENDENCY_FIELDS) {
+      const deps = pkg[field]
+      if (deps === null || typeof deps !== "object" || Array.isArray(deps)) continue
+      for (const depName of Object.keys(deps as Record<string, unknown>)) {
+        if (kept.has(depName)) continue
+        const ws = wsByName.get(depName)
+        if (ws !== undefined) {
+          kept.add(depName)
+          queue.push(ws.pkg)
+        }
+      }
+    }
+  }
+
+  const excludedRelPaths = new Set<string>()
+  const rsyncExcludes: string[] = []
+  for (const pkgName of [...wsByName.keys()].sort()) {
+    if (kept.has(pkgName)) continue
+    excludedRelPaths.add(`node_modules/${pkgName}`)
+    rsyncExcludes.push(`/${pkgName}`)
+  }
+
+  const binDir = join(nodeModules, ".bin")
+  if (excludedRelPaths.size > 0 && existsSync(binDir) && lstatSync(binDir).isDirectory()) {
+    for (const binName of readdirSync(binDir).sort()) {
+      const full = join(binDir, binName)
+      if (!lstatSync(full).isSymbolicLink()) continue
+      const target = readlinkSync(full)
+      const match = /^\.\.\/((?:@[^/]+\/)?[^/]+)(?:\/|$)/.exec(target)
+      const pkgName = match?.[1]
+      if (pkgName !== undefined && excludedRelPaths.has(`node_modules/${pkgName}`)) {
+        excludedRelPaths.add(`node_modules/.bin/${binName}`)
+        rsyncExcludes.push(`/.bin/${binName}`)
+      }
+    }
+  }
+
+  return { excludedRelPaths, rsyncExcludes }
+}
 
 /** Written by a run that passed the FULL comparison, and the only thing a light run trusts its
  * node_modules trees through. It names the lock the trees were installed from and the digest they
@@ -771,8 +902,10 @@ function stagePresence(options: Parsed, stage: string): boolean {
   return answer.stdout.trim() === "present"
 }
 
-/** The bundle is the only way source reaches the host: an exact sha, verified before it is used. */
-function createBundle(options: Parsed, directory: string): string {
+/** The bundle is the only way source reaches the host: an exact sha, verified before it is used.
+ * When the remote checkout already holds an ancestor revision (`baseRevision`), only the delta
+ * range `<baseRevision>..HEAD` is bundled instead of the full repository history (#33797). */
+function createBundle(options: Parsed, directory: string, baseRevision?: string): string {
   const path = join(directory, "source.bundle")
   const git = (...args: string[]): string => {
     const result = spawnSync("git", ["-C", ROOT, ...args], { encoding: "utf8" })
@@ -788,7 +921,8 @@ function createBundle(options: Parsed, directory: string): string {
       `HEAD is ${head} but the run names source ${options.sourceRevision}; the transport bundles the checked-out revision, never another`,
     )
   }
-  git("bundle", "create", path, "HEAD")
+  const range = baseRevision === undefined ? "HEAD" : `${baseRevision}..HEAD`
+  git("bundle", "create", path, range)
   const verify = spawnSync("git", ["-C", ROOT, "bundle", "verify", path], { encoding: "utf8" })
   if (verify.error || verify.status !== 0) {
     fail(
@@ -1018,11 +1152,12 @@ function main(options: Parsed): OwnedAppTransportProof {
     clock.begin("local manifest")
     const linkDirs = bundleLinkDirs()
     const declared = [...RESOURCE_DIRS, ...linkDirs, ...RESOURCE_FILES]
+    const { excludedRelPaths, rsyncExcludes } = excludedWorkspaceLinks(CODE_ROOT)
     // A light run hashes everything it stages EXCEPT the node_modules trees, which it trusts
     // through the marker: skipping those hashes is the whole saving. A full run hashes them too,
     // so a full digest still stands for every staged byte.
     const checked = light ? declared.filter((entry) => entry !== "node_modules") : declared
-    const scan = manifestScan(CODE_ROOT, checked, "resource manifest mismatch")
+    const scan = manifestScan(CODE_ROOT, checked, "resource manifest mismatch", [], excludedRelPaths)
     // Roots a link reaches beyond the declared resources ship from tracked extracts only, so the
     // closure is walked over the extracts, never over a working tree's untracked files.
     const closure = join(scratch, "closure")
@@ -1085,11 +1220,28 @@ function main(options: Parsed): OwnedAppTransportProof {
     // A light run leaves the staged source exactly as the earlier full run left it: the
     // revision and its tree were checked against git objects above, so nothing is moved.
     if (!light) {
-      const bundle = createBundle(options, scratch)
-      clock.begin("bundle transfer")
-      transfers.push(rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`))
-      clock.end("bundle transfer")
-      clock.begin("stage checkout")
+      const localHeadRes = spawnSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" })
+      if (localHeadRes.error || localHeadRes.status !== 0) {
+        fail("bundle missing objects", `git rev-parse HEAD: ${localHeadRes.error?.message ?? localHeadRes.stderr.trim()}`)
+      }
+      const localHead = localHeadRes.stdout.trim()
+      if (localHead !== options.sourceRevision) {
+        fail(
+          "bundle missing objects",
+          `HEAD is ${localHead} but the run names source ${options.sourceRevision}; the transport bundles the checked-out revision, never another`,
+        )
+      }
+      const localTreeRes = spawnSync("git", ["-C", ROOT, "rev-parse", `${options.sourceRevision}^{tree}`], {
+        encoding: "utf8",
+      })
+      if (localTreeRes.error || localTreeRes.status !== 0) {
+        fail(
+          "bundle missing objects",
+          `git rev-parse ${options.sourceRevision}^{tree}: ${localTreeRes.error?.message ?? localTreeRes.stderr.trim()}`,
+        )
+      }
+      const localTree = localTreeRes.stdout.trim()
+
       // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
       // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
       const rebuildMarker = `${stage}/${STAGE_REBUILD_MARKER}`
@@ -1097,15 +1249,13 @@ function main(options: Parsed): OwnedAppTransportProof {
       // and a later run that finds a readable-but-dirty index must refuse that dirt, not force it
       // clean on a decision a previous run made (@dev/3 R4).
       const rebuildToken = randomBytes(16).toString("hex")
-      // Decide the index rebuild BEFORE the checkout, and only for a proven index fault: git that
-      // cannot run at all (127), a refused config or dubious ownership (128) and a killed process all
-      // fail here by name instead of deleting the index, because deleting it makes the next run read
-      // a tree it cannot describe ("untracked working tree files would be overwritten") with no way
-      // back. `ls-files -s` is the read that proves the index itself is what failed (@dev/15 R3).
-      // The preflight answers one of `fresh`, `kept` or `rebuilt`, and it refuses by name anything
-      // that is not an index fault. A rebuild is not free — the forcing checkout replaces the staged
-      // projection, tracked edits included — so the answer is printed, kept, and carried into the
-      // receipt rather than happening quietly (@dev/15 R3).
+      // Decide the index rebuild AND warm-stage reuse BEFORE creating or transferring a bundle (#33797).
+      // Only a proven index fault triggers a rebuild: git that cannot run at all (127), a refused
+      // config or dubious ownership (128) and a killed process all fail here by name instead of
+      // deleting the index. `ls-files -s` is the read that proves the index itself failed (@dev/15 R3).
+      // When the checkout is `kept`, clear any stale rebuild marker from an earlier interrupted run
+      // and report remote HEAD, HEAD^{tree}, and clean/dirty state so a clean exact-head match skips
+      // the bundle copy completely and an ancestor match sends only an incremental delta bundle.
       const stagePreflight = sshRun(
         options,
         "stage index preflight",
@@ -1113,7 +1263,15 @@ function main(options: Parsed): OwnedAppTransportProof {
         [
           `set -e`,
           `if [ ! -d ${shq(`${checkout}/.git`)} ]; then printf 'fresh\\n'; exit 0; fi`,
-          `if git -C ${shq(checkout)} status --porcelain >/dev/null 2>&1; then printf 'kept\\n'; exit 0; fi`,
+          `if status_out="$(git -C ${shq(checkout)} status --porcelain 2>/dev/null)"; then`,
+          `  rm -f ${shq(rebuildMarker)}`,
+          `  head_sha="$(git -C ${shq(checkout)} rev-parse HEAD 2>/dev/null || true)"`,
+          `  tree_sha="$(git -C ${shq(checkout)} rev-parse 'HEAD^{tree}' 2>/dev/null || true)"`,
+          `  clean_state="clean"`,
+          `  if [ -n "$status_out" ]; then clean_state="dirty"; fi`,
+          `  printf 'kept\\n%s\\n%s\\n%s\\n' "$head_sha" "$tree_sha" "$clean_state"`,
+          `  exit 0`,
+          `fi`,
           `if ! git -C ${shq(checkout)} --version >/dev/null 2>&1 || ! git -C ${shq(checkout)} config --list >/dev/null 2>&1; then`,
           `  printf '%s\\n' "git cannot run in the staged checkout, so this is not an index fault:" >&2`,
           `  git -C ${shq(checkout)} status --porcelain 2>&1 | head -5 | sed 's/^/  /' >&2 || true`,
@@ -1129,43 +1287,76 @@ function main(options: Parsed): OwnedAppTransportProof {
           `printf 'rebuilt\\n'`,
         ].join("\n"),
       )
+      const [preflightState, remoteHead = "", remoteTree = "", remoteClean = ""] = stagePreflight.stdout
+        .trim()
+        .split("\n")
       // The rebuild's own words are on the host's stderr, which sshRun keeps rather than prints; a
       // rebuild the operator never sees is the silent fallback this revise exists to remove.
-      if (stagePreflight.stdout.trim() === "rebuilt") {
+      if (preflightState === "rebuilt") {
         stageRebuild = "index unreadable"
         const note = stagePreflight.stderr.trim()
         if (note !== "") console.error(note)
       }
-      const checkoutScript = [
-        `set -e`,
-        // `fetch` reads the index before `checkout` ever runs (it dies on a corrupt one), so a
-        // proven-unreadable index is removed first. The preflight proved git runs and the index
-        // alone is what fails, so nothing git could have read is discarded.
-        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then rm -f ${shq(`${checkout}/.git/index`)}; fi`,
-        `mkdir -p ${shq(`${source}/vendor`)}`,
-        `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
-        `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
-        `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
-        // The forcing checkout replaces the projection only when the preflight proved the index
-        // unreadable; a readable index keeps its dirty state so the refusal below still fires.
-        // The checkout writes a fresh index and, with -f, replaces any tracked edits it finds.
-        `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then`,
-        `  git -C ${shq(checkout)} checkout --detach -f ${shq(options.sourceRevision)}`,
-        `else`,
-        `  git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
-        `fi`,
-        `rm -f ${shq(rebuildMarker)}`,
-        `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
-      ].join("\n")
-      sshRun(options, "stage checkout", "stage source mismatch", checkoutScript)
-      const dirty = sshRun(
-        options,
-        "clean-tree check",
-        "stage dirty tree",
-        `git -C ${shq(checkout)} status --porcelain`,
-      ).stdout.trim()
-      if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
-      clock.end("stage checkout")
+      if (preflightState === "kept" && remoteClean === "dirty") {
+        const dirty = sshRun(
+          options,
+          "clean-tree check",
+          "stage dirty tree",
+          `git -C ${shq(checkout)} status --porcelain`,
+        ).stdout.trim()
+        fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+      }
+      const exactHeadMatch =
+        preflightState === "kept" &&
+        remoteClean === "clean" &&
+        remoteHead === options.sourceRevision &&
+        remoteTree === localTree
+      if (!exactHeadMatch) {
+        const incrementalBase =
+          preflightState === "kept" &&
+          /^[a-f0-9]{40}$/.test(remoteHead) &&
+          remoteHead !== options.sourceRevision &&
+          spawnSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", remoteHead, options.sourceRevision], {
+            encoding: "utf8",
+          }).status === 0
+            ? remoteHead
+            : undefined
+        const bundle = createBundle(options, scratch, incrementalBase)
+        clock.begin("bundle transfer")
+        transfers.push(rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`))
+        clock.end("bundle transfer")
+        clock.begin("stage checkout")
+        const checkoutScript = [
+          `set -e`,
+          // `fetch` reads the index before `checkout` ever runs (it dies on a corrupt one), so a
+          // proven-unreadable index is removed first. The preflight proved git runs and the index
+          // alone is what fails, so nothing git could have read is discarded.
+          `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then rm -f ${shq(`${checkout}/.git/index`)}; fi`,
+          `mkdir -p ${shq(`${source}/vendor`)}`,
+          `if [ ! -d ${shq(`${checkout}/.git`)} ]; then git init -q ${shq(checkout)}; fi`,
+          `git -C ${shq(checkout)} fetch --force ${shq(`${stage}/source.bundle`)} 'HEAD:refs/owned-app/source'`,
+          `git -C ${shq(checkout)} cat-file -e ${shq(`${options.sourceRevision}^{commit}`)}`,
+          // The forcing checkout replaces the projection only when the preflight proved the index
+          // unreadable; a readable index keeps its dirty state so the refusal below still fires.
+          // The checkout writes a fresh index and, with -f, replaces any tracked edits it finds.
+          `if [ "$(cat ${shq(rebuildMarker)} 2>/dev/null)" = ${shq(rebuildToken)} ]; then`,
+          `  git -C ${shq(checkout)} checkout --detach -f ${shq(options.sourceRevision)}`,
+          `else`,
+          `  git -C ${shq(checkout)} checkout --detach ${shq(options.sourceRevision)}`,
+          `fi`,
+          `rm -f ${shq(rebuildMarker)}`,
+          `test "$(git -C ${shq(checkout)} rev-parse HEAD)" = ${shq(options.sourceRevision)}`,
+        ].join("\n")
+        sshRun(options, "stage checkout", "stage source mismatch", checkoutScript)
+        const dirty = sshRun(
+          options,
+          "clean-tree check",
+          "stage dirty tree",
+          `git -C ${shq(checkout)} status --porcelain`,
+        ).stdout.trim()
+        if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
+        clock.end("stage checkout")
+      }
     }
 
     clock.begin("resource transfer")
@@ -1197,7 +1388,9 @@ function main(options: Parsed): OwnedAppTransportProof {
       transfers.push(
         rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
           "--delete",
+          ...(entry === "node_modules" && rsyncExcludes.length > 0 ? ["--delete-excluded"] : []),
           ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
+          ...(entry === "node_modules" ? rsyncExcludes.map((path) => `--exclude=${path}`) : []),
         ]),
       )
     }
