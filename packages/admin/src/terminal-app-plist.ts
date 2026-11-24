@@ -15,6 +15,15 @@ import { join } from "node:path"
 
 export const TERMINAL_APP_PLIST_ALLOWED_KEY_PATTERN = /^NSWindow Frame /
 
+/**
+ * Replace any collecting-host home directory prefix (`/Users/<account>` or `/home/<account>`,
+ * other than the shared `runner` account) with `~` before writing a receipt into a run record
+ * that may be committed to `content/` (#30568, #34080).
+ */
+export function redactHostHomePaths(value: string): string {
+  return value.replace(/(?<![\w.~-])\/(?:Users|home)\/(?!runner(?=[/"'\s\\]|$))[^/"'\s\\]+(?=[/"'\s\\]|$)/g, "~")
+}
+
 export interface TerminalAppPlistSnapshot {
   readonly path: string
   readonly present: boolean
@@ -179,7 +188,7 @@ export function verifyTerminalAppPlistIsolation(
     )
   }
   return {
-    plistPath: after.path,
+    plistPath: redactHostHomePaths(after.path),
     beforePresent: before.present,
     afterPresent: after.present,
     allowedChangedKeys: diff.allowedChangedKeys,

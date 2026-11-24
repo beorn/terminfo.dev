@@ -288,14 +288,22 @@ describe("per-run isolation proof and exact-token teardown (@cto d43c34cc)", () 
     expect(() => assertIterm2SuiteLive(launched)).toThrow(/suite domain .* is not present while live/)
   })
 
-  test("verifyIterm2IsolationAfterClose passes when operator prefs sha256 is unchanged and refuses any mutation", () => {
+  test("verifyIterm2IsolationAfterClose passes when operator prefs sha256 is unchanged, redacts host home path, and refuses any mutation", () => {
     const receipt = verifyIterm2IsolationAfterClose(launched, 35)
     expect(receipt).toEqual({
       suiteDomain,
       suiteDomainPresentWhileLive: true,
       suiteDomainLiveReadBytes: 35,
-      operatorPrefsBefore: { path: targets.operatorPrefsPath, present: true, sha256: operatorPrefsSha },
-      operatorPrefsAfter: { path: targets.operatorPrefsPath, present: true, sha256: operatorPrefsSha },
+      operatorPrefsBefore: {
+        path: "~/Library/Preferences/com.googlecode.iterm2.plist",
+        present: true,
+        sha256: operatorPrefsSha,
+      },
+      operatorPrefsAfter: {
+        path: "~/Library/Preferences/com.googlecode.iterm2.plist",
+        present: true,
+        sha256: operatorPrefsSha,
+      },
     })
 
     vi.mocked(readFileSync).mockReturnValueOnce(Buffer.from("mutated-operator-plist"))
@@ -336,11 +344,17 @@ describe("per-run isolation proof and exact-token teardown (@cto d43c34cc)", () 
         suiteDomain,
         defaultsDeleted: true,
         defaultsAbsentVerified: true,
-        stoppedServers: [{ pid: 950, startedAtEpochSeconds: preflightAt + 2, command: serverCmd }],
+        stoppedServers: [
+          {
+            pid: 950,
+            startedAtEpochSeconds: preflightAt + 2,
+            command: `~/Library/Application Support/${suiteDomain}/iTermServer-3.7.9 ~/.${suiteDomain}/1.socket`,
+          },
+        ],
         remainingServers: 0,
         removedDirs: [
-          { path: targets.appSupportDir, existedBeforeRemoval: true, absentVerified: true },
-          { path: targets.dotSuiteDir, existedBeforeRemoval: true, absentVerified: true },
+          { path: `~/Library/Application Support/${suiteDomain}`, existedBeforeRemoval: true, absentVerified: true },
+          { path: `~/.${suiteDomain}`, existedBeforeRemoval: true, absentVerified: true },
         ],
       })
       expect(rmSync).toHaveBeenCalledTimes(2)

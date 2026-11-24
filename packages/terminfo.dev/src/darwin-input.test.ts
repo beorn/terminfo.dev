@@ -313,6 +313,19 @@ describe("owned Mac helper publication", () => {
     }
   })
 
+  it("omits collecting-host home prefixes from build failure messages (#30568, #34080)", () => {
+    const stagedSource =
+      "/Users/codi/.cache/terminfo.dev/owned-app-stage/source/vendor/terminfo.dev/native/darwin-input/main.swift"
+    let caught = ""
+    try {
+      buildDarwinInputHelper(stagedSource, "/tmp/unused-run", { directory: "/tmp/unused-dir", identity: undefined })
+    } catch (error) {
+      caught = error instanceof Error ? error.message : String(error)
+    }
+    expect(caught).toContain("for vendor/terminfo.dev/native/darwin-input/main.swift:")
+    expect(caught).not.toContain("/Users/codi")
+  })
+
   // CTO428c2f50 explicitly requires dispatch isolation; real unsigned-arm qualification is separate.
   it("dispatches the read-only keychain command without trust, window reads, or input calls", () => {
     const source = readFileSync(new URL("../../../native/darwin-input/main.swift", import.meta.url), "utf8")

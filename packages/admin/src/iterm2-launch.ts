@@ -31,6 +31,7 @@ import {
   type Iterm2Window,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { censusDarwinWindows } from "../../terminfo.dev/src/darwin-capture.ts"
+import { redactHostHomePaths } from "./terminal-app-plist.ts"
 
 const SUITE_DOMAIN_PATTERN = /^dev\.terminfo\.iterm2\.[A-Za-z0-9._-]+$/
 const ITERM_SERVER_BASENAME = /^iTermServer(?:-[0-9A-Za-z._-]+)?$/
@@ -358,8 +359,8 @@ export function verifyIterm2IsolationAfterClose(
     suiteDomain: launch.targets.suiteDomain,
     suiteDomainPresentWhileLive: true,
     suiteDomainLiveReadBytes,
-    operatorPrefsBefore: before,
-    operatorPrefsAfter,
+    operatorPrefsBefore: { ...before, path: redactHostHomePaths(before.path) },
+    operatorPrefsAfter: { ...operatorPrefsAfter, path: redactHostHomePaths(operatorPrefsAfter.path) },
   }
 }
 
@@ -386,7 +387,7 @@ export function teardownIterm2Suite(launch: Iterm2Launch): Iterm2TeardownReceipt
     stoppedServers.push({
       pid: server.pid,
       startedAtEpochSeconds: server.startedAtEpochSeconds,
-      command: server.command,
+      command: redactHostHomePaths(server.command),
     })
   }
   const remainingServers = liveIterm2ServersForSuite(targets)
@@ -441,7 +442,7 @@ export function teardownIterm2Suite(launch: Iterm2Launch): Iterm2TeardownReceipt
     if (existsSync(dir)) {
       throw new Error(`iTerm2 teardown: ${dir} still exists after removal`)
     }
-    removedDirs.push({ path: dir, existedBeforeRemoval, absentVerified: true })
+    removedDirs.push({ path: redactHostHomePaths(dir), existedBeforeRemoval, absentVerified: true })
   }
 
   return {

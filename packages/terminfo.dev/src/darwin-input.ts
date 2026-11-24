@@ -15,7 +15,7 @@ import {
   renameSync,
   unlinkSync,
 } from "node:fs"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, resolve } from "node:path"
 import { homedir } from "node:os"
 
 import type { InputFixture, ViewportScroll, ViewportStep } from "@terminfo/probe-defs"
@@ -270,7 +270,13 @@ export function buildDarwinInputHelper(
     release()
     const stderr = (error as { stderr?: Buffer | string }).stderr
     const detail = stderr && String(stderr).trim() ? String(stderr).trim() : String(error)
-    throw new Error(`macOS input helper build failed during ${step} for ${source}: ${detail}`)
+    const portableSource =
+      source.match(/(?:vendor\/terminfo\.dev\/|native\/darwin-input\/).+$/)?.[0] ?? basename(source)
+    const portableDetail = detail.replace(
+      /(?<![\w.~-])\/(?:hh(?=[/"'\s\\]|$)|(?:Users|home)\/(?!runner(?=[/"'\s\\]|$))[^/"'\s\\]+(?=[/"'\s\\]|$))/g,
+      "~",
+    )
+    throw new Error(`macOS input helper build failed during ${step} for ${portableSource}: ${portableDetail}`)
   } finally {
     if (replacement !== undefined && existsSync(replacement)) unlinkSync(replacement)
   }

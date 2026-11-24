@@ -79,11 +79,11 @@ const snap = (xml: string): TerminalAppPlistSnapshot => ({
 })
 
 describe("key-level com.apple.Terminal.plist isolation (@cto 03d0efca)", () => {
-  test("passes when the plist is unchanged", () => {
+  test("passes when the plist is unchanged and redacts the collecting-host home prefix in the receipt", () => {
     const before = snap(BASE_PLIST_XML)
     const after = snap(BASE_PLIST_XML)
     expect(verifyTerminalAppPlistIsolation(before, after)).toEqual({
-      plistPath: before.path,
+      plistPath: "~/Library/Preferences/com.apple.Terminal.plist",
       beforePresent: true,
       afterPresent: true,
       allowedChangedKeys: [],
@@ -99,7 +99,7 @@ describe("key-level com.apple.Terminal.plist isolation (@cto 03d0efca)", () => {
       disallowedChangedKeys: [],
     })
     expect(verifyTerminalAppPlistIsolation(before, after)).toEqual({
-      plistPath: before.path,
+      plistPath: "~/Library/Preferences/com.apple.Terminal.plist",
       beforePresent: true,
       afterPresent: true,
       allowedChangedKeys: ["NSWindow Frame TTWindow Clear Dark"],
