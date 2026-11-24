@@ -100,7 +100,9 @@ probe
     }
     const { execFileSync } = await import("node:child_process")
     const { startWitnessResponder } = await import("../../terminfo.dev/src/witness-window.ts")
-    const ttyPath = String(execFileSync("/usr/bin/tty", [], { encoding: "utf8", timeout: 5_000 })).trim()
+    const ttyPath = String(
+      execFileSync("/usr/bin/tty", [], { encoding: "utf8", stdio: ["inherit", "pipe", "pipe"], timeout: 5_000 }),
+    ).trim()
     const responder = await startWitnessResponder({
       runId: opts.runId,
       registrationPath: opts.registration,

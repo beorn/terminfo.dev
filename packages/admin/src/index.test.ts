@@ -5,7 +5,7 @@
  * (#30932 S4, @cto 30932-s4-report-ruling-1818).
  * @testonly none
  */
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
@@ -13,9 +13,15 @@ import { fileURLToPath } from "node:url"
 import { beforeAll, describe, expect, test, vi } from "vitest"
 import { Command } from "@silvery/commander"
 import { collectHeadlessRuns } from "../../probes/collect-headless.ts"
+import { startWitnessResponder } from "../../terminfo.dev/src/witness-window.ts"
 import { ensureSourceSuiteEnvironment, sourceSuiteEnvironment } from "../versions.ts"
 
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>()
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) }
+})
 vi.mock("../../probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
+vi.mock("../../terminfo.dev/src/witness-window.ts", () => ({ startWitnessResponder: vi.fn() }))
 
 const sourceDirectory = dirname(fileURLToPath(import.meta.url))
 const root = join(sourceDirectory, "..", "..", "..")
@@ -152,6 +158,45 @@ describe("headless CLI exact probe selection", () => {
       program.parseAsync(["probe", "termless", "xtermjs", "--probe-ids", value], { from: "user" }),
     ).rejects.toThrow()
     expect(collectHeadlessRuns).not.toHaveBeenCalled()
+  })
+
+  test("probe witness reads controlling tty with inherited stdin so /usr/bin/tty sees the PTY (#34080)", async () => {
+    vi.mocked(execFileSync).mockClear()
+    vi.mocked(execFileSync).mockReturnValueOnce("/dev/ttys009\n")
+    vi.mocked(startWitnessResponder)
+      .mockReset()
+      .mockResolvedValue({
+        registration: {
+          runId: "0123456789abcdef0123456789abcdef",
+          pid: 12345,
+          port: 43210,
+          token: "a".repeat(64),
+          tty: "/dev/ttys009",
+        },
+        close: async () => {},
+        closed: Promise.resolve(),
+      })
+    await program.parseAsync(
+      [
+        "probe",
+        "witness",
+        "--run-id",
+        "0123456789abcdef0123456789abcdef",
+        "--registration",
+        "/tmp/terminfo-witness-test.json",
+      ],
+      { from: "user" },
+    )
+    expect(execFileSync).toHaveBeenCalledWith(
+      "/usr/bin/tty",
+      [],
+      expect.objectContaining({ encoding: "utf8", stdio: ["inherit", "pipe", "pipe"] }),
+    )
+    expect(startWitnessResponder).toHaveBeenCalledWith({
+      runId: "0123456789abcdef0123456789abcdef",
+      registrationPath: "/tmp/terminfo-witness-test.json",
+      ttyPath: "/dev/ttys009",
+    })
   })
 })
 
