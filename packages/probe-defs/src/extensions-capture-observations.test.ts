@@ -1300,6 +1300,74 @@ test("screen keeps OSC 720 open with the reason that it reports no viewport offs
   })
 })
 
+test("OSC 720 runs wheel+capture before scrollbackProbeTodo and falls back to scrollbackProbeTodo without wheel+capture (@cto 0321468c)", async () => {
+  const featureId = "extensions.osc720-scroll-up"
+  const definition = find(featureId)
+  const todoReason = "this Linux arm does not invoke Ghostty's scrollback-file action"
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+  // Ghostty Linux shape: scrollbackProbeTodo is set for history rows, AND pixel capture + XTEST input exist.
+  // wheel+capture decides OSC 720 from frame diffs without a history reader, so it runs before scrollbackProbeTodo.
+  let offset = 0
+  let frameIndex = 0
+  const withWheelCapture: TermProbeSource = {
+    kind: "live",
+    now: () => Date.now(),
+    rows: 24,
+    cols: 80,
+    captureKind: "pixels",
+    scrollbackProbeTodo: todoReason,
+    write: () => {},
+    queryCursorPosition: async () => ({ row: 24, col: 40 }),
+    measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    readInput: async (pattern, _timeoutMs, inject) => {
+      await inject?.()
+      return pattern.test("a") ? ["a"] : null
+    },
+    input: {
+      injectKey: async () => {},
+      injectClick: async (button) => {
+        if (button === 4) offset = 1
+        else if (button === 5) offset = 0
+      },
+    },
+    capture: async ({ role, label }) => {
+      frameIndex += 1
+      const plane = offset > 0 ? "history-plane" : "bottom-plane"
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: frameIndex,
+        ref: digest(`ghostty-frame-${frameIndex}-${plane}`),
+        pixelsDigest: digest(`ghostty-pixels-${plane}`),
+      }
+    },
+  }
+  const decided = await definition.term!(withWheelCapture)
+  expect(decided.observation?.outcome).toBe("unsupported")
+  expect(decided.notTested).toBeUndefined()
+
+  // Without capture+input, scrollbackProbeTodo still surfaces as the named PROBE TODO reason.
+  const withoutWheelCapture: TermProbeSource = {
+    ...withWheelCapture,
+    input: undefined,
+    readInput: undefined,
+    capture: undefined,
+  }
+  const fallback = await definition.term!(withoutWheelCapture)
+  expect(fallback.observation).toBeUndefined()
+  expect(fallback.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: todoReason,
+  })
+})
+
 test("OSC 720 retains unavailable history as unmeasured while unexpected reader errors still fail", async () => {
   const featureId = "extensions.osc720-scroll-up"
   const definition = find(featureId)

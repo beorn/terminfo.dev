@@ -28,6 +28,10 @@ import { afterEach, expect, it, vi } from "vitest"
 import { initializeRunDraft, recordCollectorSelection, recordCollectorAttempt } from "@terminfo/probe-defs"
 import type { CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
+  DAEMON_PROBE_TIMEOUT_MS,
+  DEFAULT_REMOTE_REATTACH_TIMEOUT_MS,
+  DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS,
+  DEFAULT_REMOTE_SSH_TIMEOUT_MS,
   createProbeRun,
   daemonNotStreamingError,
   findOwnedDaemon,
@@ -505,7 +509,42 @@ it("names the daemon port and the bound when a collection outlasts it", async ()
   expect(failure).toMatchObject({
     name: "TimeoutError",
     message: expect.stringMatching(
-      /^Daemon on port 12345 did not answer \/probe within \d+ ms, not the 30 min signal$/,
+      new RegExp(
+        `^Daemon on port 12345 did not answer \\/probe within \\d+ ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal$`,
+      ),
+    ),
+    cause,
+  })
+})
+
+// 37678 (@cto 43a537ee): the client bound derives from the remote-run total wall (ssh + re-attach),
+// and an AbortSignal TimeoutError firing during response.arrayBuffer() after #34753 streaming headers
+// must surface TimeoutError with the same message — never DaemonStreamEnded.
+it("37678 derives DAEMON_PROBE_TIMEOUT_MS from the remote-run total wall and preserves body TimeoutError", async () => {
+  expect(DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS).toBe(DEFAULT_REMOTE_SSH_TIMEOUT_MS + DEFAULT_REMOTE_REATTACH_TIMEOUT_MS)
+  expect(DAEMON_PROBE_TIMEOUT_MS).toBeGreaterThanOrEqual(DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS)
+
+  const registration = {
+    runId: "b".repeat(32),
+    pid: 333,
+    port: 59598,
+    token: "fixture-token",
+    terminal: "terminal-app",
+    terminalVersion: "2.15",
+  }
+  const cause = new DOMException("The operation timed out.", "TimeoutError")
+  const response = new Response(new ReadableStream())
+  vi.spyOn(response, "arrayBuffer").mockRejectedValueOnce(cause)
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json(registration)).mockResolvedValueOnce(response)
+
+  const probeResponse = await requestDaemonProbe(registration)
+  const failure = await readRawDaemonProbeResponse(probeResponse, trustedReceipt).catch((error: unknown) => error)
+  expect(failure).toMatchObject({
+    name: "TimeoutError",
+    message: expect.stringMatching(
+      new RegExp(
+        `^Daemon on port 59598 did not answer \\/probe within \\d+ ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal$`,
+      ),
     ),
     cause,
   })
@@ -611,7 +650,7 @@ it("34799 names the daemon, port and draft directory when an admitted body ends 
 // window never sees a silent socket. A daemon that answers nothing at all is therefore a fault to name, not a run
 // to wait out: the mapping and the message are proven here, and the real 300 s window is covered by the stock-Node
 // field run recorded on the issue rather than by a five-minute unit run.
-it("34753 names a daemon that sends no byte as not streaming, never as the 30 min bound", async () => {
+it("34753 names a daemon that sends no byte as not streaming, never as the client timeout bound", async () => {
   expect(
     isHeadersTimeout(Object.assign(new Error("headers timeout"), { cause: { code: "UND_ERR_HEADERS_TIMEOUT" } })),
   ).toBe(true)
@@ -622,7 +661,9 @@ it("34753 names a daemon that sends no byte as not streaming, never as the 30 mi
   expect(fault).toMatchObject({
     name: "DaemonNotStreaming",
     message: expect.stringMatching(
-      /^Daemon on port 4321 sent no response byte within 300004 ms, before the 30 min signal: an admitted \/probe flushes headers at once/,
+      new RegExp(
+        `^Daemon on port 4321 sent no response byte within 300004 ms, before the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal: an admitted \\/probe flushes headers at once`,
+      ),
     ),
   })
 })

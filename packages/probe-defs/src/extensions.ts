@@ -3432,7 +3432,6 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
   const heldTodo = heldViewportReadTodo(ctx)
   if (heldTodo) return heldTodo
   if (ctx.scrollbackUnavailable) return declaredUntestableResult(ctx.scrollbackUnavailable, {})
-  if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
 
   const capture = ctx.capture
   const input = ctx.input
@@ -3635,6 +3634,11 @@ async function osc720ScrollUpApp(ctx: TermProbeSource): Promise<ProbeCallbackRes
       endCaptureLifecycle(ctx)
     }
   }
+
+  // Check scrollbackProbeTodo only after wheel+capture (@cto 0321468c): wheel+capture decides
+  // OSC 720 from frame diffs without a scrollback reader, so a missing Linux history arm (e.g.
+  // Ghostty) must not shadow it before reaching the scrollback-reader fallback below.
+  if (ctx.scrollbackProbeTodo) return notTestedResult(ctx.scrollbackProbeTodo, {})
 
   if (ctx.getScrollback) {
     const reading = await ctx.getScrollback()

@@ -48,7 +48,11 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
-import { RUN_ID_PATTERN } from "../packages/terminfo.dev/src/daemon-client.ts"
+import {
+  DEFAULT_REMOTE_REATTACH_TIMEOUT_MS,
+  DEFAULT_REMOTE_SSH_TIMEOUT_MS,
+  RUN_ID_PATTERN,
+} from "../packages/terminfo.dev/src/daemon-client.ts"
 import { KITTY_BINARY_PATH } from "../packages/admin/src/kitty-binary.ts"
 import { RESOURCE_EXCLUDES, manifestScan, digestValue, sha256 } from "./owned-app-resource-manifest.ts"
 
@@ -129,13 +133,12 @@ const STAGE_MARKER_VALUE = "owned-app-transport stage v1"
 const STAGE_REBUILD_MARKER = ".owned-app-transport-rebuild"
 const CONNECT_TIMEOUT_SECONDS = "15"
 /** Default limits. All are parameters so a test can drive a small one and prove the refusal. */
-const DEFAULT_SSH_TIMEOUT_MS = 15 * 60_000
+const DEFAULT_SSH_TIMEOUT_MS = DEFAULT_REMOTE_SSH_TIMEOUT_MS
 /**
  * Default wall for re-attaching a remote probe that outlived the initial ssh wall (#37678).
- * Full macOS owned-app runs (Terminal.app, iTerm2) take ~35–45 min on codimac; 15m + 45m = 60m
- * total keeps short ssh steps failing fast at 15m while letting full remote runs finish cleanly.
+ * Shared with DAEMON_PROBE_TIMEOUT_MS in daemon-client.ts (@cto 43a537ee) so both bounds stay aligned.
  */
-const DEFAULT_REATTACH_TIMEOUT_MS = 45 * 60_000
+const DEFAULT_REATTACH_TIMEOUT_MS = DEFAULT_REMOTE_REATTACH_TIMEOUT_MS
 const DEFAULT_RSYNC_TIMEOUT_MS = 30 * 60_000
 /** Link-closure passes before the run refuses: a deeper chain is named, never cut short. */
 const CLOSURE_PASSES = 3

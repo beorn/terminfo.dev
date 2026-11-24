@@ -168,12 +168,40 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
 }
 
 /**
- * How long the admin waits for one whole collection. 120 s cut off a full Terminal.app suite on
- * codimac mid-run (33587 run 3: started 01:21:57Z, aborted at 01:23:57Z with 179 rows still
- * probe-todo). The slowest stored whole run, content/probes-apps/terminal-app-2.15-macos-3053c5ec940f5c18d6a4043a210e2c94.json,
- * spans 16.4 min across its 264 probe attempts, so the bound is that worst case with margin.
+ * Default wall for an owned-app remote ssh step and for re-attaching a remote probe that outlived it
+ * (#37678). Full macOS owned-app runs (Terminal.app, iTerm2) take ~35–45 min on codimac; 15m + 45m = 60m
+ * keeps short ssh steps failing fast at 15m while letting full remote runs finish cleanly.
+ * Both `scripts/owned-app-remote-run.ts` and `DAEMON_PROBE_TIMEOUT_MS` derive from these walls
+ * (@cto 43a537ee) so raising one cannot silently undercut the other.
  */
-const DAEMON_PROBE_TIMEOUT_MS = 30 * 60_000
+export const DEFAULT_REMOTE_SSH_TIMEOUT_MS = 15 * 60_000
+export const DEFAULT_REMOTE_REATTACH_TIMEOUT_MS = 45 * 60_000
+export const DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS = DEFAULT_REMOTE_SSH_TIMEOUT_MS + DEFAULT_REMOTE_REATTACH_TIMEOUT_MS
+
+/**
+ * How long the admin waits for one whole collection. Derived from DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS
+ * (60 min) so the client AbortSignal never cuts off a live owned-app run that the remote re-attach
+ * wall still permits (#37678, @cto 43a537ee).
+ */
+export const DAEMON_PROBE_TIMEOUT_MS = DEFAULT_REMOTE_RUN_TOTAL_TIMEOUT_MS
+
+function isProbeTimeoutError(error: unknown): error is Error {
+  if (!(error instanceof Error)) return false
+  if (error.name === "TimeoutError") return true
+  const cause = (error as { cause?: unknown }).cause
+  return cause instanceof Error && cause.name === "TimeoutError"
+}
+
+function daemonProbeTimeoutError(port: number, startedMs: number, cause: Error): Error {
+  const elapsed = Date.now() - startedMs
+  const signalFired = elapsed >= DAEMON_PROBE_TIMEOUT_MS - 5_000
+  const bound = signalFired
+    ? `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`
+    : `${elapsed} ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal`
+  return Object.assign(new Error(`Daemon on port ${port} did not answer /probe within ${bound}`, { cause }), {
+    name: "TimeoutError",
+  })
+}
 
 /**
  * 34507 -> 34742 -> 34753: the documented bound is ONE signal, the 30 min AbortSignal on the request below, and a
@@ -263,16 +291,8 @@ export async function requestDaemonProbe(
           await fetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}), signal })
   } catch (error) {
     // The bare "The operation timed out." named neither the daemon nor the bound (33587 run 3).
-    if (error instanceof Error && error.name === "TimeoutError") {
-      const elapsed = Date.now() - started
-      const signalFired = elapsed >= DAEMON_PROBE_TIMEOUT_MS - 5_000
-      const bound = signalFired
-        ? `${DAEMON_PROBE_TIMEOUT_MS / 60_000} min`
-        : `${elapsed} ms, not the ${DAEMON_PROBE_TIMEOUT_MS / 60_000} min signal`
-      throw Object.assign(
-        new Error(`Daemon on port ${daemon.port} did not answer /probe within ${bound}`, { cause: error }),
-        { name: "TimeoutError" },
-      )
+    if (isProbeTimeoutError(error)) {
+      throw daemonProbeTimeoutError(daemon.port, started, error)
     }
     // 34753: an admitted probe streams real headers, so this timer can only fire when the daemon answered
     // nothing at all for undici's 300 s header window. That is a daemon fault to name, not a run to wait out.
@@ -306,7 +326,7 @@ export async function requestDaemonProbe(
       },
     )
   }
-  probeDaemonPorts.set(response, daemon.port)
+  probeDaemonRequests.set(response, { port: daemon.port, started })
   return response
 }
 
@@ -329,10 +349,10 @@ export function stripProbeKeepalivePrefix(bytes: Buffer): Buffer {
 }
 
 /**
- * Which daemon each live /probe response came from, so a body that ends after admission can name its
- * daemon instead of surfacing whatever the runtime calls a reset. Set once in requestDaemonProbe.
+ * Which daemon and start time each live /probe response came from, so a body that ends after admission
+ * can distinguish our own AbortSignal timeout from a daemon-ended stream (#37678, @cto 43a537ee).
  */
-const probeDaemonPorts = new WeakMap<Response, number>()
+const probeDaemonRequests = new WeakMap<Response, { port: number; started: number }>()
 
 /**
  * 34753 -> 34799: after admission the daemon streams, so a collection that fails afterwards ends the
@@ -351,13 +371,15 @@ export function daemonStreamEndedError(port: number, cause?: unknown): Error {
   })
 }
 
-/** Read one whole /probe body, naming the daemon when it ends early instead of passing a bare reset up. */
+/** Read one whole /probe body, preserving client TimeoutError and naming the daemon on stream reset. */
 async function readProbeBody(response: Response): Promise<Buffer> {
   try {
     return Buffer.from(await response.arrayBuffer())
   } catch (error) {
-    const port = probeDaemonPorts.get(response)
-    throw port === undefined ? error : daemonStreamEndedError(port, error)
+    const meta = probeDaemonRequests.get(response)
+    if (meta === undefined) throw error
+    if (isProbeTimeoutError(error)) throw daemonProbeTimeoutError(meta.port, meta.started, error)
+    throw daemonStreamEndedError(meta.port, error)
   }
 }
 
