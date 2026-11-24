@@ -23,7 +23,7 @@ const NO_RESULT_CATEGORY: ResultCategory = {
   label: "No result yet",
   mark: "—",
   style: "none",
-  meaning: "We haven't run this test here yet.",
+  meaning: "Our test could not read a result here yet.",
 }
 
 export const RESULT_CATEGORIES: readonly ResultCategory[] = [

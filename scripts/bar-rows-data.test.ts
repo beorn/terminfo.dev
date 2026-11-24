@@ -79,6 +79,9 @@ describe("bar categories (#37761 items 6-7)", () => {
   })
 
   it("limits a Baseline card to its own features, an unmeasured one reading No result yet", () => {
+    const noResult = RESULT_CATEGORIES.find((category) => category.id === "no-result")
+    expect(noResult?.meaning).toBe("Our test could not read a result here yet.")
+    expect(noResult?.meaning).not.toMatch(/probe-todo|probe-invalid|haven't run/i)
     for (const [baseline, features] of Object.entries(data.baselines)) {
       for (const [key, bar] of Object.entries(data.releaseBars)) {
         const ids = categoryIdsWithin(bar, features)
