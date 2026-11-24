@@ -204,7 +204,7 @@ export async function startWitnessResponder(options: StartWitnessOptions): Promi
 
   let closing = false
   let serverClosePromise: Promise<void> | undefined
-  const server = createServer(async (req, res) => {
+  const handleRequest = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       if (req.method !== "POST") {
         sendJson(res, 405, { ok: false, error: "Method not allowed" })
@@ -257,6 +257,9 @@ export async function startWitnessResponder(options: StartWitnessOptions): Promi
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
     }
+  }
+  const server = createServer((req, res) => {
+    void handleRequest(req, res)
   })
 
   const signalHandlers: Array<[NodeJS.Signals, () => void]> = []
