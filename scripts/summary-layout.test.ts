@@ -1,11 +1,12 @@
 /**
- * @failure Home coverage counts wrap over the score because a 70px unscoped width wins the cascade.
+ * @failure Legacy summary-bars.css or unscoped 70px widths return to break bar density, hover consistency, or
+ *   single-line result rows across pages (#37631).
  * @level l2
- * @consumer terminfo.dev front page Terminal Applications summary rows
+ * @consumer terminfo.dev bar rows, SupportBar hover system, and result lists
  * @testonly none
  * @reach fs-walk vendor/terminfo.dev/docs/**
  */
-import { readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -31,80 +32,28 @@ function styleBlocks(source: string): string[] {
   return blocks
 }
 
-function withoutAtRules(css: string): string {
-  let out = ""
-  let i = 0
-  while (i < css.length) {
-    const at = css.indexOf("@", i)
-    if (at < 0) return out + css.slice(i)
-    out += css.slice(i, at)
-    const open = css.indexOf("{", at)
-    if (open < 0) return out
-    let depth = 0
-    let j = open
-    for (; j < css.length; j++) {
-      if (css[j] === "{") depth++
-      else if (css[j] === "}") {
-        depth--
-        if (depth === 0) {
-          j++
-          break
-        }
-      }
-    }
-    i = j
-  }
-  return out
-}
-
-/** Top-level `.summary-counts { ... }` bodies, ignoring scoped cousins and @media wrap rules. */
-function unscopedSummaryCountsBodies(css: string): string[] {
-  const bodies: string[] = []
-  const stripped = withoutAtRules(css.replace(/\/\*[\s\S]*?\*\//g, ""))
-  const re = /([^{}]+)\{([^{}]*)\}/g
-  for (const match of stripped.matchAll(re)) {
-    const selectors = match[1]?.split(",") ?? []
-    const body = match[2] ?? ""
-    for (const raw of selectors) {
-      if (raw.trim() === ".summary-counts") bodies.push(body)
-    }
-  }
-  return bodies
-}
-
-function declaration(body: string, property: string): string | undefined {
-  const re = new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, "i")
-  return re.exec(body)?.[1]?.trim()
-}
-
-describe("front-page summary coverage counts", () => {
-  const cssSources = [
-    join(root, "docs/.vitepress/theme/summary-bars.css"),
-    ...walk(join(root, "docs"), ".md").flatMap((path) =>
-      styleBlocks(readFileSync(path, "utf8")).map((css) => ({ path, css })),
-    ),
-  ]
-
-  it("does not leak a 70px unscoped width onto every summary-counts row", () => {
-    const leaks: string[] = []
-    for (const source of cssSources) {
-      const path = typeof source === "string" ? source : source.path
-      const css = typeof source === "string" ? readFileSync(source, "utf8") : source.css
-      for (const body of unscopedSummaryCountsBodies(css)) {
-        if (declaration(body, "width") === "70px") leaks.push(path)
-      }
-    }
-    expect(leaks, "unscoped .summary-counts { width: 70px } squeezes the coverage sentence over the score").toEqual([])
+describe("bar row layout and single hover system (#37631)", () => {
+  it("retires legacy summary-bars.css so every bar uses SupportBar and bar-rows.css", () => {
+    expect(existsSync(join(root, "docs/.vitepress/theme/summary-bars.css"))).toBe(false)
+    const themeIndex = readFileSync(join(root, "docs/.vitepress/theme/index.ts"), "utf8")
+    expect(themeIndex).not.toContain("summary-bars.css")
   })
 
-  it("keeps the shared coverage sentence on one line so it cannot wrap over the score", () => {
-    const theme = readFileSync(join(root, "docs/.vitepress/theme/summary-bars.css"), "utf8")
-    const bodies = unscopedSummaryCountsBodies(theme)
-    expect(bodies.length).toBeGreaterThan(0)
-    for (const body of bodies) {
-      expect(declaration(body, "white-space")).toBe("nowrap")
-      const width = declaration(body, "width")
-      expect(width === undefined || width === "auto").toBe(true)
+  it("does not leak a 70px unscoped .summary-counts width or legacy .summary-bar tooltips in any page style", () => {
+    const leaks: string[] = []
+    for (const path of walk(join(root, "docs"), ".md")) {
+      for (const css of styleBlocks(readFileSync(path, "utf8"))) {
+        if (/\.summary-counts\s*\{[^}]*width:\s*70px/s.test(css)) leaks.push(`${path}: .summary-counts width: 70px`)
+      }
     }
+    expect(leaks).toEqual([])
+  })
+
+  it("wires bar-rows.css with compact row heights, hover bridge, cascading pane, and one-line result rows", () => {
+    const barCss = readFileSync(join(root, "docs/.vitepress/theme/bar-rows.css"), "utf8")
+    expect(barCss).toMatch(/\.support-bar-track\s*\{[^}]*height:\s*1[0-6]px/s)
+    expect(barCss).toMatch(/\.support-pop::before\s*\{[^}]*height:\s*\d+px/s)
+    expect(barCss).toMatch(/\.result-with-after\s*>\s*\.result-row[\s\S]*?width:\s*auto/s)
+    expect(barCss).toContain(".support-pop-detail")
   })
 })

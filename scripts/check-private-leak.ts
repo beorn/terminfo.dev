@@ -243,6 +243,17 @@ export const INTERNAL_STATE_TEXT: ReadonlyArray<{
   { name: "unstable version string", pattern: /\b\d+-unstable-\d{4}-\d{2}-\d{2}\b/g, inScripts: false },
   { name: "placeholder: not stored by this run", pattern: /not stored by this run/gi, inScripts: true },
   { name: "placeholder: not reviewed for publication", pattern: /not reviewed for publication/gi, inScripts: true },
+  // #37631: public context line is terminal name, version and OS only — never launcher flags, store/binary paths,
+  // permissions, mux or outer-terminal internals.
+  { name: "launcher nice flag", pattern: /\bnice\s+-n\s+\d+\b/g, inScripts: false },
+  { name: "nix store path", pattern: /\/nix\/store\/[a-z0-9]{10,}/g, inScripts: false },
+  {
+    name: "terminal binary path",
+    pattern: /\/bin\/(?:kitty|xterm|alacritty|ghostty|wezterm|warp|tmux|screen)\b/gi,
+    inScripts: false,
+  },
+  { name: "internal context permissions", pattern: /\bperms\s+[a-z0-9-]+/gi, inScripts: true },
+  { name: "internal context mux/outer", pattern: /·\s*(?:mux|outer)\s+[a-z0-9._-]+/gi, inScripts: true },
 ]
 
 /** Undecided statuses the public JSON must not carry (@cpo/term f16a5a52 Q4: decided results only). */

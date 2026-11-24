@@ -13,6 +13,7 @@ import { contextLabel } from '../.vitepress/theme/context-label.ts'
 import { displayVersion, displayVersions, displayMeasuredDate as plainMeasuredDate, displayMeasuredRange, displayOs } from '../.vitepress/theme/display-version.ts'
 import { categoryIds, categoryOf } from '../data/result-categories.ts'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
+import { featureAnchorId } from '../.vitepress/theme/bar-layout.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -75,6 +76,7 @@ function featureRows(features) {
     const category = categoryOf(measuredBar.value, f.id)
     return {
       id: f.id,
+      anchor: featureAnchorId(f.id),
       name: f.name,
       href: '/' + f.category + '/' + f.slug,
       mark: category.mark,
@@ -215,7 +217,7 @@ const breadcrumbParent = (() => {
   <h2 class="results-heading">Feature support</h2>
   <div v-for="column in osColumns" :key="column.name" class="measurement-system">
     <p class="selected-run">{{ measurementSummary(column.sources, facts.os(column.name)) }}</p>
-    <SupportBar :label="facts.name(column.name)" :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)"
+    <SupportBar :label="facts.name(column.name)" :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)" :version="column.selected"
       :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, column.selected.catalogIds)" />
   </div>
 </section>
@@ -226,7 +228,7 @@ const breadcrumbParent = (() => {
   <p class="selected-run">{{ measurementSummary(sourceRuns, facts.os(p.backendId)) }}</p>
   <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="term-rows term-rows-single">
-    <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)"
+    <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)" :version="selectedRun"
       :readout="measuredShare + ' · ' + currentCoverageSentence(measuredBar, selectedRun.catalogIds)" />
   </div>
   <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
@@ -234,7 +236,7 @@ const breadcrumbParent = (() => {
 </section>
 
 <details v-if="selectedRun && !multipleSystems" class="run-context">
-  <summary>Test environment and recorded versions</summary>
+  <summary>Technical details</summary>
 
   <p>Each feature retains its original run, version, suite and measurement date. Results from different suites are not directly comparable.</p>
   <div v-if="recordedRuns.length" class="run-picker">
@@ -250,12 +252,8 @@ const breadcrumbParent = (() => {
     <li v-for="run in sourceRuns" :key="run.runId">Original run <code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · measured {{ plainMeasuredDate(run.measuredAt) }} · suite <code>{{ run.suiteId }}</code> · {{ run.suiteFreshness }} · SHA-256 <code>{{ run.sha256 }}</code></li>
   </ul>
   <dl>
-    <dt>Subject</dt><dd>{{ selectedRun.subject?.kind }} · {{ selectedRun.subject?.id }}</dd>
-    <dt>OS</dt><dd>{{ selectedRun.subject?.os || 'Not recorded' }} {{ selectedRun.subject?.osVersion || '' }}</dd>
-    <dt>Permissions</dt><dd>{{ selectedRun.subject?.permissions || 'No explicit override recorded' }}</dd>
-    <dt>Configuration</dt><dd><code>{{ selectedRun.subject?.config || 'Not recorded' }}</code></dd>
-    <template v-if="observerSwitches"><dt>Observer-only switches</dt><dd><code>{{ observerSwitches }}</code> <a href="/how-it-works/how-we-measure">(changes nothing measured)</a></dd></template>
-    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.subject?.outerTerminal || 'None recorded' }} / {{ selectedRun.subject?.mux || 'None recorded' }}</dd>
+    <dt>Terminal</dt><dd>{{ p.terminalName }}</dd>
+    <dt>OS</dt><dd>{{ displayOs(selectedRun.subject?.os) }} {{ selectedRun.subject?.osVersion || '' }}</dd>
   </dl>
 </details>
 
@@ -286,7 +284,7 @@ const breadcrumbParent = (() => {
     </tr>
   </thead>
   <tbody>
-    <tr v-for="f in cat.features" :key="f.id">
+    <tr v-for="f in cat.features" :key="f.id" :id="featureAnchorId(f.id)">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td v-for="column in osColumns" :key="column.name" class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
         :version="column.selected" :cell="publicResultFor(column.selected, f.id)" display="text" /></td>

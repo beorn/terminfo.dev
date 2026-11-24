@@ -5,6 +5,8 @@ export interface ResultItem {
   readonly id: string
   readonly name: string
   readonly href?: string
+  /** Stable DOM anchor id on the row's <li> (#37631). */
+  readonly anchor?: string
   /** One short line after the name (an Untestable reason, say); the full text stays on hover. */
   readonly note?: string
   readonly mark?: string
@@ -24,6 +26,13 @@ defineProps<{
   tone?: string
   /** Recorded reasons may contain provenance; disclose those outside the navigation link. */
   technicalNotes?: boolean
+  /** Currently active item id (for hover-card detail highlight and narrow-screen inline pane). */
+  activeId?: string | null
+}>()
+
+const emit = defineEmits<{
+  "hover-item": [item: ResultItem]
+  "select-item": [item: ResultItem, event: MouseEvent]
 }>()
 </script>
 
@@ -31,14 +40,22 @@ defineProps<{
   <ul class="result-list" :class="tone ? 'result-list-' + tone : undefined">
     <li
       v-for="item in items"
+      :id="item.anchor"
       :key="item.id"
-      :class="[item.tone && 'result-tone-' + item.tone, $slots.after && 'result-with-after']"
+      :class="[
+        item.tone && 'result-tone-' + item.tone,
+        $slots.after && 'result-with-after',
+        activeId === item.id && 'result-item-active',
+      ]"
+      @mouseenter="emit('hover-item', item)"
+      @focusin="emit('hover-item', item)"
     >
       <component
         :is="item.href ? 'a' : 'span'"
         class="result-row"
         :href="item.href"
         :title="item.note && !technicalNotes ? item.name + ': ' + item.note : undefined"
+        @click="emit('select-item', item, $event)"
       >
         <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
         <span class="result-name">{{ item.name }}</span>
@@ -50,6 +67,7 @@ defineProps<{
         <summary>Technical details</summary>
         <p>{{ item.note }}</p>
       </details>
+      <slot v-if="activeId === item.id" name="detail" :item="item" />
     </li>
   </ul>
 </template>

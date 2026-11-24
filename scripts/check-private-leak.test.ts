@@ -206,6 +206,11 @@ describe("check-private-leak — rendered internal states", () => {
     ["unstable version string", "<span>WezTerm 0-unstable-2026-11-08</span>"],
     ["placeholder: not stored by this run", "<p>Input bytes were not stored by this run.</p>"],
     ["placeholder: not reviewed for publication", "<p>Observed bytes not reviewed for publication.</p>"],
+    ["launcher nice flag", "<dd><code>nice -n 10 kitty --config NONE</code></dd>"],
+    ["nix store path", "<dd>/nix/store/6dp446p5b6zpkar9v3jx4zjb1zbnfzkm-app-0.1</dd>"],
+    ["terminal binary path", "<p>Launched /bin/kitty for measurement</p>"],
+    ["internal context permissions", "<p>Context: Linux · perms clipboard-read</p>"],
+    ["internal context mux/outer", "<p>Context: Linux · mux tmux</p>"],
   ])("refuses %s in page text, naming the page and count", (name, body) => {
     writeFileSync(join(dist, "x.html"), page(body))
     const v = scanRendered(dist)

@@ -194,4 +194,19 @@ describe("the real terminal page renders one joined disagreement", () => {
     expect(rendered).not.toContain("Differs by context")
     expect(rendered).toContain("2 supported · 2 of 2 tested")
   }, 60_000)
+
+  it("renders no launcher config, nix store paths, or permissions in page HTML and passes selection to SupportBar (#37631)", async () => {
+    const supported = (featureId: string) => ({ featureId, status: "supported", reason: "measured supported" })
+    const selected = selectionOf({ "sgr.bold": supported("sgr.bold"), "sgr.italic": supported("sgr.italic") })
+    ;(selected.subject as Record<string, unknown>).config =
+      "nice -n 10 /nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ghostty/bin/ghostty --config NONE"
+    ;(selected.subject as Record<string, unknown>).permissions = "screen-recording"
+    ;(selected.subject as Record<string, unknown>).mux = "tmux"
+    const rendered = await renderTerminalPage(selected)
+    expect(rendered).not.toContain("nice -n 10")
+    expect(rendered).not.toContain("/nix/store/")
+    expect(rendered).not.toContain("screen-recording")
+    expect(rendered).not.toContain("<dt>Configuration</dt>")
+    expect(rendered).toContain("<SupportBar")
+  }, 60_000)
 })

@@ -126,7 +126,7 @@ function platformIcons(b) {
 
 ## Headless Backends
 
-<p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
+<p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">

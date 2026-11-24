@@ -9,6 +9,7 @@ import { publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
+import { termAnchorId } from '../.vitepress/theme/bar-layout.ts'
 const { params } = useData()
 const p = params.value
 
@@ -27,6 +28,7 @@ function resultRows(rows) {
     const category = facts.categoryOf(r.name, p.featureId)
     return {
       id: r.name,
+      anchor: termAnchorId(r.slug),
       name: facts.name(r.name),
       href: '/terminals/' + r.slug,
       mark: category.mark,
@@ -85,7 +87,7 @@ function termTooltip(r) {
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
   <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's assertion type is not declared yet.">assertion type undeclared</span>
   <br><span v-html="p.probeMethod"></span>
-  <p class="probe-note">The probe definition describes the intended test. Open a reviewed result to see what was recorded for that probe subject and assertion type.</p>
+  <p class="probe-note">Select any result below to see what was sent and observed.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -98,9 +100,9 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current subjects with a result for this feature
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> terminals tested
 </p>
-<p v-else class="feature-score">No current sealed results for this feature.</p>
+<p v-else class="feature-score">No results yet for this feature.</p>
 
 ## Terminal Applications
 
@@ -116,7 +118,7 @@ function termTooltip(r) {
 
 ## Headless Backends
 
-<p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
+<p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
 <ResultList :items="resultRows(headlessResults)" class="feature-results result-list-muted" technical-notes>
   <template #after="{ item }">
@@ -133,6 +135,7 @@ function termTooltip(r) {
 
 <p class="sub-features-note">This feature has {{ subFeatures.length }} individually testable sub-features.</p>
 
+<div class="matrix-wrapper">
 <table class="support-table sub-features-table">
   <thead>
     <tr>
@@ -148,6 +151,7 @@ function termTooltip(r) {
     </tr>
   </tbody>
 </table>
+</div>
 
 </div>
 

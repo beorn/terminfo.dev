@@ -24,6 +24,7 @@ import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './
 import { baselineReadout } from './data/baseline-readouts.ts'
 import { platformIcon } from './.vitepress/theme/platform-icons.ts'
 import { rowFacts } from './.vitepress/theme/row-facts.ts'
+import { featureAnchorId } from './.vitepress/theme/bar-layout.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -239,7 +240,7 @@ function backendTooltip(name) {
 <div v-if="appBackends.length > 0" class="term-rows">
   <TermRow v-for="b in appBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
     :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
-    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
+    :selection="displayedSelections[b.name]?.selected" :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
 
@@ -257,7 +258,7 @@ function backendTooltip(name) {
     <div class="baseline-desc">{{ BASELINE_DESCRIPTIONS[bl] }}</div>
     <div class="term-rows term-rows-card">
       <TermRow v-for="b in appBackends" :key="b.name" card :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
-        :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
+        :selection="displayedSelections[b.name]?.selected" :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
     </div>
   </div>
 </div>
@@ -300,7 +301,7 @@ function backendTooltip(name) {
         <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
       </td>
     </tr>
-    <tr v-for="f in filteredFeatures(cat)" :key="f.id">
+    <tr v-for="f in filteredFeatures(cat)" :key="f.id" :id="featureAnchorId(f.id)">
       <td class="feature-name" :title="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
@@ -326,7 +327,7 @@ function backendTooltip(name) {
 <div class="term-rows term-rows-muted">
   <TermRow v-for="b in headlessBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
     :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
-    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
+    :selection="displayedSelections[b.name]?.selected" :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 
 ### Headless Baseline Coverage
@@ -340,7 +341,7 @@ function backendTooltip(name) {
     </div>
     <div class="term-rows term-rows-card">
       <TermRow v-for="b in headlessBackends" :key="b.name" card :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
-        :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
+        :selection="displayedSelections[b.name]?.selected" :ids="cardIds(b.name, bl)" :describe="describeFor(b.name)" :readout="baselineRow(b.name, bl).text || undefined" :fill="BASELINE_COLORS[bl]" :percent="cardPercent(b.name, bl)" />
     </div>
   </div>
 </div>
@@ -386,7 +387,7 @@ function backendTooltip(name) {
 <div class="term-rows term-rows-muted">
   <TermRow v-for="b in muxBackends" :key="b.name" :name="rowName(b.name)" :href="'/terminals/' + termSlug(b.name)" :os="rowOs(b.name)" :platform="rowPlatform(b.name)"
     :description="data.meta[b.name]?.description" :website="data.meta[b.name]?.url" :version="b.versions.join(', ')"
-    :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
+    :selection="displayedSelections[b.name]?.selected" :ids="rowIds(b.name)" :describe="describeFor(b.name)" :readout="releaseReadout(b.name)" />
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>

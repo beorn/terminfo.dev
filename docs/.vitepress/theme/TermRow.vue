@@ -4,6 +4,7 @@
 // never printed. Hovering or focusing the name opens a small card: name, platform, one line, website.
 import { computed } from "vue"
 import type { CategoryId } from "../../data/result-categories.ts"
+import type { PublicContextSummary, PublicRunMetadata } from "../../data/public-results.ts"
 import { platformIcon } from "./platform-icons.ts"
 import SupportBar from "./SupportBar.vue"
 import type { ResultItem } from "./ResultList.vue"
@@ -17,6 +18,8 @@ const props = defineProps<{
   description?: string
   website?: string
   version?: string
+  /** Selected run or composed context for this terminal, passed to SupportBar for the cascading detail pane (#37631). */
+  selection?: PublicRunMetadata | PublicContextSummary
   /** Undefined when the terminal has no current run: the row links to its history instead of drawing a bar. */
   ids?: Readonly<Record<CategoryId, readonly string[]>>
   describe: (featureId: string, category: CategoryId) => ResultItem
@@ -60,6 +63,7 @@ const firstLine = computed(() => props.description?.split(/(?<=[.!?])\s/u)[0])
       :label="platform ? `${name} (${platform})` : name"
       :ids="ids"
       :describe="describe"
+      :version="selection"
       :readout="readout"
       :fill="fill"
       :href="card ? undefined : href"

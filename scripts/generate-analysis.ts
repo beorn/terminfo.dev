@@ -752,22 +752,18 @@ function generateFeatureAnalysis(
     }
   }
 
-  // Support summary (#37341 D2: counts, never a percentage)
+  // Support summary (#37341 D2 + #37631: plain wording, counts never a percentage)
   if (supported === total) {
-    parts.push(
-      `Recorded tests report support in <strong>all ${total}</strong> stored current context runs for this feature`,
-    )
+    parts.push(`Supported by <strong>all ${total}</strong> terminals tested`)
   } else if (supported === 0) {
-    parts.push(`No recorded support among <strong>${total}</strong> measured targets`)
+    parts.push(`Not supported by any of the <strong>${total}</strong> terminals tested`)
   } else {
-    parts.push(
-      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> stored current targets`,
-    )
+    parts.push(`Supported by <strong>${supported}</strong> of <strong>${total}</strong> terminals tested`)
   }
 
   // Who doesn't support it
   if (unsupportedNames.length > 0 && unsupportedNames.length <= 5) {
-    parts.push(`Not supported by: ${unsupportedNames.join(", ")}`)
+    parts.push(`Not supported: ${unsupportedNames.join(", ")}`)
   }
 
   // Baseline context
@@ -776,8 +772,6 @@ function generateFeatureAnalysis(
     if (!baseline) throw new Error(`Feature ${featureId} references unknown baseline ${feature.baseline}`)
     parts.push(`Part of the <strong>${baseline.label}</strong> baseline`)
   }
-
-  parts.push("These summaries describe the recorded tests; open individual results for their method and evidence")
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,

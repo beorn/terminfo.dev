@@ -9,6 +9,7 @@ import { currentCoverageSentence, currentSupportedShare, publicResultFor } from 
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 import { displayVersion, displayMeasuredDate, displayOs } from '../.vitepress/theme/display-version.ts'
+import { featureAnchorId } from '../.vitepress/theme/bar-layout.ts'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => ({
@@ -106,11 +107,7 @@ function differenceRows(pair) {
     </a>
     <p class="compare-context"><strong>Source versions: {{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ displayOs(p.termAOs) }} {{ p.termAOsVersion }}</p>
     <div class="compare-score">{{ p.termAReadout }}</div>
-    <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
-      <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
-      <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
-      <dt>Outer terminal</dt><dd>{{ p.termAOuter }}</dd>
-      <dt>Multiplexer</dt><dd>{{ p.termAMux }}</dd>
+    <details class="compare-run-details"><summary>Technical details</summary><dl class="compare-context-details">
       <dt>Source suites</dt><dd>{{ p.termASuite }} · {{ p.termASuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
       <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termASources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
@@ -122,11 +119,7 @@ function differenceRows(pair) {
     </a>
     <p class="compare-context"><strong>Source versions: {{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ displayOs(p.termBOs) }} {{ p.termBOsVersion }}</p>
     <div class="compare-score">{{ p.termBReadout }}</div>
-    <details class="compare-run-details"><summary>Context and original sources</summary><dl class="compare-context-details">
-      <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
-      <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
-      <dt>Outer terminal</dt><dd>{{ p.termBOuter }}</dd>
-      <dt>Multiplexer</dt><dd>{{ p.termBMux }}</dd>
+    <details class="compare-run-details"><summary>Technical details</summary><dl class="compare-context-details">
       <dt>Source suites</dt><dd>{{ p.termBSuite }} · {{ p.termBSuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
       <dt>Original sources</dt><dd><ul><li v-for="run in JSON.parse(p.termBSources)" :key="run.runId"><code>{{ run.runId }}</code> · {{ displayVersion(run.subject.version) }} · {{ run.measuredAt }} · suite <code>{{ run.suiteId }}</code></li></ul></dd>
     </dl></details>
@@ -158,7 +151,7 @@ function differenceRows(pair) {
     </tr>
   </thead>
   <tbody>
-    <tr v-for="f in cat.features" :key="f.id" :class="multipleSystems ? '' : diffClass(f)">
+    <tr v-for="f in cat.features" :key="f.id" :id="featureAnchorId(f.id)" :class="multipleSystems ? '' : diffClass(f)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <template v-if="multipleSystems"><td v-for="column in osColumns" :key="column.name"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="column.label"
         :version="column.selected" :cell="publicResultFor(column.selected, f.id)" /></td></template>

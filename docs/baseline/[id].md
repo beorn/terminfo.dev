@@ -12,6 +12,7 @@ import { baselineReadout } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 import { platformIcon } from '../.vitepress/theme/platform-icons.ts'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
+import { featureAnchorId } from '../.vitepress/theme/bar-layout.ts'
 const { params } = useData()
 const p = params.value
 
@@ -88,7 +89,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 <div v-if="appScores.length > 0" class="term-rows">
   <TermRow v-for="s in appScores" :key="s.name" :name="facts.name(s.name)" :href="'/terminals/' + s.slug" :os="facts.os(s.name)" :platform="facts.platform(s.name)"
     :description="data.meta[s.name]?.description" :website="data.meta[s.name]?.url" :version="s.version"
-    :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
+    :selection="data.selectedByBackend[s.name]?.selected" :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
 
@@ -99,7 +100,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 <div class="term-rows term-rows-muted">
   <TermRow v-for="s in headlessScores" :key="s.name" :name="facts.name(s.name)" :href="'/terminals/' + s.slug" :os="facts.os(s.name)" :platform="facts.platform(s.name)"
     :description="data.meta[s.name]?.description" :website="data.meta[s.name]?.url" :version="s.version"
-    :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
+    :selection="data.selectedByBackend[s.name]?.selected" :ids="facts.within(s.name, within, p.id)" :describe="facts.describe(s.name)" :readout="shareRow(s).text" :percent="facts.percentWithin(s.name, within, p.id)" />
 </div>
 
 </div>
@@ -133,7 +134,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
     </tr>
   </thead>
   <tbody>
-    <tr v-for="f in features" :key="f.id">
+    <tr v-for="f in features" :key="f.id" :id="featureAnchorId(f.id)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
@@ -151,7 +152,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 
 ### Headless Backends
 
-<p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
+<p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">

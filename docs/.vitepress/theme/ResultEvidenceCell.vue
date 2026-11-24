@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import type {
@@ -8,13 +8,23 @@ import type {
   PublicContextSummary,
   PublicFeatureResult,
 } from "../../data/public-results"
-import { describeTracePanes, readCellTrace, type LoadedCellTrace } from "../../data/evidence-reader"
+import {
+  describeTracePanes,
+  formatControlBytes,
+  readCellTrace,
+  type LoadedCellTrace,
+} from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { describeReplyBytes, describeSentBytes, describeStepTable, type StepSource } from "../../data/step-table"
 import { contextLine } from "./context-label"
 import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "../../data/app-cells"
-import { evidenceStatus, NO_RESULT_STATUS } from "./evidence-status"
-import { displayVersion } from "./display-version"
+import {
+  evidenceStatus,
+  evidenceSummaryLine,
+  NO_RESULT_STATUS,
+  plainExpectedSentence,
+} from "./evidence-status"
+import { displayOs, displayVersion } from "./display-version"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -33,8 +43,10 @@ const props = withDefaults(
         })
     /** compact: the mark alone (matrices); text: mark and word; label: the word alone, for a list whose bullet is the mark (#37761). */
     display?: "compact" | "text" | "label"
+    /** Render the result card directly inline (used by SupportBar's cascading detail pane, #37631). */
+    inline?: boolean
   }>(),
-  { display: "compact" },
+  { display: "compact", inline: false },
 )
 
 // A composed context has no run identity: evidence belongs to this feature's original source.
@@ -69,17 +81,10 @@ let openPreviewClose: (() => void) | undefined
 const id = useId()
 const tooltipId = `${id}-preview`
 
-// Composed and original-run views both retain the cell's recorded status.
-// The rule itself is evidence-status.ts, where it is testable; a result we haven't decided is left blank (#37341 Q1).
-// #33019: a cell derived from a refused parent says so in its label.
 const derived = computed(() => currentResult.value !== undefined && "derived" in currentResult.value)
-// A joined cell reads the verdict across every context that measured the same release (@cto d321729a);
-// the stored status of the context whose evidence is shown stays available beside it.
 const joined = computed(() => (props.cell && "joined" in props.cell ? props.cell.joined : undefined))
-const status = computed(() =>
-  evidenceStatus(props.featureId, joined.value?.status ?? currentResult.value?.status, derived.value),
-)
-// #37341 D3: a blank cell has nothing to show, so it is a plain dash with its hover words, never a button.
+const effectiveStatus = computed(() => joined.value?.status ?? currentResult.value?.status)
+const status = computed(() => evidenceStatus(props.featureId, effectiveStatus.value, derived.value))
 const blank = computed(() => status.value === NO_RESULT_STATUS)
 const STATUS_WORD: Record<string, string> = {
   supported: "Supported",
@@ -89,11 +94,6 @@ const STATUS_WORD: Record<string, string> = {
   "probe-invalid": "Invalid",
   "probe-conflict": "Conflicting",
 }
-/**
- * Rule 4: a cell names the contexts its grade comes from unless every context of the app carries that
- * same decided grade. The names are the recorded machine and launch profile, never a context key; the
- * rule is context-label.ts `contextLine`, where it is testable.
- */
 const joinedGrades = computed(() =>
   contextLine(
     joined.value?.from,
@@ -103,9 +103,6 @@ const joinedGrades = computed(() =>
   ),
 )
 const shortLabel = computed(() => status.value.text)
-const methodLabel = computed(() =>
-  props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
-)
 const selectionExplanation = computed(() => {
   if (!props.version) return "No stored current result is available for this context."
   if (!props.cell) {
@@ -121,33 +118,37 @@ function readerSafeExplanation(value?: string): string | undefined {
     ? `The original wording is preserved in the downloadable record. Current displayed status: ${status.value.text}.`
     : value
 }
+const featureMeta = computed(() => data.featureDescriptions[props.featureId])
 const probeGuidanceText = computed(() =>
-  (props.probeGuidance ?? data.featureDescriptions[props.featureId]?.probe)?.replace(/<\/?code>/g, ""),
+  (props.probeGuidance ?? featureMeta.value?.probe)?.replace(/<\/?code>/g, ""),
+)
+/** Probe-declared test sequence (never a pattern filter over the full transcript, #37631). */
+const declaredSequence = computed(() =>
+  featureMeta.value?.sequence ? formatControlBytes(featureMeta.value.sequence) : undefined,
+)
+/** One plain sentence describing what should happen (never raw assertion JSON, #37631). */
+const expectedSentence = computed(() =>
+  plainExpectedSentence({
+    body: featureMeta.value?.body,
+    probeGuidance: probeGuidanceText.value,
+    featureName: props.featureName,
+  }),
 )
 const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
 const tracePaneCopy = computed(() => {
   if (!cellTrace.value) return undefined
-  const featureMeta = data.featureDescriptions[props.featureId]
   return describeTracePanes(cellTrace.value, {
-    sequence: featureMeta?.sequence,
-    probeGuidance: props.probeGuidance ?? featureMeta?.probe,
+    sequence: featureMeta.value?.sequence,
+    probeGuidance: props.probeGuidance ?? featureMeta.value?.probe,
     subjectKind: sourceRun.value?.subject.kind,
     hasReferenceImage: Boolean(expectedIllustration.value),
   })
 })
-const compactCause = computed(() => {
-  if (evidenceError.value) return evidenceError.value
-  if (evidenceLoading.value) return "Loading recorded evidence…"
-  // A served cell with no trace has nothing to word: it reads as no result (@cto 0e2bbcf6).
-  if (currentResult.value) return currentResult.value.reason ?? "No result yet"
-  return reasonExplanation.value ?? "No retained result for this selection."
-})
 
 const stepSource = computed<StepSource | undefined>(() => {
   const screen = sourceRun.value?.screen
-  // The step table grades against the cell's own status value, never against the words its badge prints.
   const statusKeyword = currentResult.value?.status
   const cell = cellTrace.value?.cell
   if (cell && statusKeyword !== undefined) {
@@ -165,15 +166,30 @@ const stepSource = computed<StepSource | undefined>(() => {
 const stepTable = computed(() => (stepSource.value ? describeStepTable(stepSource.value) : undefined))
 const sentBytes = computed(() => (stepSource.value ? describeSentBytes(stepSource.value) : undefined))
 const replyBytes = computed(() => (stepSource.value ? describeReplyBytes(stepSource.value) : undefined))
-/** The one sentence under the badge: what happened, or the stored reason when the verdict is held. */
-// #37341 D3: a blank cell prints "No result yet" and never a reason; no public card reads an undecided reason.
-const plainResult = computed(() => {
-  if (blank.value) return NO_RESULT_STATUS.title
-  const reason = readerSafeExplanation(currentResult.value?.reason ?? currentResult.value?.hold)
+
+/** One short templated sentence per evidence kind for the default card (#37631). */
+const observedSummary = computed(() => {
+  if (blank.value) return evidenceSummaryLine({ status: undefined })
+  if (evidenceError.value) return evidenceError.value
   const table = stepTable.value
   const held = table?.rows.some((row) => row.result === "held")
-  if (held) return reason ? `${status.value.text}: ${reason}` : reason
-  return table?.summary ?? reason
+  const reason = readerSafeExplanation(currentResult.value?.reason ?? currentResult.value?.hold)
+  if (held && reason) return `${status.value.text}: ${reason}`
+  if (table?.summary) return table.summary
+  return evidenceSummaryLine({
+    status: effectiveStatus.value,
+    derived: derived.value,
+    assertionType: currentResult.value?.assertionType,
+    traceEvidence: cellTrace.value?.cell.evidence,
+    reason,
+  })
+})
+
+const publicContextLine = computed(() => {
+  const run = sourceRun.value
+  if (!run) return props.subjectName
+  const parts = [props.subjectName, displayVersion(run.subject.version), displayOs(run.subject.os)].filter(Boolean)
+  return parts.join(" · ")
 })
 
 const actionLabel = computed(() => (props.cell ? "Opens how this was tested" : "No evidence in current selection"))
@@ -227,62 +243,60 @@ async function loadEvidence(): Promise<void> {
   if (evidenceLoading.value || cellTrace.value) return
   const version = sourceRun.value
   const cell = props.cell
-  // #37341 D5: a cell declared untestable by review cites its review, which its reason states; it has no trace entry.
   if (!version || !cell || ("declared" in cell && cell.declared)) return
-  {
-    const traceReceipt = version.trace
-    if (!traceReceipt) {
-      repositionPreview()
-      return
-    }
-    const identity = evidenceIdentity.value
-    const request = ++evidenceRequest
-    const controller = new AbortController()
-    evidenceController = controller
-    evidenceLoading.value = true
-    evidenceError.value = null
-    cellTrace.value = null
-    try {
-      if ("chain" in cell && (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256)) {
-        throw new Error("Result and run identities disagree")
-      }
-      const cacheKey = `${traceReceipt.url}#${traceReceipt.sha256}`
-      let cached = verifiedTraceDocuments.get(cacheKey)
-      if (cached === undefined) {
-        const bytes = await verifiedBytes(
-          traceReceipt.url,
-          traceReceipt.sha256,
-          controller.signal,
-          "trace failed its receipt",
-        )
-        const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
-        const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
-        const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-        cached = { parsed, actualSha256 }
-        verifiedTraceDocuments.set(cacheKey, cached)
-      }
-      const loaded = readCellTrace(cached.parsed, {
-        schemaVersion: version.schemaVersion,
-        runId: version.runId,
-        runSha256: version.sha256,
-        featureId: sourceFeatureId.value,
-        expectedSha256: traceReceipt.sha256,
-        actualSha256: cached.actualSha256,
-      })
-      if (request !== evidenceRequest || !previewVisible.value || identity !== evidenceIdentity.value) return
-      cellTrace.value = loaded
-      repositionPreview()
-    } catch (error) {
-      if (request !== evidenceRequest || !previewVisible.value || identity !== evidenceIdentity.value) return
-      evidenceError.value = error instanceof Error ? error.message : String(error)
-      repositionPreview()
-    } finally {
-      if (request === evidenceRequest) {
-        evidenceLoading.value = false
-        evidenceController = null
-      }
-    }
+  const traceReceipt = version.trace
+  if (!traceReceipt) {
+    if (!props.inline) repositionPreview()
     return
+  }
+  const identity = evidenceIdentity.value
+  const request = ++evidenceRequest
+  const controller = new AbortController()
+  evidenceController = controller
+  evidenceLoading.value = true
+  evidenceError.value = null
+  cellTrace.value = null
+  try {
+    if ("chain" in cell && (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256)) {
+      throw new Error("Result and run identities disagree")
+    }
+    const cacheKey = `${traceReceipt.url}#${traceReceipt.sha256}`
+    let cached = verifiedTraceDocuments.get(cacheKey)
+    if (cached === undefined) {
+      const bytes = await verifiedBytes(
+        traceReceipt.url,
+        traceReceipt.sha256,
+        controller.signal,
+        "trace failed its receipt",
+      )
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
+      const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+      const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+      cached = { parsed, actualSha256 }
+      verifiedTraceDocuments.set(cacheKey, cached)
+    }
+    const loaded = readCellTrace(cached.parsed, {
+      schemaVersion: version.schemaVersion,
+      runId: version.runId,
+      runSha256: version.sha256,
+      featureId: sourceFeatureId.value,
+      expectedSha256: traceReceipt.sha256,
+      actualSha256: cached.actualSha256,
+    })
+    if (request !== evidenceRequest || (!props.inline && !previewVisible.value) || identity !== evidenceIdentity.value)
+      return
+    cellTrace.value = loaded
+    if (!props.inline) repositionPreview()
+  } catch (error) {
+    if (request !== evidenceRequest || (!props.inline && !previewVisible.value) || identity !== evidenceIdentity.value)
+      return
+    evidenceError.value = error instanceof Error ? error.message : String(error)
+    if (!props.inline) repositionPreview()
+  } finally {
+    if (request === evidenceRequest) {
+      evidenceLoading.value = false
+      evidenceController = null
+    }
   }
 }
 
@@ -325,6 +339,10 @@ function repositionPreview(): void {
   void nextTick(positionPreview)
 }
 
+function onDocKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") closePreview()
+}
+
 function showPreview(): void {
   keepPreview()
   if (!trigger.value || typeof window === "undefined") return
@@ -333,6 +351,8 @@ function showPreview(): void {
   previewVisible.value = true
   previewPosition.value = { width: `${Math.min(420, window.innerWidth - 16)}px` }
   document.addEventListener("pointerdown", outsidePreview)
+  document.addEventListener("keydown", onDocKeydown)
+  document.addEventListener("terminfo:close-previews", hidePreview)
   window.addEventListener("resize", repositionPreview)
   repositionPreview()
   void loadEvidence()
@@ -357,13 +377,24 @@ function outsidePreview(event: PointerEvent): void {
 
 function hidePreview(): void {
   document.removeEventListener("pointerdown", outsidePreview)
+  document.removeEventListener("keydown", onDocKeydown)
+  document.removeEventListener("terminfo:close-previews", hidePreview)
   window.removeEventListener("resize", repositionPreview)
   keepPreview()
   previewVisible.value = false
   if (openPreviewClose === hidePreview) openPreviewClose = undefined
 }
 
+onMounted(() => {
+  if (props.inline && !blank.value) void loadEvidence()
+})
+
 watch(evidenceIdentity, () => {
+  if (props.inline) {
+    invalidateEvidence()
+    if (!blank.value) void loadEvidence()
+    return
+  }
   hidePreview()
   invalidateEvidence()
 })
@@ -375,7 +406,78 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <span class="result-evidence" :class="`result-evidence--${display}`">
+  <div v-if="inline" class="result-evidence__inline-card" role="region" :aria-label="`${featureName} result`">
+    <div class="result-evidence__card-head">
+      <strong
+        class="result-evidence__trigger result-evidence__verdict"
+        :class="`result-evidence__trigger--${status.tone}`"
+      >
+        <span aria-hidden="true">{{ status.icon }}</span
+        >{{ status.text || status.title }}
+      </strong>
+    </div>
+    <p v-if="joinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
+    <strong class="result-evidence__test-title">{{ featureName }}</strong>
+    <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
+
+    <div class="result-evidence__summary-block">
+      <div class="result-evidence__field">
+        <span class="result-evidence__field-label">Test sequence</span>
+        <code v-if="declaredSequence" class="result-evidence__trace-seq">{{ declaredSequence }}</code>
+        <span v-else class="result-evidence__field-muted">No test sequence declared.</span>
+      </div>
+      <div class="result-evidence__field">
+        <span class="result-evidence__field-label">Expected</span>
+        <p class="result-evidence__plain">{{ expectedSentence }}</p>
+      </div>
+      <div class="result-evidence__field">
+        <span class="result-evidence__field-label">Observed</span>
+        <p class="result-evidence__plain">{{ observedSummary }}</p>
+        <span v-if="evidenceLoading" class="result-evidence__field-muted">Loading recorded evidence…</span>
+      </div>
+      <figure v-if="expectedIllustration" class="result-evidence__illustration">
+        <img :src="expectedIllustration" alt="Illustrative expected Unicode cells; not a captured terminal result" />
+        <figcaption class="result-evidence__illustrative">Illustration</figcaption>
+      </figure>
+    </div>
+
+    <details v-if="!blank" class="result-evidence__compact-details">
+      <summary>Technical details</summary>
+      <div>
+        <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+        <div v-if="sentBytes" class="result-evidence__bytes">
+          <span class="result-evidence__bytes-label">Full sent bytes</span>
+          <pre>{{ sentBytes.full }}</pre>
+        </div>
+        <div v-if="replyBytes" class="result-evidence__bytes">
+          <span class="result-evidence__bytes-label">Full reply bytes</span>
+          <pre>{{ replyBytes.full }}</pre>
+        </div>
+        <div v-if="!stepTable && tracePaneCopy" class="result-evidence__trace-pane">
+          <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
+            <div class="result-evidence__trace-label">{{ item.label }}</div>
+            <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
+            <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
+            <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
+          </template>
+        </div>
+        <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
+        <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
+        <template v-if="tracePaneCopy">
+          <span>{{ tracePaneCopy.tested.sourceLine }}</span>
+          <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
+        </template>
+        <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
+        <code v-if="sourceRun">Run {{ sourceRun.runId }}</code>
+        <details v-if="probeGuidanceText">
+          <summary>Catalog test description</summary>
+          {{ probeGuidanceText }}
+        </details>
+      </div>
+    </details>
+  </div>
+
+  <span v-else class="result-evidence" :class="`result-evidence--${display}`">
     <span v-if="blank" class="result-evidence__blank" role="img" :title="status.title" :aria-label="accessibleName">{{
       status.icon
     }}</span>
@@ -415,47 +517,54 @@ onBeforeUnmount(() => {
         @keydown.esc.stop="closePreview"
         @toggle.capture="repositionPreview"
       >
-        <strong
-          v-if="status.text"
-          class="result-evidence__trigger result-evidence__verdict"
-          :class="`result-evidence__trigger--${status.tone}`"
-          ><span aria-hidden="true">{{ status.icon }}</span
-          >{{ status.text }}</strong
-        >
+        <div class="result-evidence__card-head">
+          <strong
+            v-if="status.text"
+            class="result-evidence__trigger result-evidence__verdict"
+            :class="`result-evidence__trigger--${status.tone}`"
+            ><span aria-hidden="true">{{ status.icon }}</span
+            >{{ status.text }}</strong
+          >
+          <button type="button" class="result-evidence__close-mini" aria-label="Close" @click="closePreview">×</button>
+        </div>
         <p v-if="joinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
-        <span class="result-evidence__compact-context"
-          >{{ subjectName
-          }}<template v-if="sourceRun">
-            · {{ displayVersion(sourceRun.subject.version) }} · {{ sourceRun.subject.os }}</template
-          ></span
-        >
-        <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
-        <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
-        <section v-if="stepTable" class="result-evidence__evidence">
-          <h4>Evidence</h4>
+        <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
 
-          <div v-if="sentBytes" class="result-evidence__bytes">
-            <span class="result-evidence__bytes-label">Sent</span>
-            <code>{{ sentBytes.summary }}</code>
-            <details>
-              <summary>Full sent bytes</summary>
+        <div class="result-evidence__summary-block">
+          <div class="result-evidence__field">
+            <span class="result-evidence__field-label">Test sequence</span>
+            <code v-if="declaredSequence" class="result-evidence__trace-seq">{{ declaredSequence }}</code>
+            <span v-else class="result-evidence__field-muted">No test sequence declared.</span>
+          </div>
+          <div class="result-evidence__field">
+            <span class="result-evidence__field-label">Expected</span>
+            <p class="result-evidence__plain">{{ expectedSentence }}</p>
+          </div>
+          <div class="result-evidence__field">
+            <span class="result-evidence__field-label">Observed</span>
+            <p class="result-evidence__plain">{{ observedSummary }}</p>
+            <span v-if="evidenceLoading" class="result-evidence__field-muted">Loading recorded evidence…</span>
+          </div>
+          <figure v-if="expectedIllustration" class="result-evidence__illustration">
+            <img :src="expectedIllustration" alt="Illustrative expected Unicode cells; not a captured terminal result" />
+            <figcaption class="result-evidence__illustrative">Illustration</figcaption>
+          </figure>
+        </div>
+
+        <details class="result-evidence__compact-details">
+          <summary>Technical details</summary>
+          <div>
+            <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+            <div v-if="sentBytes" class="result-evidence__bytes">
+              <span class="result-evidence__bytes-label">Full sent bytes</span>
               <pre>{{ sentBytes.full }}</pre>
-            </details>
-          </div>
-          <div v-if="replyBytes" class="result-evidence__bytes">
-            <span class="result-evidence__bytes-label">Observed</span>
-            <code>{{ replyBytes.summary }}</code>
-            <details>
-              <summary>Full reply bytes</summary>
+            </div>
+            <div v-if="replyBytes" class="result-evidence__bytes">
+              <span class="result-evidence__bytes-label">Full reply bytes</span>
               <pre>{{ replyBytes.full }}</pre>
-            </details>
-          </div>
-        </section>
-        <div v-else class="result-evidence__comparison">
-          <figure>
-            <figcaption>TESTED</figcaption>
-            <div v-if="tracePaneCopy" class="result-evidence__trace-pane">
+            </div>
+            <div v-if="!stepTable && tracePaneCopy" class="result-evidence__trace-pane">
               <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
                 <div class="result-evidence__trace-label">{{ item.label }}</div>
                 <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
@@ -463,48 +572,12 @@ onBeforeUnmount(() => {
                 <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
               </template>
             </div>
-            <div v-else class="result-evidence__missing-image">
-              <span>{{ readerSafeExplanation(compactCause) }}</span>
-            </div>
-          </figure>
-          <figure>
-            <figcaption>EXPECTED</figcaption>
-            <div v-if="tracePaneCopy" class="result-evidence__trace-pane">
-              <template v-if="tracePaneCopy.expected.sequence">
-                <div class="result-evidence__trace-label">Sequence</div>
-                <code class="result-evidence__trace-seq">{{ tracePaneCopy.expected.sequence }}</code>
-              </template>
-              <div class="result-evidence__trace-label">Behavior</div>
-              <p class="result-evidence__trace-p">{{ tracePaneCopy.expected.behavior }}</p>
-
-              <template v-if="expectedIllustration">
-                <img
-                  :src="expectedIllustration"
-                  :alt="'Illustrative expected Unicode cells; not a captured terminal result'"
-                />
-                <span class="result-evidence__illustrative">Illustration</span>
-              </template>
-            </div>
-            <template v-else-if="expectedIllustration">
-              <img
-                :src="expectedIllustration"
-                :alt="'Illustrative expected Unicode cells; not a captured terminal result'"
-              />
-              <span class="result-evidence__illustrative">Illustration</span>
-            </template>
-          </figure>
-        </div>
-        <details class="result-evidence__compact-details">
-          <summary>Technical details</summary>
-          <div>
-            <strong>Feature test</strong>
             <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
             <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
             <template v-if="tracePaneCopy">
               <span>{{ tracePaneCopy.tested.sourceLine }}</span>
               <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
             </template>
-            <span v-if="evidenceLoading">Loading recorded evidence…</span>
             <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
             <code v-if="sourceRun">Run {{ sourceRun.runId }}</code>
             <details v-if="probeGuidanceText">
@@ -519,37 +592,78 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.result-evidence__text {
-  white-space: pre;
-  overflow-x: auto;
-  user-select: text;
+.result-evidence__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
-.result-evidence__plain {
-  margin: 4px 0 0;
-  font-size: 0.72rem;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+.result-evidence__close-mini {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 5px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
 }
-.result-evidence__evidence {
+.result-evidence__close-mini:hover,
+.result-evidence__close-mini:focus-visible {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-default-soft);
+}
+.result-evidence__inline-card {
   display: grid;
   gap: 5px;
-  margin-top: 7px;
-  padding-top: 6px;
-  border-top: 1px solid var(--vp-c-divider);
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
-.result-evidence__evidence h4 {
-  margin: 0;
-  font-size: 0.58rem;
-  font-weight: 500;
+.result-evidence__summary-block {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.result-evidence__field {
+  display: grid;
+  gap: 2px;
+}
+.result-evidence__field-label {
+  font-size: 0.6rem;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vp-c-text-2);
 }
-.result-evidence__evidence img {
+.result-evidence__field-muted {
+  font-size: 0.68rem;
+  color: var(--vp-c-text-3);
+}
+.result-evidence__plain,
+:deep(.result-evidence__plain) {
+  margin: 0 !important;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: var(--vp-c-text-1);
+}
+.result-evidence__illustration {
+  margin: 4px 0 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.result-evidence__illustration img {
+  display: block;
   width: 100%;
-  max-height: 140px;
+  height: 84px;
   object-fit: contain;
-  border-radius: 4px;
   background: #17191d;
 }
 .result-evidence__bytes {
@@ -562,23 +676,8 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   color: var(--vp-c-text-2);
 }
-.result-evidence__bytes code {
-  padding: 3px 5px;
-  border-radius: 4px;
-  background: var(--vp-c-bg-soft);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.62rem;
-  overflow-wrap: anywhere;
-}
-.result-evidence__bytes details {
-  font-size: 0.62rem;
-}
-.result-evidence__bytes summary {
-  cursor: pointer;
-  color: var(--vp-c-text-2);
-}
 .result-evidence__bytes pre {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   padding: 4px 6px;
   border-radius: 4px;
   background: var(--vp-c-bg-soft);
