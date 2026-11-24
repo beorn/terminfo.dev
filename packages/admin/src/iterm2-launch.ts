@@ -405,6 +405,20 @@ export function teardownIterm2Suite(launch: Iterm2Launch): Iterm2TeardownReceipt
       `iTerm2 teardown: defaults delete ${suiteDomain} failed: ${del.error?.message ?? (delStderr.trim() || `exit ${String(del.status)}`)}`,
     )
   }
+  if (readDefaultsDomain(suiteDomain).present) {
+    throw new Error(`iTerm2 teardown: suite domain ${suiteDomain} still exists after defaults delete`)
+  }
+  // On macOS, cfprefsd may leave an empty `{}` binary plist on disk after `defaults delete` removes the domain.
+  // Remove that exact non-symlink plist file so both the defaults domain and the file on disk are provably absent.
+  if (existsSync(targets.suitePrefsPath)) {
+    if (basename(targets.suitePrefsPath) !== `${suiteDomain}.plist`) {
+      throw new Error(`iTerm2 teardown: refusing unexpected prefs path ${JSON.stringify(targets.suitePrefsPath)}`)
+    }
+    if (lstatSync(targets.suitePrefsPath).isSymbolicLink()) {
+      throw new Error(`iTerm2 teardown: ${targets.suitePrefsPath} is a symlink; refusing and leaving it untouched`)
+    }
+    rmSync(targets.suitePrefsPath, { force: false })
+  }
   if (readDefaultsDomain(suiteDomain).present || existsSync(targets.suitePrefsPath)) {
     throw new Error(`iTerm2 teardown: suite domain ${suiteDomain} still exists after defaults delete`)
   }

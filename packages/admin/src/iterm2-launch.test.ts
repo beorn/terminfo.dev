@@ -351,6 +351,35 @@ describe("per-run isolation proof and exact-token teardown (@cto d43c34cc)", () 
     }
   })
 
+  test("teardownIterm2Suite unlinks a residual empty suite plist left by cfprefsd after defaults delete and refuses symlinks", () => {
+    const existing = new Set<string>([targets.suitePrefsPath, targets.appSupportDir, targets.dotSuiteDir])
+    vi.mocked(existsSync).mockImplementation((p) => existing.has(String(p)))
+    vi.mocked(rmSync).mockImplementation((p) => {
+      existing.delete(String(p))
+    })
+    fakeHost({
+      processes: [],
+      windows: [],
+      defaultsRead: { [suiteDomain]: { status: 0, stdout: "{\n    OpenNoWindowsAtStartup = 1;\n}\n" } },
+    })
+    const receipt = teardownIterm2Suite(launched)
+    expect(receipt.defaultsDeleted).toBe(true)
+    expect(receipt.defaultsAbsentVerified).toBe(true)
+    expect(rmSync).toHaveBeenNthCalledWith(1, targets.suitePrefsPath, { force: false })
+    expect(rmSync).toHaveBeenNthCalledWith(2, targets.appSupportDir, { recursive: true, force: false })
+    expect(rmSync).toHaveBeenNthCalledWith(3, targets.dotSuiteDir, { recursive: true, force: false })
+
+    // Symlink at suitePrefsPath is refused without unlinking it.
+    vi.mocked(rmSync).mockClear()
+    existing.add(targets.suitePrefsPath)
+    vi.mocked(lstatSync).mockImplementation(
+      (p) => ({ isSymbolicLink: () => String(p) === targets.suitePrefsPath }) as ReturnType<typeof lstatSync>,
+    )
+    fakeHost({ processes: [], windows: [] })
+    expect(() => teardownIterm2Suite(launched)).toThrow(/is a symlink; refusing and leaving it untouched/)
+    expect(rmSync).not.toHaveBeenCalled()
+  })
+
   test("teardownIterm2Suite refuses and leaves untouched an iTermServer that predates the preflight", () => {
     const serverPath = `${targets.appSupportDir}/iTermServer-3.7.9`
     fakeHost({
