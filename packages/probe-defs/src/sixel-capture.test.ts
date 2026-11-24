@@ -8,7 +8,14 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { SIXEL_CURSOR_ROW, SIXEL_REGION, sixelPayload, sixelReadback, sixelTileSize } from "./sixel-capture.ts"
+import {
+  ITERM2_IMAGES_SENTINEL,
+  SIXEL_CURSOR_ROW,
+  SIXEL_REGION,
+  sixelPayload,
+  sixelReadback,
+  sixelTileSize,
+} from "./sixel-capture.ts"
 import { extensionsProbes } from "./extensions.ts"
 import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
@@ -311,7 +318,9 @@ function screenIterm2Arm(options: { truecolor?: boolean; indexed?: boolean } = {
     if (bytes.includes("1337;File=") && !bytes.includes("\x1b]1337;File=")) plane = "printed"
     if (bytes.includes("\x1b[48;2;255;0;0m") && options.truecolor) plane = "red"
     if (bytes.includes("\x1b[48;5;196m") && options.indexed !== false) plane = "red"
-    if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
+    if (bytes === `\x1b[${ITERM2_IMAGES_SENTINEL.row};${ITERM2_IMAGES_SENTINEL.col}H${bytes.slice(-1)}`) {
+      glyph = bytes.slice(-1)
+    }
   }
   context.capture = async ({ role, label, cells }) =>
     ({
@@ -319,7 +328,10 @@ function screenIterm2Arm(options: { truecolor?: boolean; indexed?: boolean } = {
       label,
       capturedAt: ++reads,
       ref: `sha256:frame${reads}`,
-      regionDigest: cells?.top === 1 && cells.left === 1 ? `witness:${glyph}` : `plane:${plane}`,
+      regionDigest:
+        cells?.top === ITERM2_IMAGES_SENTINEL.row && cells.left === ITERM2_IMAGES_SENTINEL.col
+          ? `witness:${glyph}`
+          : `plane:${plane}`,
       pixelsDigest: `window:${plane}:${glyph}`,
     }) satisfies ObservationFrame
   return { context, writes }

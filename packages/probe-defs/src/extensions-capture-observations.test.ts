@@ -104,6 +104,10 @@ function calibratedIterm2Arm(
      * rectangle, so this is the only shape that reaches the arm's explicit rectangle check.
      */
     resetRegionMissing?: boolean
+    /** Model transient overlay-scrollbar fade on the first N baseline captures (#38149). */
+    initialUnstableFrames?: number
+    /** Model an iTerm2 top consent banner (DECRQCRA) occluding rows 1..N (#38149). */
+    occludeTopRows?: number
   } = {},
 ) {
   const writes: string[] = []
@@ -165,7 +169,7 @@ function calibratedIterm2Arm(
         if (bytes.includes("\x1b[3;2HXX")) plane = defaultColour
         if (bytes.includes("\x1b[38;5;12mXX")) plane = "requested"
       }
-      if (/^\x1b\[1;1H.$/.test(bytes)) glyph = bytes.slice(-1)
+      if (/^\x1b\[(?:1|5);1H.$/.test(bytes)) glyph = bytes.slice(-1)
     },
     capture: async (request: {
       role: "control" | "target"
@@ -178,7 +182,11 @@ function calibratedIterm2Arm(
       const resetShift =
         options.resetRegionShift && /reset after OSC 112/.test(label) ? options.resetRegionShift : { x: 0, y: 0 }
       const resetRegionMissing = options.resetRegionMissing === true && /reset after OSC 112/.test(label)
-      const progressPixels = `${plane}:${glyph}:${progress}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}${badge ? ":badge" : ""}`
+      const occluded =
+        options.occludeTopRows !== undefined && cells !== undefined && cells.top <= options.occludeTopRows
+      const transientFade =
+        options.initialUnstableFrames !== undefined && reads < options.initialUnstableFrames ? `:fade-${reads + 1}` : ""
+      const progressPixels = `${plane}:${glyph}:${progress}${transientFade}${options.progress === "unstable" && progress !== "none" ? `:${reads + 1}` : ""}${badge ? ":badge" : ""}`
       const frame: ObservationFrame = {
         kind: "pixels",
         role,
@@ -187,8 +195,9 @@ function calibratedIterm2Arm(
         ref: options.progress
           ? `sha256:${createHash("sha256").update(`frame${reads}`).digest("hex")}`
           : `sha256:frame${reads}`,
-        regionDigest:
-          cells?.top === 1 && cells.left === 1
+        regionDigest: occluded
+          ? "banner-occluded"
+          : (cells?.top === 1 || cells?.top === 5) && cells.left === 1
             ? `witness:${glyph}`
             : options.effect === "cursor"
               ? `cursor:${options.blind ? true : cursorShown}:${defaultColour}`
@@ -314,8 +323,8 @@ test("an image row never paints the read's sentinel pair on the image it draws (
     return capture(request as Parameters<typeof capture>[0])
   }) as typeof context.capture
   await find("extensions.iterm2-images").term!(context)
-  expect(writes.some((write) => write.includes("\x1b[3;3H\x1b]1337;File=inline=1;width=3;height=3;"))).toBe(true)
-  const image = { top: 3, left: 3, bottom: 5, right: 5 }
+  expect(writes.some((write) => write.includes("\x1b[6;3H\x1b]1337;File=inline=1;width=3;height=3;"))).toBe(true)
+  const image = { top: 6, left: 3, bottom: 8, right: 5 }
   const reads = requests.filter((request) => request.cells !== undefined)
   expect(reads.length).toBeGreaterThan(0)
   // This arm reads cells through the stability and image rows without painting a per-read sentinel,
@@ -325,6 +334,14 @@ test("an image row never paints the read's sentinel pair on the image it draws (
   const withAvoid = reads.filter((request) => request.avoid !== undefined)
   expect(withAvoid.length, "an image row declares the image footprint it must not paint on").toBeGreaterThan(0)
   for (const request of withAvoid) expect(request.avoid).toEqual(image)
+})
+
+test("extensions.iterm2-images decides cleanly when rows 1..3 are occluded by a DECRQCRA top banner (#38149)", async () => {
+  const { context, writes } = calibratedIterm2Arm({ target: "red", occludeTopRows: 3 })
+  const result = await find("extensions.iterm2-images").term!(context)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(writes.some((write) => write.includes("\x1b[5;1H0"))).toBe(true)
+  expect(writes.some((write) => write.includes("\x1b[6;3H\x1b]1337;File=inline=1;width=3;height=3;"))).toBe(true)
 })
 
 test("extensions.iterm2-images refuses an undersized or text-cells capture terminal before any bytes", async () => {
@@ -680,6 +697,18 @@ test("OSC 9;4 qualifies a repeatable value-dependent App effect and retains a pa
   expect(target?.role).toBe("target")
   expect(writes).toContain("\x1b]9;terminfo-progress-control-37\x07")
   expectCapturedResultParses("extensions.osc9-progress", result)
+})
+
+test("OSC 9;4 settles a transient initial frame fade (overlay scrollbar) and still refuses continuous baseline instability (#38149)", async () => {
+  const settled = calibratedIterm2Arm({ effect: "progress", progress: "values", initialUnstableFrames: 1 })
+  const decided = await find("extensions.osc9-progress").term!(settled.context)
+  expect(decided.observation?.outcome).toBe("supported")
+  expectCapturedResultParses("extensions.osc9-progress", decided)
+
+  const unstable = calibratedIterm2Arm({ effect: "progress", progress: "values", initialUnstableFrames: 10 })
+  const refused = await find("extensions.osc9-progress").term!(unstable.context)
+  expect(refused.observation?.outcome).toBe("inconclusive")
+  expect(refused.observation?.note).toContain("two captures of one static frame were not byte-stable")
 })
 
 test.each([

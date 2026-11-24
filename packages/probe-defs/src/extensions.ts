@@ -122,6 +122,10 @@ import {
 import {
   decideWithPaletteRedRetry,
   readbackPlaneDigest,
+  ITERM2_IMAGES_BOUNDS,
+  ITERM2_IMAGES_LAYOUT,
+  ITERM2_IMAGES_REGION,
+  ITERM2_IMAGES_TOP,
   SIXEL_BOUNDS,
   SIXEL_REGION,
   sixelReadback,
@@ -1844,12 +1848,27 @@ async function wholeWindowOscAppCapture(
   beginCaptureLifecycle(ctx)
   try {
     ctx.write(`${clear}\x1b[2J\x1b[H`)
-    const pair = await captureStabilityPair(
+    // macOS overlay scrollbars woken by an earlier scrollback probe can fade out between the first
+    // two whole-window captures (~600 ms apart), tripping a single-pair stability check on an
+    // otherwise static window (#38149). Allow up to 2 settling captures so a fading chrome element
+    // can finish while still requiring two consecutive byte-identical captures before continuing.
+    const first = await shoot("stable first")
+    let prev = first
+    let pair = await captureStabilityPair(
       id,
       "screenshot",
-      () => shoot("stable first"),
+      () => Promise.resolve(prev),
       () => shoot("stable second"),
     )
+    for (let retry = 1; pair.refusal && retry <= 2; retry += 1) {
+      prev = pair.second
+      pair = await captureStabilityPair(
+        id,
+        "screenshot",
+        () => Promise.resolve(prev),
+        () => shoot(`stable settle ${retry}`),
+      )
+    }
     if (pair.refusal) return pair.refusal
     const baseline = pair.second.pixelsDigest
     ctx.write("\x1b[2;2HX")
@@ -8881,8 +8900,8 @@ const extensionDefinitions: ProbeDefinition[] = [
         const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
         if (refusal) return refusal
         const reported = await captureRegionGeometry(ctx, "extensions.iterm2-images", {
-          region: { ...SIXEL_REGION },
-          ...SIXEL_BOUNDS,
+          region: { ...ITERM2_IMAGES_REGION },
+          ...ITERM2_IMAGES_BOUNDS,
         })
         if ("pass" in reported) return reported
         const geometry = reported.geometry
@@ -8910,12 +8929,12 @@ const extensionDefinitions: ProbeDefinition[] = [
             ctx,
             "extensions.iterm2-images",
             (background) => {
-              const base = sixelReadback(geometry, background)
+              const base = sixelReadback(geometry, background, ITERM2_IMAGES_LAYOUT)
               const park = `\x1b[${base.cursorRow};1H`
               return {
                 ...base,
-                edit: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H\x1b]${body}\x07${park}`,
-                ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[3;3H${body}${park}`,
+                edit: `\x1b[0m\x1b[2J\x1b[H\x1b[${ITERM2_IMAGES_TOP};3H\x1b]${body}\x07${park}`,
+                ignored: `\x1b[0m\x1b[2J\x1b[H\x1b[${ITERM2_IMAGES_TOP};3H${body}${park}`,
                 pixelGeometry: geometry,
                 geometrySource: reported.source,
               }

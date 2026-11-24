@@ -48,6 +48,38 @@ export const SIXEL_REGION = {
  */
 export const SIXEL_BOUNDS = { minRows: SIXEL_CURSOR_ROW, minCols: BLOCK_LEFT + BLOCK_COLS } as const
 
+/**
+ * Row placement for `extensions.iterm2-images` (#38149): `scheduleAppProbes` runs `editing.decrqcra`
+ * immediately before `extensions.iterm2-images` so iTerm2's inline-image modal cannot block DECRQCRA's
+ * PTY reply (#37678), and DECRQCRA leaves iTerm2's yellow consent banner covering rows 1..3. Placing
+ * the paint witness on row 5 and the 3x3 image on rows 6..8 keeps every compared pixel and sentinel
+ * strictly below the banner.
+ */
+export const ITERM2_IMAGES_TOP = 6
+export const ITERM2_IMAGES_SENTINEL = { row: 5, col: 1 } as const
+export const ITERM2_IMAGES_CURSOR_ROW = ITERM2_IMAGES_TOP + BLOCK_ROWS + 1
+export const ITERM2_IMAGES_REGION = {
+  top: ITERM2_IMAGES_TOP + 1,
+  left: BLOCK_LEFT + 1,
+  bottom: ITERM2_IMAGES_TOP + 1,
+  right: BLOCK_LEFT + 1,
+} as const
+export const ITERM2_IMAGES_BOUNDS = {
+  minRows: ITERM2_IMAGES_CURSOR_ROW,
+  minCols: BLOCK_LEFT + BLOCK_COLS,
+} as const
+
+export interface ImageReadbackLayout {
+  readonly blockTop: number
+  readonly sentinel: { readonly row: number; readonly col: number }
+}
+
+const DEFAULT_IMAGE_LAYOUT: ImageReadbackLayout = { blockTop: BLOCK_TOP, sentinel: SENTINEL }
+export const ITERM2_IMAGES_LAYOUT: ImageReadbackLayout = {
+  blockTop: ITERM2_IMAGES_TOP,
+  sentinel: ITERM2_IMAGES_SENTINEL,
+}
+
 export interface SixelTileSize {
   readonly width: number
   readonly height: number
@@ -83,36 +115,48 @@ export function sixelPayload(size: SixelTileSize): string {
 }
 
 /** The same block painted plainly: three rows of spaces on the exact truecolor background. */
-function sgrBlock(background: string): string {
+function sgrBlock(background: string, blockTop = BLOCK_TOP): string {
   const row = " ".repeat(BLOCK_COLS)
   return Array.from(
     { length: BLOCK_ROWS },
-    (_, index) => `\x1b[${BLOCK_TOP + index};${BLOCK_LEFT}H${background}${row}\x1b[0m`,
+    (_, index) => `\x1b[${blockTop + index};${BLOCK_LEFT}H${background}${row}\x1b[0m`,
   ).join("")
 }
 
-function park(): string {
-  return `\x1b[${SIXEL_CURSOR_ROW};1H`
+function park(cursorRow = SIXEL_CURSOR_ROW): string {
+  return `\x1b[${cursorRow};1H`
 }
 
 /** The row's readback: blank seed, sixel edit, SGR-background expected frame, interior-cell region. */
-export function sixelReadback(geometry: PixelGeometry, background = SGR_RED): Omit<RegionReadback, "pixelGeometry"> {
+export function sixelReadback(
+  geometry: PixelGeometry,
+  background = SGR_RED,
+  layout: ImageReadbackLayout = DEFAULT_IMAGE_LAYOUT,
+): Omit<RegionReadback, "pixelGeometry"> {
   const payload = sixelPayload(sixelTileSize(geometry))
+  const { blockTop, sentinel } = layout
+  const cursorRow = blockTop + BLOCK_ROWS + 1
+  const region = {
+    top: blockTop + 1,
+    left: BLOCK_LEFT + 1,
+    bottom: blockTop + 1,
+    right: BLOCK_LEFT + 1,
+  }
   return {
-    region: { ...SIXEL_REGION },
+    region,
     // The whole drawn block, not only its compared interior: a terminal that draws the image over
     // text would hide a sentinel painted inside it (33985).
-    avoid: { top: BLOCK_TOP, left: BLOCK_LEFT, bottom: BLOCK_TOP + BLOCK_ROWS - 1, right: BLOCK_LEFT + BLOCK_COLS - 1 },
-    sentinel: { ...SENTINEL },
-    cursorRow: SIXEL_CURSOR_ROW,
-    seed: `${CLEAR}${park()}`,
-    edit: `${CLEAR}\x1b[${BLOCK_TOP};${BLOCK_LEFT}H${payload}${park()}`,
-    expected: `${CLEAR}${sgrBlock(background)}${park()}`,
-    ignored: `${CLEAR}\x1b[${BLOCK_TOP};${BLOCK_LEFT}H${payload.slice(2, -2)}${park()}`,
+    avoid: { top: blockTop, left: BLOCK_LEFT, bottom: blockTop + BLOCK_ROWS - 1, right: BLOCK_LEFT + BLOCK_COLS - 1 },
+    sentinel: { ...sentinel },
+    cursorRow,
+    seed: `${CLEAR}${park(cursorRow)}`,
+    edit: `${CLEAR}\x1b[${blockTop};${BLOCK_LEFT}H${payload}${park(cursorRow)}`,
+    expected: `${CLEAR}${sgrBlock(background, blockTop)}${park(cursorRow)}`,
+    ignored: `${CLEAR}\x1b[${blockTop};${BLOCK_LEFT}H${payload.slice(2, -2)}${park(cursorRow)}`,
     timeoutMs: 8000,
     pollMs: 250,
-    minRows: SIXEL_BOUNDS.minRows,
-    minCols: SIXEL_BOUNDS.minCols,
+    minRows: cursorRow,
+    minCols: BLOCK_LEFT + BLOCK_COLS,
   }
 }
 
