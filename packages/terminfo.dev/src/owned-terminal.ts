@@ -43,6 +43,7 @@ import {
   parseMuxAttachmentProof,
   HOSTED_IDENTITY_SOURCES,
 } from "./disposable-receipt.ts"
+import { WEZTERM_LINUX_OSC7_CLI_VERSIONS } from "./wezterm-linux-reviewed.ts"
 import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 import {
   findAncestorComm,
@@ -2959,11 +2960,10 @@ export async function createOwnedTerminal(options: {
           const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
           const ownedOsc8 = binding.platform === "darwin" && featureId === "extensions.osc8"
           if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd || ownedOsc8)) {
-            // Exact reviewed CLI versions: Linux e2a98e1b8af1 -> 458a100c1bf4 (docs/get-deps only) -> ee6f3044d09f
-            // (osc.rs, performer.rs, wezterm/src/cli/ byte-identical; @cto GO 146524d0).
+            // Exact reviewed CLI versions: Linux audited builds live in wezterm-linux-reviewed.ts (#38127).
             const reviewedVersions =
               binding.platform === "linux"
-                ? new Set(["0-unstable-2026-10-10", "0-unstable-2026-11-08", "0-unstable-2026-11-20"])
+                ? WEZTERM_LINUX_OSC7_CLI_VERSIONS
                 : new Set(["20240203-110809-5046fc22"])
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
             const targetVersion = process.env.TERMINFO_TARGET_VERSION

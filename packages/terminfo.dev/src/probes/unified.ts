@@ -43,6 +43,10 @@ import {
   basisScopeAdmits,
   basisScopeRefusal,
 } from "@terminfo/probe-defs"
+import {
+  WEZTERM_LINUX_POINTER_IMAGE_VERSIONS,
+  WEZTERM_LINUX_SYNC_OUTPUT_VERSIONS,
+} from "../wezterm-linux-reviewed.ts"
 
 import {
   MutationRestoreRefused,
@@ -498,17 +502,10 @@ function titleAbsenceDecides(subject: { kind: "term" | "lib" | "mux"; id: string
 
 /**
  * The WezTerm Linux builds whose mux holds parsed actions while ?2026 is set, so their synchronized-output App row is
- * graded by its rendered hold. 33628 (@cto 1957) qualified 0-unstable-2026-10-10 (rev e2a98e1b8af1); 34961 (@cto
- * cc2dac5d) added 0-unstable-2026-11-08 (rev 458a100c1bf4), whose source differs only in docs and get-deps, with
- * mux/src/lib.rs byte-identical; @cto GO 146524d0 added 0-unstable-2026-11-20 (rev ee6f3044d09f), audit
- * 458a100c1bf4..ee6f3044d09f with osc.rs, performer.rs, and mux/src/lib.rs byte-identical. Exact versions only: the
+ * graded by its rendered hold. Audited builds live in wezterm-linux-reviewed.ts (#38127). Exact versions only: the
  * run's own rendered-hold controls still decide each result.
  */
-const SYNC_OUTPUT_RENDERED_WEZTERM_LINUX: ReadonlySet<string> = new Set([
-  "0-unstable-2026-10-10",
-  "0-unstable-2026-11-08",
-  "0-unstable-2026-11-20",
-])
+const SYNC_OUTPUT_RENDERED_WEZTERM_LINUX = WEZTERM_LINUX_SYNC_OUTPUT_VERSIONS
 
 /** 33628 (@cto 1957), 34961: the one subject whose synchronized-output App row is graded by its rendered hold. */
 export function syncOutputRenderedSubject(
@@ -1616,13 +1613,10 @@ async function runProbeBatchInRun(
         // 34932 (@cto 21:33 response to 672197f0): 412, the build every hourly xterm Linux run measures since Nov 13,
         // is admitted as a measurement route beside 411; exact versions only, the callback's same-run controls grade.
         ((imageSubject.id === "xterm" && (imageSubject.version === "411" || imageSubject.version === "412")) ||
-          // 34932 (@cto 34932-wezterm-pointer-version-go-1852): 0-unstable-2026-11-08 (rev 458a100c1bf4) differs from
-          // 10-10 (rev e2a98e1b8af1) only in docs and get-deps; @cto GO 146524d0 adds 0-unstable-2026-11-20 (rev
-          // ee6f3044d09f, window/src/os/x11/cursor.rs only ::max_value() -> ::MAX); exact versions only.
+          // 34932, #38127: exact audited WezTerm Linux builds live in wezterm-linux-reviewed.ts.
           (imageSubject.id === "wezterm" &&
-            (imageSubject.version === "0-unstable-2026-10-10" ||
-              imageSubject.version === "0-unstable-2026-11-08" ||
-              imageSubject.version === "0-unstable-2026-11-20")) ||
+            imageSubject.version !== undefined &&
+            WEZTERM_LINUX_POINTER_IMAGE_VERSIONS.has(imageSubject.version)) ||
           (imageSubject.id === "ghostty" && imageSubject.version === "1.4.0") ||
           (imageSubject.id === "alacritty" && imageSubject.version === "0.17.0")))
     const captureEligible =
