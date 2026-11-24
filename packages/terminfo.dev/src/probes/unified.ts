@@ -24,6 +24,7 @@ import {
   type RunDraft,
   type CaptureCells,
   type CaptureRequest,
+  type CaptureScreenMode,
   type ReadHeldViewport,
   type ReadViewportReference,
   type CapturePixelGeometry,
@@ -574,6 +575,8 @@ async function runProbeBatchInRun(
        * renewal it installs also witness (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). Absent keeps the normal calibration.
        */
       screenMode?: "reverse"
+      /** All non-primary screen modes declared by selected rows in this session (#37701, @cto be5f14e5). */
+      screenModes?: readonly CaptureScreenMode[]
       /** A preparation that can read held viewports returns the per-row reader factory (34693). */
     }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>
     /**
@@ -852,6 +855,7 @@ async function runProbeBatchInRun(
     askingRow?: string,
     rowIndex?: number,
     screenMode?: "reverse",
+    screenModes?: readonly CaptureScreenMode[],
   ): Promise<void> => {
     if (prepareCapture) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
@@ -944,6 +948,7 @@ async function runProbeBatchInRun(
                   featureId: calibrationId,
                   ...(askingRow !== undefined && { row: askingRow }),
                   ...(screenMode !== undefined && { screenMode }),
+                  ...(screenModes !== undefined && screenModes.length > 0 && { screenModes }),
                   recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
                 }),
               {
@@ -1683,6 +1688,13 @@ async function runProbeBatchInRun(
           ? "collector.captureCalibration"
           : `collector.captureCalibration.renewal.${capturePreparations}`
       capturePreparations++
+      const requestedScreenModes = [
+        ...new Set(
+          selected
+            .map((candidate) => candidate.termScreenMode)
+            .filter((mode): mode is CaptureScreenMode => mode !== undefined),
+        ),
+      ]
       await prepareCaptureWith(
         options.prepareCapture,
         probe,
@@ -1690,8 +1702,9 @@ async function runProbeBatchInRun(
         calibrationId,
         calibrationId === "collector.captureCalibration" ? undefined : probe.id,
         selected.indexOf(probe),
-        // #34932 item 1: calibration is shared by the batch, so it witnesses a mode any selected row declares.
-        selected.some((candidate) => candidate.termScreenMode === "reverse") ? "reverse" : undefined,
+        // #34932 item 1 & #37701: calibration is shared by the batch, so it witnesses every mode selected rows declare.
+        requestedScreenModes.includes("reverse") ? "reverse" : undefined,
+        requestedScreenModes.length > 0 ? requestedScreenModes : undefined,
       )
       activeCalibrationId = calibrationId
       if (captureGeometry) probeSource.captureGeometry = captureGeometry

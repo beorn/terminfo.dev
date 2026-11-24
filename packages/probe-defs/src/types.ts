@@ -620,7 +620,18 @@ export interface PixelCellCrop {
    * count in this codebase.
    */
   scrolledRows?: { rows: number; direction: "up" | "down"; notches: number }
+  /**
+   * The witnessed screen mode this frame was cropped under (#37701, @cto be5f14e5). Present only
+   * when calibration witnessed that mode live in the same capture session; absent for primary reads.
+   */
+  screenMode?: CaptureScreenMode
 }
+
+/** Alternate-screen modes whose raster origin calibration can witness live in-session (#37701). */
+export type AlternateScreenMode = "alternate-1049" | "alternate-47"
+
+/** Non-primary screen modes whose paint/origin calibration can witness live in-session (#34932, #37701). */
+export type CaptureScreenMode = "reverse" | AlternateScreenMode
 
 /** A portable viewport step; the subject's owner maps it to that app's own input (34313). */
 export type ViewportStep = "pageUp" | "pageDown" | "top" | "bottom"
@@ -820,12 +831,13 @@ export interface CaptureRequest {
    */
   layoutGuard?: CaptureLayoutGuardRequest
   /**
-   * Read this frame under the reverse screen mode (DECSCNM) the probe's own write left set (#34932,
-   * @cto 34932-reverse-seam-ruling-2325 item 1). It selects the background and sentinel paint this run's calibration witnessed
-   * under that mode. Absent keeps the normal path. A collector with no witnessed reverse paint refuses the
-   * read by name; it never reads it as normal.
+   * Read this frame under a non-primary screen mode the probe's own write left set (#34932,
+   * @cto 34932-reverse-seam-ruling-2325 item 1; #37701, @cto be5f14e5). Selects the background,
+   * sentinel paint, and (for alternate-screen modes) origin witnessed live by this run's calibration
+   * under that mode. Absent keeps the normal primary path. A collector with no live witness for the
+   * requested mode refuses by name; it never reads it as normal.
    */
-  screenMode?: "reverse"
+  screenMode?: CaptureScreenMode
 }
 
 export interface CaptureLayoutGuardRequest {
@@ -1754,6 +1766,18 @@ export interface TermProbeSource {
      * of a read under the mode repaints with it.
      */
     reverseSentinel?: CalibrationSentinel
+    /**
+     * Live alternate-screen calibration results witnessed in this capture session (#37701, @cto be5f14e5).
+     * Never cached across runs. Unavailable entries carry the refusal reason so alt-screen rows stay
+     * probe-todo naming "alternate screen not calibrated: <reason>".
+     */
+    alternateScreens?: Partial<
+      Record<
+        AlternateScreenMode,
+        | { status: "witnessed"; sentinel: CalibrationSentinel; origin: { x: number; y: number } }
+        | { status: "unavailable"; reason: string }
+      >
+    >
   }
   /**
    * Re-measure this run's pixel origin after a frame that re-lays-out the window. A full reset (RIS)
@@ -1777,6 +1801,13 @@ export interface TermProbeSource {
         source: "measured by complete raster calibration"
         sentinel?: CalibrationSentinel
         reverseSentinel?: CalibrationSentinel
+        alternateScreens?: Partial<
+          Record<
+            AlternateScreenMode,
+            | { status: "witnessed"; sentinel: CalibrationSentinel; origin: { x: number; y: number } }
+            | { status: "unavailable"; reason: string }
+          >
+        >
       }
     | undefined
   >
@@ -1935,11 +1966,11 @@ export interface ProbeDefinition {
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
   /**
-   * This row reads frames under the reverse screen mode, so the run's capture calibration also witnesses
-   * the background and sentinel paint under it (#34932, @cto 34932-reverse-seam-ruling-2325 item 1). It asks for a calibration
-   * capability only; it does not say the callback runs reversed.
+   * This row reads frames under a non-primary screen mode, so the run's capture calibration also
+   * witnesses the paint/origin under it live in-session (#34932, #37701). It asks for a calibration
+   * capability only; it does not say the callback runs exclusively in that mode.
    */
-  termScreenMode?: "reverse"
+  termScreenMode?: CaptureScreenMode
   /** This callback decides at least one row through the region readback, so a text-cells run hands
    * it the cells adapter. Every other probe is handed nothing on such a run. */
   cellReadback?: true

@@ -1,11 +1,13 @@
 import {
   CALIBRATION_SENTINEL_FORMS,
   CALIBRATION_SOLID_PAINT,
+  type AlternateScreenMode,
   type CalibrationSentinelForm,
   beginCaptureLifecycle,
   type CalibrationSentinel,
   type CapturePixelGeometry,
   type CaptureRectangle,
+  type CaptureScreenMode,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { clearLine, cursorHome, cursorTo } from "@silvery/ansi"
@@ -565,6 +567,21 @@ export type ReverseScreenWitness =
     }
   | { readonly status: "unavailable"; readonly reason: string }
 
+/**
+ * Live alternate-screen origin, cell geometry and paint classes witnessed within the same capture
+ * session (#37701, @cto be5f14e5). Never cached across runs; unavailable carries the refusal reason
+ * so alt-screen rows remain probe-todo naming "alternate screen not calibrated: <reason>".
+ */
+export type AlternateScreenWitness =
+  | {
+      readonly status: "witnessed"
+      readonly origin: { readonly x: number; readonly y: number }
+      readonly pixelGeometry: CapturePixelGeometry
+      readonly sentinel: CalibrationSentinel
+      readonly paintClasses: CalibratedPaintClasses
+    }
+  | { readonly status: "unavailable"; readonly reason: string }
+
 function packRgb(red: number, green: number, blue: number): number {
   return (red << 16) | (green << 8) | blue
 }
@@ -1011,6 +1028,7 @@ export async function calibrateCaptureOrigin({
   collectorLaunched = false,
   chromeBand,
   screenMode,
+  screenModes,
 }: {
   ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
@@ -1022,12 +1040,15 @@ export async function calibrateCaptureOrigin({
   chromeBand?: CaptureChromeBand
   /** Also witness the paint under this screen mode, on the same canvas and lifetime (@cto 34932-reverse-seam-ruling-2325). */
   screenMode?: "reverse"
+  /** All non-primary screen modes declared by selected probes in this session (#37701, @cto be5f14e5). */
+  screenModes?: readonly CaptureScreenMode[]
 }): Promise<
   NamedTextOrigin & {
     pixelGeometry: CapturePixelGeometry
     sentinel: CalibrationSentinel
     paintClasses?: CalibratedPaintClasses
     reverseScreen?: ReverseScreenWitness
+    alternateScreens?: Partial<Record<AlternateScreenMode, AlternateScreenWitness>>
   }
 > {
   const bandBounds = chromeBand && chromeBandBounds(chromeBand)
@@ -1143,6 +1164,12 @@ export async function calibrateCaptureOrigin({
     | undefined
   // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
   let reverseSet = false
+  // Set while calibrating an alternate screen so every exit path leaves back to primary (#37701).
+  let activeAlternateLeave: string | undefined
+  const requestedScreenModes = new Set<CaptureScreenMode>([
+    ...(screenModes ?? []),
+    ...(screenMode !== undefined ? [screenMode] : []),
+  ])
   // #37678 (@cto 5dd7b425 + c6b4ce8c): witnessed post-DECSCNM return frame and the outside-grid pixels it settled.
   let reverseReturnSettledFrame: CapturedFrame | undefined
   let reverseReturnNormalSolid: CapturedFrame | undefined
@@ -1178,6 +1205,7 @@ export async function calibrateCaptureOrigin({
         sentinel: CalibrationSentinel
         paintClasses?: CalibratedPaintClasses
         reverseScreen?: ReverseScreenWitness
+        alternateScreens?: Partial<Record<AlternateScreenMode, AlternateScreenWitness>>
       })
     | undefined
   const eraseVisibleGrid = collectorLaunched
@@ -1366,8 +1394,9 @@ export async function calibrateCaptureOrigin({
     let reverseAttempts: string[] = []
     let reverseTrace = ""
     let reverseSettledTrace = ""
-    if (screenMode === "reverse") {
-      const rowsFrame = rows
+    let lastPaintedFrame: CapturedFrame = rows
+    if (requestedScreenModes.has("reverse")) {
+      const rowsFrame = lastPaintedFrame
       reverseSet = true
       ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5h`)
       let reverseBlankFrame: CapturedFrame | undefined
@@ -1548,6 +1577,123 @@ export async function calibrateCaptureOrigin({
           },
         )
       }
+      lastPaintedFrame = reverseReturnSettledFrame ?? normalSolid
+    }
+    // #37701 (@cto be5f14e5): live in-session alternate-screen origin/paint calibration.
+    // Never cached across runs; any pitch/grid/witness failure leaves the mode unavailable so the
+    // alt-screen rows stay probe-todo naming "alternate screen not calibrated: <reason>".
+    const alternateScreens: Partial<Record<AlternateScreenMode, AlternateScreenWitness>> = {}
+    let alternateTrace = ""
+    for (const altMode of ["alternate-1049", "alternate-47"] as const) {
+      if (!requestedScreenModes.has(altMode)) continue
+      const enterSeq = altMode === "alternate-1049" ? "\x1b[?1049h" : "\x1b[?47h"
+      const leaveSeq = altMode === "alternate-1049" ? "\x1b[?1049l" : "\x1b[?47l"
+      const previousFrame = lastPaintedFrame
+      activeAlternateLeave = leaveSeq
+      ctx.write(`${enterSeq}\x1b[0m${eraseVisibleGrid}`)
+      const witness = await (async (): Promise<AlternateScreenWitness> => {
+        let altBlank: CapturedFrame
+        try {
+          altBlank = await confirmedFrame(`${altMode} screen blank`, (frame) => !equal(frame, previousFrame))
+        } catch (cause) {
+          if (!reverseStageTimedOut(cause)) throw cause
+          return {
+            status: "unavailable",
+            reason: `${altMode} blank canvas was not confirmed after entering alternate screen`,
+          }
+        }
+        const altPaint = await solidPaintCandidates(
+          (candidate) => `${altMode} screen solid paint ${candidate}`,
+          altBlank,
+          reverseStageTimedOut,
+        )
+        if (!altPaint.observed) {
+          return {
+            status: "unavailable",
+            reason: `${altMode} sentinel paint (${altPaint.attempts.join(", ")}) was not observed on the alternate canvas`,
+          }
+        }
+        const altSolid = altPaint.observed.frame
+        const altForm = altPaint.observed.form
+        try {
+          const altMeasured = findSolidWitnessClass(altBlank, altSolid)
+          const altShrunk = shrinkEdgeBlendPerimeter(
+            altSolid,
+            altBlank,
+            rectangle(altSolid, (offset) => inColorClass(altSolid, offset, altMeasured.witnessClass)),
+            altMeasured.witness,
+            altMeasured.witnessClass,
+          )
+          const at = (rect: CaptureRectangle) => `${rect.width}x${rect.height} at ${rect.x},${rect.y}`
+          if (altShrunk.grid.width !== grid.width || altShrunk.grid.height !== grid.height) {
+            return {
+              status: "unavailable",
+              reason: `${altMode} grid ${at(altShrunk.grid)} differs from primary grid ${at(grid)}`,
+            }
+          }
+          const altOrigin = { x: altShrunk.grid.x - columnLead, y: altShrunk.grid.y - rowLead }
+          if (altOrigin.x < 0 || altOrigin.y < 0) {
+            return {
+              status: "unavailable",
+              reason: `${altMode} origin ${altOrigin.x},${altOrigin.y} lies outside the captured image`,
+            }
+          }
+          const altFillets = dilateFilletMask(altShrunk.fillets, altShrunk.grid, altSolid.width)
+          const altBackground = findBackgroundPaintClass(
+            altBlank,
+            altShrunk.grid,
+            altFillets,
+            altMeasured.witnessClass,
+          )
+          const [altR, altG, altB] = altMeasured.witness
+          alternateTrace += `; ${altMode} origin ${altOrigin.x},${altOrigin.y} sentinel ${altForm} rgb ${altR},${altG},${altB}`
+          return {
+            status: "witnessed",
+            origin: altOrigin,
+            pixelGeometry: measured,
+            sentinel: { form: altForm, rgb: [altR, altG, altB] },
+            paintClasses: {
+              background: { anchor: altBackground.anchor, members: altBackground.members },
+              sentinel: { anchor: altMeasured.witnessClass.anchor, members: altMeasured.witnessClass.members },
+            },
+          }
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "CaptureCalibrationRefused") throw cause
+          return { status: "unavailable", reason: `${altMode} witness ambiguous: ${cause.message}` }
+        }
+      })()
+      alternateScreens[altMode] = witness
+      ctx.write(`\x1b[0m${eraseVisibleGrid}${leaveSeq}`)
+      activeAlternateLeave = undefined
+      paintGrid("solid", form)
+      const normalSolid = reverseReturnSettledFrame ?? solidFrame
+      try {
+        await confirmedFrame(`${altMode} screen return`, (frame) =>
+          bandClearOfGrid ? bandDifference(frame, normalSolid).equalOutside : equal(frame, normalSolid),
+        )
+      } catch (cause) {
+        if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
+        const { captures = [], last } = (cause as Error & { stage?: StageCaptures }).stage ?? {}
+        const each = captures
+          .map(
+            ({ ms, late, accepted }, index) =>
+              `#${index + 1} ${ms} ms ${late ? "ended after the deadline" : accepted ? "accepted" : "not accepted"}`,
+          )
+          .join("; ")
+        throw Object.assign(
+          refusal(
+            `Capture calibration ${altMode}: the normal sentinel paint did not return after leaving alternate screen, so this calibration is invalid`,
+            cause,
+          ),
+          {
+            detail:
+              `stage=${altMode} screen return, ${captures.length} capture(s) in ${timeoutMs} ms: ${each}` +
+              (last ? `; last frame ${frameDifference(normalSolid, last)}` : "; no frame captured"),
+            ...(last && { frames: { before: normalSolid, after: last, stage: `${altMode} screen return` } }),
+          },
+        )
+      }
+      lastPaintedFrame = normalSolid
     }
     const filletTrace =
       fillets.length === 0
@@ -1606,8 +1752,9 @@ export async function calibrateCaptureOrigin({
         sentinel: { anchor: witnessClass.anchor, members: witnessClass.members },
       },
       ...(reverseScreen === undefined ? {} : { reverseScreen }),
+      ...(Object.keys(alternateScreens).length === 0 ? {} : { alternateScreens }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reverseTrace}${reverseSettledTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reverseTrace}${reverseSettledTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}${alternateTrace}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {
@@ -1617,7 +1764,7 @@ export async function calibrateCaptureOrigin({
     try {
       let surfaceFailure: unknown
       try {
-        ctx.write(`\x1b[0m${reverseSet ? "\x1b[?5l" : ""}${eraseVisibleGrid}`)
+        ctx.write(`\x1b[0m${activeAlternateLeave ?? ""}${reverseSet ? "\x1b[?5l" : ""}${eraseVisibleGrid}`)
         if (!baseline) {
           throw new Error(
             failure === undefined

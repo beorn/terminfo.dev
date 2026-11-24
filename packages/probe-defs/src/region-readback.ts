@@ -36,6 +36,7 @@ import type {
   CapturePixelGeometry,
   CaptureRectangle,
   CaptureRenderingAxes,
+  CaptureScreenMode,
   PixelObservationFrame,
   ColourNoAttributeWitness,
   ObservationFrame,
@@ -85,7 +86,8 @@ export type RegionRead = (request: {
   avoid?: CellRegion
   restoreAfterPaint?: string
   /** The screen mode the probe's own write left set for this read (#34932, @cto 34932-reverse-seam-ruling-2325 item 4). */
-  screenMode?: "reverse"
+  /** Read this frame under the mode calibration witnessed (#34932, #37701). */
+  screenMode?: CaptureScreenMode
 }) => Promise<RegionCapture>
 
 /**
@@ -139,6 +141,11 @@ export interface RegionReadback {
    * definition must declare the same `termScreenMode`, so its calibration witnesses that paint.
    */
   editScreenMode?: "reverse"
+  /**
+   * Per-step non-primary screen modes (#37701, @cto be5f14e5). Each named step whose writes leave the
+   * terminal in a calibrated alternate screen selects that mode's witnessed origin and paint.
+   */
+  stepScreenModes?: Partial<Record<"seed" | "target" | "expected" | "ignored", CaptureScreenMode>>
   /** One visual signal and whether its qualified expected frame changes the seed. Omit for legacy decisions. */
   discriminator?: { signal: string; expected: "change" | "no-change" }
   /** The reserved one-cell paint witness, outside every compared region. */
@@ -1100,16 +1107,33 @@ export async function layoutSinceCalibration(check: {
   calibratedCrop: CaptureRectangle
   timeoutMs: number
   pollMs: number
-  /** The screen mode the checked read was taken under; its witnessed sentinel is repainted (#34932). */
-  screenMode?: "reverse"
+  /** The screen mode the checked read was taken under; its witnessed sentinel is repainted (#34932, #37701). */
+  screenMode?: CaptureScreenMode
 }): Promise<string | undefined> {
   const { ctx, label, cell, calibratedCrop: crop, timeoutMs, pollMs, screenMode } = check
+  const alternateWitness =
+    screenMode === "alternate-1049" || screenMode === "alternate-47"
+      ? ctx.captureGeometry?.alternateScreens?.[screenMode]
+      : undefined
   if (screenMode !== undefined && ctx.capture && ctx.captureKind !== "text-cells") {
-    if (ctx.captureGeometry?.reverseSentinel === undefined) {
+    if (screenMode === "reverse" && ctx.captureGeometry?.reverseSentinel === undefined) {
+      return `layout not re-checked: this run's calibration witnessed no ${screenMode} screen sentinel to repaint`
+    }
+    if (
+      (screenMode === "alternate-1049" || screenMode === "alternate-47") &&
+      alternateWitness?.status !== "witnessed"
+    ) {
       return `layout not re-checked: this run's calibration witnessed no ${screenMode} screen sentinel to repaint`
     }
   }
-  const sentinel = screenMode === "reverse" ? ctx.captureGeometry?.reverseSentinel : ctx.captureGeometry?.sentinel
+  const sentinel =
+    screenMode === "reverse"
+      ? ctx.captureGeometry?.reverseSentinel
+      : screenMode === "alternate-1049" || screenMode === "alternate-47"
+        ? alternateWitness?.status === "witnessed"
+          ? alternateWitness.sentinel
+          : undefined
+        : ctx.captureGeometry?.sentinel
   if (!ctx.capture || ctx.captureKind === "text-cells" || !sentinel) return undefined
   const moded = ctx.capture
   const capture: typeof moded = screenMode === undefined ? moded : (request) => moded({ ...request, screenMode })
@@ -1205,7 +1229,7 @@ function layoutCheckFor(
   baseline: RegionCapture | undefined,
   timeoutMs: number,
   pollMs: number,
-  screenMode?: "reverse",
+  screenMode?: CaptureScreenMode,
 ): (() => Promise<string | undefined>) | undefined {
   const calibratedCrop = baseline?.regionRectangle
   if (!calibratedCrop) return undefined
@@ -1393,6 +1417,59 @@ export function gridMoveExemption(compared: ReadonlyArray<ComparedCrop>): GridMo
 }
 
 /**
+ * The calibrated alternate-screen exemption beside `gridMoveExemption` (#37701, @cto be5f14e5):
+ * Warp renders its normal screen inside a padded block container and its alternate screen full-bleed
+ * at a different origin (-16,-10 px) with the exact same cell pitch and grid. Frames taken across
+ * primary and calibrated alternate-screen modes may be compared ONLY when every compared frame carries
+ * witnessed calibration (`basis`, `grid`, sentinel pair), identical `cell` pitch and `grid` size,
+ * matching crop dimensions offset exactly by each mode's witnessed origin, every crop lies inside its
+ * image, and any origin move within the same mode still satisfies the whole-row rule.
+ */
+export function calibratedScreenModeExemption(compared: ReadonlyArray<ComparedCrop>): boolean {
+  const [seed, ...rest] = compared
+  if (seed === undefined || rest.length === 0) return false
+  const first = seed.crop
+  if (first === undefined || seed.rectangle === undefined) return false
+  const hasAlternate = compared.some(
+    (entry) => entry.crop?.screenMode === "alternate-1049" || entry.crop?.screenMode === "alternate-47",
+  )
+  if (!hasAlternate) return false
+  if (first.basis === undefined || first.grid === undefined || first.witness === undefined) return false
+  if (pairMeasuredNoRowHeight(first)) return false
+  if (!witnessProvesPitch(first, first)) return false
+  if (!originFollowsFromBoxA(first)) return false
+  if (!insideImage(seed.rectangle, first.image)) return false
+  const modeAnchor = new Map<string, { x: number; y: number }>()
+  modeAnchor.set(first.screenMode ?? "primary", first.origin)
+  for (const entry of rest) {
+    const crop = entry.crop
+    const rectangle = entry.rectangle
+    if (crop === undefined || rectangle === undefined) return false
+    if (crop.basis === undefined || crop.basis !== first.basis) return false
+    if (!sameSurface(crop.surface, first.surface)) return false
+    if (crop.cell.width !== first.cell.width || crop.cell.height !== first.cell.height) return false
+    if (crop.grid === undefined) return false
+    if (crop.grid.columns !== first.grid.columns || crop.grid.rows !== first.grid.rows) return false
+    if (rectangle.width !== seed.rectangle.width || rectangle.height !== seed.rectangle.height) return false
+    const dx = crop.origin.x - first.origin.x
+    const dy = crop.origin.y - first.origin.y
+    if (rectangle.x - seed.rectangle.x !== dx || rectangle.y - seed.rectangle.y !== dy) return false
+    if (!insideImage(rectangle, crop.image)) return false
+    if (pairMeasuredNoRowHeight(crop)) return false
+    if (!witnessProvesPitch(crop, first)) return false
+    if (!originFollowsFromBoxA(crop)) return false
+    const modeKey = crop.screenMode ?? "primary"
+    const anchor = modeAnchor.get(modeKey)
+    if (anchor === undefined) {
+      modeAnchor.set(modeKey, crop.origin)
+    } else if (crop.origin.x !== anchor.x || (crop.origin.y - anchor.y) % first.cell.height !== 0) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
  * Refuse a comparison whose frames were cropped from different screen positions: their region
  * digests were never taken over the same cells, so neither equality nor inequality between them
  * means anything (the ghostty specimen was 26 px, about one row, out). The refusal names every
@@ -1415,9 +1492,10 @@ export function cropPositionRefusal(input: {
   const [seed, ...rest] = cropped
   if (seed === undefined) return null
   if (rest.every(({ rectangle }) => sameRectangle(rectangle, seed.rectangle))) return null
-  // 33982: the one accepted difference. A whole-row grid move is not two crops of different cells;
-  // every other difference still refuses below, with the sentence it always used.
-  if (gridMoveExemption(cropped).length > 0) return null
+  // 33982 / 37701: the two accepted differences — whole-row grid moves within one mode, or
+  // calibrated primary-vs-alternate screen origins with identical pitch and grid. Every other
+  // difference still refuses below, with the sentence it always used.
+  if (gridMoveExemption(cropped).length > 0 || calibratedScreenModeExemption(cropped)) return null
   const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
   const rowHeight =
     seed.crop !== undefined && pairMeasuredNoRowHeight(seed.crop)
@@ -2636,6 +2714,8 @@ export async function captureRegionReadbackDecision(
     subset?: string
     /** This step's writes leave `edit` active for its reads (#34932). Selected by phase, never by label. */
     underEdit?: true
+    /** Non-primary screen mode active for this step's reads (#37701). */
+    screenMode?: CaptureScreenMode
   }> = savedRendition
     ? [
         { role: "control", label: `${id}: initial N`, writes: spec.expected, phase: "baseline" },
@@ -2680,17 +2760,35 @@ export async function captureRegionReadbackDecision(
         },
       ]
     : [
-        { role: "control" as const, label: `${id}: pre-edit seed`, writes: spec.seed },
+        {
+          role: "control" as const,
+          label: `${id}: pre-edit seed`,
+          writes: spec.seed,
+          ...(spec.stepScreenModes?.seed !== undefined ? { screenMode: spec.stepScreenModes.seed } : {}),
+        },
         {
           role: "target" as const,
           label: `${id}: post-sequence target`,
           writes: `${spec.seed}${spec.edit}`,
           ...(spec.editScreenMode === undefined ? {} : { underEdit: true as const }),
+          ...(spec.stepScreenModes?.target !== undefined ? { screenMode: spec.stepScreenModes.target } : {}),
         },
-        { role: "control" as const, label: `${id}: expected frame`, writes: spec.expected },
+        {
+          role: "control" as const,
+          label: `${id}: expected frame`,
+          writes: spec.expected,
+          ...(spec.stepScreenModes?.expected !== undefined ? { screenMode: spec.stepScreenModes.expected } : {}),
+        },
         ...(spec.ignored === undefined
           ? []
-          : [{ role: "control" as const, label: `${id}: ignored-attribute frame`, writes: spec.ignored }]),
+          : [
+              {
+                role: "control" as const,
+                label: `${id}: ignored-attribute frame`,
+                writes: spec.ignored,
+                ...(spec.stepScreenModes?.ignored !== undefined ? { screenMode: spec.stepScreenModes.ignored } : {}),
+              },
+            ]),
         ...(spec.setupReference === undefined
           ? []
           : [{ role: "control" as const, label: `${id}: setup reference frame`, writes: spec.setupReference }]),
@@ -2793,8 +2891,8 @@ export async function captureRegionReadbackDecision(
       // challenge a space/glyph pair in both directions before trusting the requested paint.
       const sentinelWrite = `\x1b[${spec.sentinel.row};${spec.sentinel.col}H`
       if (witnessedPixels) ctx.write(`${sentinelWrite} `)
-      // #34932 item 4: every read of an under-edit step, and only those, selects the edit's screen mode.
-      const screenMode = step.underEdit ? spec.editScreenMode : undefined
+      // #34932 item 4 & #37701: every read of a non-primary step selects its declared screen mode.
+      const screenMode = step.screenMode ?? (step.underEdit ? spec.editScreenMode : undefined)
       const stepRead: RegionRead = screenMode === undefined ? read : (request) => read({ ...request, screenMode })
       const baseline = await stepRead({
         role: "control",

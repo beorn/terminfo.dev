@@ -4003,3 +4003,130 @@ test("alt-screen, left-right-margin, and decsscls headless probes offset primary
   expect(decssclsResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
   expect(JSON.parse(decssclsResult.response!)).toMatchObject({ cursor: { x: 1, y: 0 } })
 })
+
+test("alt-screen probes declare termScreenMode, stay probe-todo when alternate calibration is unavailable, and tag alternate-screen steps (#37701)", async () => {
+  const expectedModes = [
+    ["modes.alt-screen.enter", "alternate-1049"],
+    ["modes.alt-screen.exit", "alternate-1049"],
+    ["modes.altscreen-47", "alternate-47"],
+  ] as const
+
+  for (const [id, mode] of expectedModes) {
+    const def = modesProbes.find((entry) => entry.id === id)
+    expect(def?.termScreenMode, id).toBe(mode)
+    if (!def?.term) throw new Error(`Missing term arm for ${id}`)
+
+    // @cto be5f14e5 condition 2(b): unavailable alternate calibration keeps all 3 rows probe-todo naming the reason.
+    const unavailableResult = await def.term({
+      rows: 39,
+      cols: 123,
+      write: () => {},
+      query: async () => null,
+      queryMode: async () => null,
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+      queryWithSentinel: async () => null,
+      queryWithSentinelOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+      measureRenderedWidth: async () => ({ status: "unavailable", reason: "test" }),
+      capture: async () => {
+        throw new Error("should not capture when alternate screen calibration is unavailable")
+      },
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 624 },
+        source: "measured by complete raster calibration",
+        sentinel: { form: "basic", rgb: [255, 143, 253] },
+        alternateScreens: {
+          [mode]: { status: "unavailable", reason: `${mode} grid 992x624 at 1,36 differs from primary grid 984x624 at 17,46` },
+        },
+      },
+    } as unknown as TermProbeSource)
+    expect(unavailableResult.tests?.[0], id).toMatchObject({
+      status: "probe-todo",
+      reason: `alternate screen not calibrated: ${mode} grid 992x624 at 1,36 differs from primary grid 984x624 at 17,46`,
+    })
+  }
+
+  // Witnessed Warp (-16,-10 px) alternate-screen origin: modes.alt-screen.enter passes primary vs alternate-1049 crops.
+  const enterDef = modesProbes.find((entry) => entry.id === "modes.alt-screen.enter")!
+  const seenModes: Array<{ label: string; screenMode: CaptureRequest["screenMode"] }> = []
+  let onAlt = false
+  let primaryScreen = ""
+  let altScreen = ""
+  let witnessChar = " "
+  const enterResult = await enterDef.term!({
+    rows: 39,
+    cols: 123,
+    now: () => Date.now(),
+    write: (text: string) => {
+      for (const token of text.match(/\x1b\[\?1049[hl]|\x1b\[2;1H.|PRIMARY|ALTONLY/g) ?? []) {
+        if (token === "\x1b[?1049h") onAlt = true
+        else if (token === "\x1b[?1049l") onAlt = false
+        else if (token === "PRIMARY") {
+          if (onAlt) altScreen = "PRIMARY"
+          else primaryScreen = "PRIMARY"
+        } else if (token === "ALTONLY") {
+          if (onAlt) altScreen = "ALTONLY"
+          else primaryScreen = "ALTONLY"
+        } else if (token.startsWith("\x1b[2;1H")) {
+          witnessChar = token.slice(6)
+        }
+      }
+    },
+    query: async () => null,
+    queryMode: async () => null,
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+    queryWithSentinel: async () => null,
+    queryWithSentinelOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+    measureRenderedWidth: async () => ({ status: "unavailable", reason: "test" }),
+    captureGeometry: {
+      geometry: { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 624 },
+      source: "measured by complete raster calibration",
+      sentinel: { form: "basic", rgb: [255, 143, 253] },
+      alternateScreens: {
+        "alternate-1049": { status: "witnessed", sentinel: { form: "basic", rgb: [255, 143, 253] }, origin: { x: 1, y: 36 } },
+      },
+    },
+    capture: async (request: CaptureRequest) => {
+      seenModes.push({ label: request.label, screenMode: request.screenMode })
+      const origin = request.screenMode === "alternate-1049" ? { x: 1, y: 36 } : { x: 17, y: 46 }
+      const cells = request.cells!
+      const rect = {
+        x: origin.x + (cells.left - 1) * 8,
+        y: origin.y + (cells.top - 1) * 16,
+        width: (cells.right - cells.left + 1) * 8,
+        height: (cells.bottom - cells.top + 1) * 16,
+      }
+      const text = cells.top === 2 ? witnessChar : onAlt ? altScreen : primaryScreen
+      const digest = `sha256:${text.padEnd(64, "0")}`
+      return {
+        kind: "pixels" as const,
+        role: request.role,
+        label: request.label,
+        capturedAt: Date.now(),
+        ref: digest,
+        regionDigest: digest,
+        pixelsDigest: digest,
+        regionRectangle: rect,
+        cellCrop: {
+          origin,
+          basis: "calibration witnessed raster",
+          cell: { width: 8, height: 16 },
+          grid: { columns: 123, rows: 39 },
+          image: { width: 1024, height: 674 },
+          witness: {
+            a: { cell: { row: 2, col: 2 }, box: { x: origin.x + 8, y: origin.y + 16 } },
+            b: { cell: { row: 3, col: 1 }, box: { x: origin.x, y: origin.y + 32 } },
+          },
+          ...(request.screenMode !== undefined ? { screenMode: request.screenMode } : {}),
+        },
+      }
+    },
+  } as unknown as TermProbeSource)
+
+  expect(enterResult.observation?.outcome).toBe("supported")
+  expect(seenModes.filter((r) => r.label.includes("pre-edit seed")).every((r) => r.screenMode === "alternate-1049")).toBe(true)
+  expect(seenModes.filter((r) => r.label.includes("ignored-attribute")).every((r) => r.screenMode === "alternate-1049")).toBe(true)
+  expect(seenModes.filter((r) => r.label.includes("post-sequence target")).every((r) => r.screenMode === undefined)).toBe(true)
+  expect(seenModes.filter((r) => r.label.includes("expected frame")).every((r) => r.screenMode === undefined)).toBe(true)
+})

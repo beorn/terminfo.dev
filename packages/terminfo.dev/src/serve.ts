@@ -86,6 +86,7 @@ import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import {
   calibrateCaptureOrigin,
+  type AlternateScreenWitness,
   type CaptureChromeBand,
   type CaptureCalibrationRefusal,
   type ReverseScreenWitness,
@@ -184,16 +185,37 @@ export async function calibrateWithOneRecapture<T>(input: {
 function installedGeometry(
   origin: Awaited<ReturnType<typeof calibrateCaptureOrigin>>,
 ): NonNullable<TermProbeSource["captureGeometry"]> {
+  const alternateEntries = origin.alternateScreens
+    ? (Object.entries(origin.alternateScreens) as Array<
+        [import("@terminfo/probe-defs").AlternateScreenMode, AlternateScreenWitness]
+      >)
+    : []
+  const alternateScreens =
+    alternateEntries.length === 0
+      ? undefined
+      : Object.fromEntries(
+          alternateEntries.map(([mode, witness]) => [
+            mode,
+            witness.status === "witnessed"
+              ? { status: "witnessed" as const, sentinel: witness.sentinel, origin: witness.origin }
+              : { status: "unavailable" as const, reason: witness.reason },
+          ]),
+        )
   return {
     geometry: origin.pixelGeometry,
     source: "measured by complete raster calibration",
     sentinel: origin.sentinel,
     ...(origin.reverseScreen?.status === "witnessed" ? { reverseSentinel: origin.reverseScreen.sentinel } : {}),
+    ...(alternateScreens !== undefined ? { alternateScreens } : {}),
   }
 }
 
-/** A read that asked for a screen mode this run's current calibration did not witness (#34932 item 4). */
-function screenModeUnwitnessed(label: string, screenMode: "reverse", witness: ReverseScreenWitness | undefined): Error {
+/** A read that asked for a screen mode this run's current calibration did not witness (#34932 item 4, #37701). */
+function screenModeUnwitnessed(
+  label: string,
+  screenMode: import("@terminfo/probe-defs").CaptureScreenMode,
+  witness: ReverseScreenWitness | AlternateScreenWitness | undefined,
+): Error {
   const error = new Error(
     `${label}: the ${screenMode} screen mode was requested, but ${
       witness === undefined
@@ -965,6 +987,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
           /** A screen mode a selected row declared; calibration also witnesses its paint (#34932). */
           screenMode?: "reverse"
+          /** All non-primary screen modes declared by selected rows in this session (#37701). */
+          screenModes?: readonly import("@terminfo/probe-defs").CaptureScreenMode[]
         }) => Promise<void | { readonly heldViewportReaderFor?: HeldViewportReaderFor }>)
       | undefined
     let finishCapture: typeof prepareCapture
@@ -1035,6 +1059,20 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
        * succeeded, so a refused renewal can never leave a witness from the previous origin readable.
        */
       let activeReverseScreen: ReverseScreenWitness | undefined
+      /**
+       * #37701 (@cto be5f14e5): live in-session alternate-screen witnesses, cleared before every
+       * preparation and renewal and replaced only by a live calibration in this session.
+       */
+      let activeAlternateScreens:
+        | Partial<Record<import("@terminfo/probe-defs").AlternateScreenMode, AlternateScreenWitness>>
+        | undefined
+      /**
+       * #37701 (@cto be5f14e5): proved whole-row move origin carried within ONE probe only so
+       * subsequent reads pick blank sentinel cells from where the frame currently sits while still
+       * running full resolve() checks against calibrated.origin. Resets on prepareCapture, probe
+       * change, renewal, or a read back at calibrated.origin.
+       */
+      let activeRowMove: { featureId: string; origin: { x: number; y: number } } | undefined
       let calibrationError: Error | undefined
       /** The source whose next read anchors its crop on the sentinel it paints (33000). */
       let pixelSource: TermProbeSource | undefined
@@ -1069,20 +1107,56 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // the adapter never sees the field: frames are unchanged.
           const { screenMode, ...request } = checkpoint
           let reverse: Extract<ReverseScreenWitness, { status: "witnessed" }> | undefined
-          if (screenMode !== undefined) {
+          let alternate:
+            | {
+                mode: import("@terminfo/probe-defs").AlternateScreenMode
+                witness: Extract<AlternateScreenWitness, { status: "witnessed" }>
+              }
+            | undefined
+          if (screenMode === "reverse") {
             if (activeReverseScreen?.status !== "witnessed") {
               throw screenModeUnwitnessed(checkpoint.label, screenMode, activeReverseScreen)
             }
             reverse = activeReverseScreen
+          } else if (screenMode === "alternate-1049" || screenMode === "alternate-47") {
+            const altWitness = activeAlternateScreens?.[screenMode]
+            if (altWitness?.status !== "witnessed") {
+              throw screenModeUnwitnessed(checkpoint.label, screenMode, altWitness)
+            }
+            alternate = { mode: screenMode, witness: altWitness }
           }
           const calibrated = assertCalibratedCaptureGeometry(textOrigin, request, platform)
           if (!calibrated) {
             const result = await adapter.captureRaw(request)
             return result.result
           }
-          const sentinel = reverse ? reverse.sentinel : calibrated.sentinel
-          const paintClasses = reverse ? reverse.paintClasses : calibrated.paintClasses
-          const settled = reverse ? { ...calibrated, paintClasses } : calibrated
+          if (activeRowMove !== undefined && activeRowMove.featureId !== checkpoint.featureId) {
+            activeRowMove = undefined
+          }
+          const sentinel = alternate
+            ? alternate.witness.sentinel
+            : reverse
+              ? reverse.sentinel
+              : calibrated.sentinel
+          const paintClasses = alternate
+            ? alternate.witness.paintClasses
+            : reverse
+              ? reverse.paintClasses
+              : calibrated.paintClasses
+          const settledOrigin = alternate ? alternate.witness.origin : calibrated.origin
+          const settledPixelGeometry = alternate ? alternate.witness.pixelGeometry : calibrated.pixelGeometry
+          const settled = alternate
+            ? {
+                ...calibrated,
+                origin: settledOrigin,
+                pixelGeometry: settledPixelGeometry,
+                sentinel,
+                paintClasses,
+                screenMode: alternate.mode,
+              }
+            : reverse
+              ? { ...calibrated, paintClasses }
+              : calibrated
           const regions = chooserRegions(request)
           const source = pixelSource
           // #34932: a layout guard classifies background by this calibration's witnessed members.
@@ -1095,7 +1169,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           const wouldAnchor = sentinel !== undefined && source !== undefined && regions.length > 0
           if (sentinelUnusable && wouldAnchor) sentinelFallbackRows.add(checkpoint.featureId)
           if (sentinelUnusable || !wouldAnchor) {
-            return adapter.capture(served, calibrated)
+            return adapter.capture(served, alternate ? settled : calibrated)
           }
           // 33000: the crop follows the sentinel this read paints, never calibration's stale origin.
           // 33981: the sentinel is located by the difference to one frame taken BEFORE the paint,
@@ -1107,6 +1181,10 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           // A wide verdict ends anchoring for the rest of the run, so its message is recorded on the
           // run rather than thrown away with this one read's stack.
           let fellBackToPlainCrop = false
+          const carriedChooseOrigin =
+            screenMode === undefined && activeRowMove?.featureId === checkpoint.featureId
+              ? activeRowMove.origin
+              : undefined
           const read = await readThroughSentinel({
             source,
             ...(checkpoint.restoreAfterPaint !== undefined ? { restoreAfterPaint: checkpoint.restoreAfterPaint } : {}),
@@ -1129,8 +1207,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             regions,
             // 33981: the cells are chosen from the frame, so the read needs the same origin and cell
             // size the adapter measures its crops against — never a window width over a column count.
-            reading: calibrated.origin,
-            cell: { width: calibrated.pixelGeometry.cellWidth, height: calibrated.pixelGeometry.cellHeight },
+            reading: settledOrigin,
+            ...(carriedChooseOrigin !== undefined ? { chooseOrigin: carriedChooseOrigin } : {}),
+            cell: { width: settledPixelGeometry.cellWidth, height: settledPixelGeometry.cellHeight },
             ...(checkpoint.avoid ? { avoid: checkpoint.avoid } : {}),
             deadline: Date.now() + DEFAULT_TIMEOUT_MS,
           }).catch((error: unknown) => {
@@ -1142,11 +1221,21 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           })
           if (fellBackToPlainCrop) {
             sentinelFallbackRows.add(checkpoint.featureId)
-            return adapter.capture(served, calibrated)
+            return adapter.capture(served, alternate ? settled : calibrated)
+          }
+          if (screenMode === undefined && read.frame.kind === "pixels" && read.frame.cellCrop !== undefined) {
+            if (read.frame.cellCrop.acceptedRowMove !== undefined) {
+              activeRowMove = { featureId: checkpoint.featureId, origin: read.frame.cellCrop.origin }
+            } else if (
+              read.frame.cellCrop.origin.x === calibrated.origin.x &&
+              read.frame.cellCrop.origin.y === calibrated.origin.y
+            ) {
+              activeRowMove = undefined
+            }
           }
           return withPrePaintReading(read, prePaintMeter.reading())
         }
-        prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode }) => {
+        prepareCapture = async ({ source: probeSource, featureId, recordCapture, row, screenMode, screenModes }) => {
           /**
            * #37667 (@cto 6254e549 b): a calibration refusal keeps the before/solid pair it judged, in the
            * run's own artifact directory. The pair is encoded by the converter that produced every other
@@ -1191,6 +1280,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           const previousOrigin = installedOrigin
           textOrigin = undefined
           activeReverseScreen = undefined
+          activeAlternateScreens = undefined
+          activeRowMove = undefined
           calibrationError = undefined
           pixelSource = probeSource
           frameRecord = recordCapture
@@ -1214,6 +1305,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 (process.platform === "linux" && kind === "linux"),
               captureRaw: (label, deadline) => captureRawFrame(featureId, label, deadline),
               ...(screenMode !== undefined ? { screenMode } : {}),
+              ...(screenModes !== undefined && screenModes.length > 0 ? { screenModes } : {}),
             })
           // @cto 6254e549 (a): exactly one bounded recapture, only for a changed paint outside the grid.
           // The first attempt's refusal and the pair it judged are recorded, so a retry that passes can
@@ -1229,6 +1321,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
             attempts = calibrated.attempts
             firstRefusal = calibrated.firstRefusal
             activeReverseScreen = textOrigin.reverseScreen
+            activeAlternateScreens = textOrigin.alternateScreens
             probeSource.captureGeometry = installedGeometry(textOrigin)
             // 34306 AC1: a renewal is a fact of the run, not of one install. Carry the renewals the
             // earlier installs recorded, then add this one, so replacing `captureCalibration` here
@@ -1322,8 +1415,17 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               // #34932 item 3: the previous origin's reverse witness is gone before the re-measure, so a
               // renewal that refuses leaves the mode unavailable rather than readable from a moved origin.
               activeReverseScreen = undefined
-              if (probeSource.captureGeometry?.reverseSentinel !== undefined) {
-                const { reverseSentinel: _previousOrigin, ...normal } = probeSource.captureGeometry
+              activeAlternateScreens = undefined
+              activeRowMove = undefined
+              if (
+                probeSource.captureGeometry?.reverseSentinel !== undefined ||
+                probeSource.captureGeometry?.alternateScreens !== undefined
+              ) {
+                const {
+                  reverseSentinel: _previousOrigin,
+                  alternateScreens: _previousAlt,
+                  ...normal
+                } = probeSource.captureGeometry
                 probeSource.captureGeometry = normal
               }
               textOrigin = await calibrateCaptureOrigin({
@@ -1346,7 +1448,47 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   reason: `the ${screenMode} screen paint is not re-witnessed by an in-row renewal (${row}); the next preparation witnesses it again`,
                 }
               }
-              probeSource.captureGeometry = installedGeometry(textOrigin)
+              const renewedAltModes = (screenModes ?? []).filter(
+                (mode): mode is import("@terminfo/probe-defs").AlternateScreenMode =>
+                  mode === "alternate-1049" || mode === "alternate-47",
+              )
+              if (renewedAltModes.length > 0) {
+                activeAlternateScreens = Object.fromEntries(
+                  renewedAltModes.map((mode) => [
+                    mode,
+                    {
+                      status: "unavailable" as const,
+                      reason: `the ${mode} screen is not re-witnessed by an in-row renewal (${row}); the next preparation witnesses it again`,
+                    },
+                  ]),
+                )
+              }
+              const installed = installedGeometry(textOrigin)
+              probeSource.captureGeometry =
+                activeAlternateScreens !== undefined
+                  ? {
+                      ...installed,
+                      alternateScreens: Object.fromEntries(
+                        (
+                          Object.entries(activeAlternateScreens) as Array<
+                            [import("@terminfo/probe-defs").AlternateScreenMode, AlternateScreenWitness | undefined]
+                          >
+                        )
+                          .filter(
+                            (
+                              entry,
+                            ): entry is [import("@terminfo/probe-defs").AlternateScreenMode, AlternateScreenWitness] =>
+                              entry[1] !== undefined,
+                          )
+                          .map(([mode, witness]) => [
+                            mode,
+                            witness.status === "unavailable"
+                              ? { status: "unavailable" as const, reason: witness.reason }
+                              : { status: "witnessed" as const, sentinel: witness.sentinel, origin: witness.origin },
+                          ]),
+                      ),
+                    }
+                  : installed
               // The hook is an install too: it moves the live origin, so a preparation that follows
               // it must read the origin the hook left, not the one before the hook ran (#34306).
               installedOrigin = { pixelGeometry: textOrigin.pixelGeometry, origin: textOrigin.origin }

@@ -230,6 +230,13 @@ export async function readThroughSentinel<T>(input: {
    * a pair painted on cells that are background where it now is.
    */
   reading: { x: number; y: number }
+  /**
+   * Optional proved whole-row move origin carried from an earlier read within the SAME probe
+   * (#37701, @cto be5f14e5). Used ONLY by `choose()` to pick blank sentinel cells from where the
+   * frame currently sits; `resolve()` still compares `derived` against `reading` (`calibrated.origin`)
+   * and runs the full `acceptOrRefuseMovedSentinelOrigin` checks on every read.
+   */
+  chooseOrigin?: { x: number; y: number }
   /** The cell this run was calibrated to, which the chosen cells must be measured in. */
   cell: { width: number; height: number }
   /**
@@ -268,13 +275,14 @@ export async function readThroughSentinel<T>(input: {
    * that were already background, so the blank this read writes back restores them and the probe's
    * own drawing is never covered (@dev/15's 19-row diagnosis, 33981).
    */
+  const chooseOrigin = input.chooseOrigin ?? input.reading
   const choose = (frame: CapturedFrame) => {
     try {
       return sentinelCellsInFrame({
         rgba: frame.rgba,
         width: frame.width,
         height: frame.height,
-        reading: input.reading,
+        reading: chooseOrigin,
         cell: input.cell,
         grid,
         regions: input.regions,
@@ -324,8 +332,8 @@ export async function readThroughSentinel<T>(input: {
    * changed region reached the cells this read painted, not merely that something wide changed.
    */
   const cellRect = (cell: { row: number; col: number }) => ({
-    x: input.reading.x + (cell.col - 1) * input.cell.width,
-    y: input.reading.y + (cell.row - 1) * input.cell.height,
+    x: chooseOrigin.x + (cell.col - 1) * input.cell.width,
+    y: chooseOrigin.y + (cell.row - 1) * input.cell.height,
     width: input.cell.width,
     height: input.cell.height,
   })

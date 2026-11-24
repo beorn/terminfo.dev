@@ -448,6 +448,10 @@ export interface NamedTextOrigin {
    * belongs here and not there (33982, @cto).
    */
   basisDetail?: string
+  /**
+   * Witnessed screen mode this origin belongs to (#37701, @cto be5f14e5); absent for primary reads.
+   */
+  screenMode?: import("@terminfo/probe-defs").CaptureScreenMode
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 export type OriginResolver = (input: {
@@ -954,6 +958,7 @@ export async function finishCapture(input: {
       // into it (a comparison reads `basis`).
       ...(placement.acceptedRowMove !== undefined ? { acceptedRowMove: placement.acceptedRowMove } : {}),
       ...(placement.basisDetail !== undefined ? { basisDetail: placement.basisDetail } : {}),
+      ...(placement.screenMode !== undefined ? { screenMode: placement.screenMode } : {}),
     }
     controlRegionDigest = control?.digest
     controlRegionRectangle = control?.rectangle

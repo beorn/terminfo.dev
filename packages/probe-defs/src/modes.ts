@@ -141,6 +141,22 @@ async function primaryRestoreCapture(
   primary: string,
   alternate: string,
 ): Promise<ProbeCallbackResult> {
+  const altMode = mode === 1049 ? ("alternate-1049" as const) : mode === 47 ? ("alternate-47" as const) : undefined
+  if (altMode !== undefined && ctx.capture && ctx.captureKind !== "text-cells") {
+    const altState = ctx.captureGeometry?.alternateScreens?.[altMode]
+    if (altState?.status === "unavailable") {
+      return {
+        pass: false,
+        tests: [
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason: `alternate screen not calibrated: ${altState.reason}`,
+          },
+        ],
+      }
+    }
+  }
   const leave = `\x1b[?${mode}l`
   const enter = `\x1b[?${mode}h`
   const baseline = `${leave}\x1b[0m\x1b[2J\x1b[H${primary}`
@@ -156,12 +172,19 @@ async function primaryRestoreCapture(
     minCols: 8,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   }
+  const primaryStepScreenModes =
+    altMode !== undefined && ctx.capture && ctx.captureKind !== "text-cells"
+      ? mode === 1049
+        ? { seed: altMode, ignored: altMode }
+        : { ignored: altMode }
+      : undefined
   const result = await captureRegionCallbackResult(ctx, id, {
     ...fixture,
     seed: changesSeed ? `${baseline}${alternateFrame}` : baseline,
     edit: changesSeed ? leave : `${alternateFrame}${leave}`,
     expected: baseline,
     ignored: alternateFrame,
+    ...(primaryStepScreenModes !== undefined && { stepScreenModes: primaryStepScreenModes }),
     ...(ctx.captureKind !== "text-cells" && {
       discriminator: {
         signal: "primary-marker-restored",
@@ -230,12 +253,17 @@ async function primaryRestoreCapture(
   const legacyLeave = "\x1b[?47l"
   const blankAlternate = `${legacyEnter}\x1b[0m\x1b[2J\x1b[H`
   const paintedAlternate = `${blankAlternate}${alternate}`
+  const retentionStepScreenModes =
+    altMode !== undefined && ctx.capture && ctx.captureKind !== "text-cells"
+      ? { target: altMode, expected: altMode, ignored: altMode }
+      : undefined
   const retention = await captureRegionCallbackResult(ctx, `${id} retention`, {
     ...fixture,
     seed: `${legacyLeave}\x1b[0m\x1b[2J\x1b[H${primary}${paintedAlternate}${legacyLeave}`,
     edit: legacyEnter,
     expected: paintedAlternate,
     ignored: blankAlternate,
+    ...(retentionStepScreenModes !== undefined && { stepScreenModes: retentionStepScreenModes }),
     cleanup: legacyLeave,
   })
   if (!retention) throw new Error(`${id}: owned alternate retention capture disappeared`)
@@ -2297,6 +2325,7 @@ const modeDefinitions: ProbeDefinition[] = [
     // 35128: complete the22-capture region path at the observed slow-host cadence.
     wallMs: 60_000,
     termNeedsGeometry: true,
+    termScreenMode: "alternate-1049",
   },
 
   // Alt screen exit
@@ -2361,6 +2390,7 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    termScreenMode: "alternate-1049",
     cellReadback: true,
     textClaim: "characters",
     // 34567: cmux on the Nov 12 hosted image hit the 30 s default mid-capture on this row, which takes 22 captures
@@ -2840,6 +2870,7 @@ const modeDefinitions: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    termScreenMode: "alternate-47",
     // 34694 second fold: cut at 45000 ms in cmux and VS Code on run 44200861479 while still capturing (33-36 captures,
     // 44.8 s worst at VS Code = 99 percent of the wall), so 45 was the bug, not a hang witness.
     // 44.8 x 1.20 = 53.7 rounds up to 60 s.

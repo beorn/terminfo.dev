@@ -2476,3 +2476,80 @@ test("restore grid paint after witnessed reverseReturn refuses an outside-grid d
     /restore grid paint confirmation: paint witness timeout/,
   )
 })
+
+test("calibrateCaptureOrigin witnesses alternate-1049 and alternate-47 at shifted origin (-16,-10 px equivalent) and refuses mismatched grid (#37701)", async () => {
+  // 4x4 grid of 2x2 cells (8x8 total) inside a 16x16 window: primary sits at (4,4), alternate sits at (1,2) (-3,-2 px).
+  const size = 16
+  const empty = frame(size)
+  const primaryGrid = (stage: "solid" | "columns" | "rows") =>
+    gridFrame(size, [4, 6, 8, 10, 12], [4, 6, 8, 10, 12], stage)
+  const altGridSameSize = () => gridFrame(size, [1, 3, 5, 7, 9], [2, 4, 6, 8, 10], "solid")
+  const altGridWrongWidth = () => gridFrame(size, [1, 3, 5, 7, 10], [2, 4, 6, 8, 10], "solid")
+
+  const runAlt = async (alt47Frame: CapturedFrame) => {
+    const writes: string[] = []
+    let now = 0
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
+    const stageFrames: Array<[string, CapturedFrame]> = [
+      ["before grid paint", empty],
+      ["solid grid paint", primaryGrid("solid")],
+      ["column edge paint", primaryGrid("columns")],
+      ["row edge paint", primaryGrid("rows")],
+      ["alternate-1049 screen blank", empty],
+      ["alternate-1049 screen solid paint", altGridSameSize()],
+      ["alternate-1049 screen return", primaryGrid("solid")],
+      ["alternate-47 screen blank", empty],
+      ["alternate-47 screen solid paint", alt47Frame],
+      ["alternate-47 screen return", primaryGrid("solid")],
+      ["restore grid paint", empty],
+    ]
+    try {
+      const result = await calibrateCaptureOrigin({
+        ctx: {
+          rows: 4,
+          cols: 4,
+          write: (text: string) => writes.push(text),
+          queryMode: async () => "unknown",
+          queryWithSentinelOutcome: async () => ({ reason: "sentinel", match: null, raw: "", rawBase64: "" }),
+          queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
+        } as unknown as TermProbeSource,
+        screenModes: ["alternate-1049", "alternate-47"],
+        timeoutMs: 100,
+        captureRaw: async (label) => {
+          now += 1
+          const matched = stageFrames.find(([key]) => label.includes(key))
+          if (!matched) throw new Error(`Unexpected stage ${label}`)
+          return matched[1]
+        },
+      })
+      return { result, writes }
+    } finally {
+      clock.mockRestore()
+    }
+  }
+
+  const bothWitnessed = await runAlt(altGridSameSize())
+  expect(bothWitnessed.result.origin).toEqual({ x: 4, y: 4 })
+  expect(bothWitnessed.result.alternateScreens?.["alternate-1049"]).toMatchObject({
+    status: "witnessed",
+    origin: { x: 1, y: 2 },
+    pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+  })
+  expect(bothWitnessed.result.alternateScreens?.["alternate-47"]).toMatchObject({
+    status: "witnessed",
+    origin: { x: 1, y: 2 },
+    pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+  })
+  expect(bothWitnessed.writes.some((w) => w.includes("\x1b[?1049h"))).toBe(true)
+  expect(bothWitnessed.writes.some((w) => w.includes("\x1b[?1049l"))).toBe(true)
+  expect(bothWitnessed.writes.some((w) => w.includes("\x1b[?47h"))).toBe(true)
+  expect(bothWitnessed.writes.some((w) => w.includes("\x1b[?47l"))).toBe(true)
+
+  // Mismatched alternate grid width -> alternate-47 stays unavailable with named reason while primary + 1049 succeed.
+  const mismatch = await runAlt(altGridWrongWidth())
+  expect(mismatch.result.alternateScreens?.["alternate-1049"]?.status).toBe("witnessed")
+  expect(mismatch.result.alternateScreens?.["alternate-47"]).toEqual({
+    status: "unavailable",
+    reason: "alternate-47 grid 9x8 at 1,2 differs from primary grid 8x8 at 4,4",
+  })
+})

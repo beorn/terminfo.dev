@@ -13,6 +13,7 @@ import {
   sentinelCellsInFrame,
   witnessProvesPitch,
   type PixelCellCrop,
+  type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
@@ -1759,6 +1760,7 @@ test("a frame dominated by an unobserved colour (including an unobserved R=1 tri
   expect(writes.writes).toEqual([])
 })
 
+
 test("landing-pose pairClearBeforePaint accepts calibrated dithered background and refuses an unobserved R=1 pixel at the landing pose (34480)", () => {
   const { paintClasses, makeFrame } = buildDitheredSentinelFixture()
   const cellSize = { width: 2, height: 6 }
@@ -1826,6 +1828,7 @@ test("readThroughSentinel refuses by name before choose when settled origin omit
   expect(writes.writes).toEqual([])
 })
 
+
 test("readThroughSentinel without settled origin qualifies dithered blank-cell failure with missing paintClasses diagnostic (34505)", async () => {
   const { sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
   const origin = { x: 2, y: 2 }
@@ -1847,4 +1850,140 @@ test("readThroughSentinel without settled origin qualifies dithered blank-cell f
     /no calibrated paintClasses were supplied to readThroughSentinel, so a dithered background is indistinguishable from ink/,
   )
   expect(writes.writes).toEqual([])
+})
+
+test("readThroughSentinel chooseOrigin recovers Warp +0,+560 px paint-witness reads across all 5 RIS SGR rows while still running full resolve() checks (#37701)", async () => {
+  // Exact Warp 45269053904 geometry: 8x16 cells, calibrated origin (17,46), post-RIS origin (17,606) = +35 rows (+560 px).
+  const cell = { width: 8, height: 16 }
+  const cols = 12
+  const rows = 4
+  const width = 160
+  const height = 680
+  const calibratedOrigin = { x: 17, y: 46 }
+  const movedOrigin = { x: 17, y: 606 }
+  const warpGeom = { cellWidth: 8, cellHeight: 16, textWidth: cols * 8, textHeight: rows * 16 }
+  const bg: [number, number, number] = [5, 5, 5]
+  const fg: [number, number, number] = [230, 230, 230]
+  const sentinelRgb: [number, number, number] = [255, 143, 253]
+  const pack = ([r, g, b]: readonly [number, number, number]) => (r << 16) | (g << 8) | b
+  const paintClasses = {
+    background: { anchor: bg, members: new Set([pack(bg)]) },
+    sentinel: { anchor: sentinelRgb, members: new Set([pack(sentinelRgb)]) },
+  }
+  const paintCell = (rgba: Uint8Array, origin: { x: number; y: number }, r: number, c: number, rgb: readonly [number, number, number]) => {
+    const x0 = origin.x + (c - 1) * cell.width
+    const y0 = origin.y + (r - 1) * cell.height
+    for (let y = y0; y < y0 + cell.height; y++) {
+      for (let x = x0; x < x0 + cell.width; x++) {
+        const offset = (y * width + x) * 4
+        rgba[offset] = rgb[0]
+        rgba[offset + 1] = rgb[1]
+        rgba[offset + 2] = rgb[2]
+        rgba[offset + 3] = 255
+      }
+    }
+  }
+  const blankFrame = () => {
+    const rgba = new Uint8Array(width * height * 4)
+    for (let offset = 0; offset < rgba.length; offset += 4) {
+      rgba[offset] = bg[0]
+      rgba[offset + 1] = bg[1]
+      rgba[offset + 2] = bg[2]
+      rgba[offset + 3] = 255
+    }
+    return rgba
+  }
+  const parsePaintedCells = (write: string) =>
+    [...write.matchAll(/\x1b\[(\d+);(\d+)H(?:\x1b\[0m)?\x1b\[45m /g)].map((m) => ({
+      row: Number(m[1]),
+      col: Number(m[2]),
+    }))
+
+  const fiveSgrRows = [
+    "sgr.bg.default",
+    "sgr.fg.default",
+    "sgr.selective-reset.inverse",
+    "sgr.selective-reset.italic",
+    "sgr.selective-reset.underline",
+  ] as const
+
+  for (const rowId of fiveSgrRows) {
+    // Witness glyph "2" sits at cell (1,1) of the moved post-RIS origin (17,606); calibrated (17,46) is blank.
+    const preRgba = blankFrame()
+    paintCell(preRgba, movedOrigin, 1, 1, fg)
+    const preFrame = { width, height, rgba: preRgba }
+
+    const runWitnessRead = (chooseOrigin?: { x: number; y: number }) => {
+      const writes: string[] = []
+      const src = { rows, cols, write: (text: string) => writes.push(text) } as unknown as TermProbeSource
+      return readThroughSentinel({
+        source: src,
+        settled: {
+          origin: calibratedOrigin,
+          basis: "collector complete witnessed raster",
+          basisKind: "calibration witnessed raster",
+          pixelGeometry: warpGeom,
+          paintClasses,
+        },
+        prePaint: async () => preFrame,
+        capture: async (resolve) => {
+          const painted = parsePaintedCells(writes[0] ?? "")
+          const afterRgba = new Uint8Array(preRgba)
+          for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+          return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+        },
+        label: `${rowId}: expected frame — paint witness`,
+        sentinel: { form: "basic", rgb: sentinelRgb },
+        regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+        reading: calibratedOrigin,
+        ...(chooseOrigin !== undefined ? { chooseOrigin } : {}),
+        cell,
+        deadline: Date.now() + 1_000,
+      })
+    }
+
+    // Old path (no chooseOrigin): picks (1,2)+(2,1) against blank (17,46) and fails pairClearBeforePaint at (17,606).
+    await expect(runWitnessRead(), `${rowId} old path`).rejects.toThrow(
+      /the frame moved after cells 1,2 and 2,1 were chosen at 17,46 — the pair landed 0,560 px from it/,
+    )
+
+    // New path (carried proved origin as chooseOrigin): avoids (1,1) -> picks (1,3)+(2,1) and proves +35 rows against (17,46).
+    const accepted = await runWitnessRead(movedOrigin)
+    expect(accepted.origin, rowId).toEqual(movedOrigin)
+    expect(accepted.acceptedRowMove, rowId).toEqual({ rows: 35, px: 560 })
+    expect(accepted.changedOutside, rowId).toBe(0)
+  }
+
+  // Full resolve() checks remain enforced even with chooseOrigin: a 1 px change outside the pair still refuses.
+  const noisyPre = blankFrame()
+  paintCell(noisyPre, movedOrigin, 1, 1, fg)
+  const writes: string[] = []
+  const src = { rows, cols, write: (text: string) => writes.push(text) } as unknown as TermProbeSource
+  await expect(
+    readThroughSentinel({
+      source: src,
+      settled: {
+        origin: calibratedOrigin,
+        basis: "collector complete witnessed raster",
+        basisKind: "calibration witnessed raster",
+        pixelGeometry: warpGeom,
+        paintClasses,
+      },
+      prePaint: async () => ({ width, height, rgba: noisyPre }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(writes[0] ?? "")
+        const afterRgba = new Uint8Array(noisyPre)
+        for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+        afterRgba[0] = 99
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: "sgr.bg.default: expected frame — paint witness",
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+      reading: calibratedOrigin,
+      chooseOrigin: movedOrigin,
+      cell,
+      deadline: Date.now() + 1_000,
+    }),
+  ).rejects.toThrow(SentinelFrameMoved)
 })

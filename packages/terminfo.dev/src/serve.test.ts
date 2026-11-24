@@ -779,9 +779,12 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         },
         capture: async (checkpoint, origin) => {
           assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
-          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
+          assert.ok(
+            grantedReadings.includes(origin) || origin.screenMode === "alternate-1049",
+            "every graded capture receives a reading this run installed",
+          )
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
-          capturedCheckpoints.push(checkpoint)
+          capturedCheckpoints.push({ ...checkpoint, origin })
           return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
             ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
         }
@@ -1032,9 +1035,12 @@ it("selects a witnessed reverse screen per read and drops it on preparation and 
         },
         capture: async (checkpoint, origin) => {
           assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
-          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
+          assert.ok(
+            grantedReadings.includes(origin) || origin.screenMode === "alternate-1049",
+            "every graded capture receives a reading this run installed",
+          )
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
-          capturedCheckpoints.push(checkpoint)
+          capturedCheckpoints.push({ ...checkpoint, origin })
           return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
             ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
         }
@@ -1048,21 +1054,30 @@ it("selects a witnessed reverse screen per read and drops it on preparation and 
       grantedReadings.push(stable)
       return stable
     }
-    // #34932 reverse seam: calibration returns a reverse witness only when the preparation asked for it.
+    // #34932 reverse seam & #37701 alternate screen seam: calibration returns mode witnesses only when asked.
     const calibrationModes = []
+    const calibrationScreenModes = []
     let reverseWitness
+    let alt1049Witness
     const normalClasses = { background: { anchor: [0, 0, 0], members: new Set([0]) },
       sentinel: { anchor: [255, 0, 255], members: new Set([0xff00ff]) } }
     const reverseClasses = { background: { anchor: [250, 250, 250], members: new Set([0xfafafa]) },
       sentinel: { anchor: [10, 20, 30], members: new Set([0x0a141e]) } }
+    const altClasses = { background: { anchor: [12, 12, 12], members: new Set([0x0c0c0c]) },
+      sentinel: { anchor: [200, 100, 200], members: new Set([0xc864c8]) } }
     const reverseSentinel = { form: "basic", rgb: [10, 20, 30] }
+    const altSentinel = { form: "basic", rgb: [200, 100, 200] }
     mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async options => {
       calibrations++
       calibrationModes.push(options.screenMode)
+      calibrationScreenModes.push(options.screenModes)
       if (calibrationFailure) throw calibrationFailure
       assert.strictEqual(await options.captureRaw("origin witness", Date.now() + 1000), decoded)
       const reading = { ...readingAt(grantedReadings.length + 1), paintClasses: normalClasses }
       if (options.screenMode === "reverse" && reverseWitness) reading.reverseScreen = reverseWitness
+      if (options.screenModes?.includes("alternate-1049") && alt1049Witness) {
+        reading.alternateScreens = { "alternate-1049": alt1049Witness }
+      }
       grantedReadings.push(reading)
       return reading
     } }))
@@ -1120,6 +1135,34 @@ it("selects a witnessed reverse screen per read and drops it on preparation and 
       await assert.rejects(() => options.capture({ ...guarded, screenMode: "reverse" }),
         error => unwitnessed(error) && error.message.includes("reverse screen mode ignored: fixture"))
       assert.equal(source.captureGeometry.reverseSentinel, undefined)
+      // #37701 alternate-1049 screen mode: live calibration installs alternateScreens and routes reads to alt origin/classes.
+      const altGuarded = { featureId: "modes.alt-screen.enter", role: "target", label: "alt read", pixelGeometry, layoutGuard: {} }
+      await assert.rejects(() => options.capture({ ...altGuarded, screenMode: "alternate-1049" }), unwitnessed)
+      alt1049Witness = {
+        status: "witnessed",
+        origin: { x: 1, y: 36 },
+        pixelGeometry,
+        sentinel: altSentinel,
+        paintClasses: altClasses,
+      }
+      await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.4",
+        row: "modes.alt-screen.enter", screenModes: ["alternate-1049"], recordCapture: () => {} })
+      assert.deepEqual(calibrationScreenModes.at(-1), ["alternate-1049"])
+      assert.deepEqual(source.captureGeometry.alternateScreens?.["alternate-1049"], {
+        status: "witnessed",
+        sentinel: altSentinel,
+        origin: { x: 1, y: 36 },
+      })
+      await options.capture({ ...altGuarded, screenMode: "alternate-1049" })
+      assert.equal("screenMode" in capturedCheckpoints.at(-1), false)
+      assert.strictEqual(capturedCheckpoints.at(-1).layoutGuardBackground, altClasses.background.members)
+      assert.deepEqual(capturedCheckpoints.at(-1).origin.origin, { x: 1, y: 36 })
+      assert.equal(capturedCheckpoints.at(-1).origin.screenMode, "alternate-1049")
+      // Renewal clears alternateScreens to unavailable so no stale alt witness survives.
+      const altRenewed = await source.renewCaptureGeometry("reset.sgr-0")
+      assert.equal(altRenewed.alternateScreens?.["alternate-1049"]?.status, "unavailable")
+      await assert.rejects(() => options.capture({ ...altGuarded, screenMode: "alternate-1049" }),
+        error => unwitnessed(error) && error.message.includes("not re-witnessed by an in-row renewal (reset.sgr-0)"))
       checked = true
       throw new Error("reverse seam fixture complete")
     } }))
@@ -1144,6 +1187,186 @@ it("selects a witnessed reverse screen per read and drops it on preparation and 
         TERMINFO_DISPOSABLE_RECEIPT: "",
         TERMINFO_TARGET_ID: "",
         TERMINFO_TARGET_VERSION: "",
+      },
+    },
+  )
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
+it("carries acceptedRowMove chooseOrigin within one probe only and resets on probe change, calibrated return, or prepareCapture (#37701)", () => {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-rowmove-"))
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      String.raw`
+import { mock } from "bun:test"
+import assert from "node:assert/strict"
+import { writeFileSync } from "node:fs"
+import { join } from "node:path"
+Object.defineProperty(process, "platform", { value: "linux" })
+const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+const tty = await import("./packages/terminfo.dev/src/tty.ts")
+const linux = await import("./packages/terminfo.dev/src/linux-capture.ts")
+const sentinelRead = await import("./packages/terminfo.dev/src/sentinel-read.ts")
+const provenance = {
+  executable: { path: "/usr/bin/warp", sha256: "e".repeat(64), version: "warp 0.2026" },
+  sourceArtifact: { url: "https://example.invalid/warp.tar", sha256: "f".repeat(64) },
+  runtime: {
+    imageId: "sha256:" + "1".repeat(64),
+    imageTarSha256: "2".repeat(64),
+    arch: "amd64",
+    nixLockRevision: "3".repeat(40),
+    sourceRevision: "b".repeat(40),
+    cleanTree: true,
+    suiteHash: "a".repeat(12),
+  },
+  fixture: { definition: "fixture", config: "--config NONE", font: "DejaVu Sans Mono | /fixture/dejavu.ttf", geometry: "123x39", display: "fixture", gl: "fixture" },
+}
+writeFileSync(process.env.TERMINFO_RUNTIME_PROVENANCE, JSON.stringify(provenance))
+globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+  manifest: {
+    schemaVersion: 4,
+    catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(),
+    probeHash: "a".repeat(12),
+    probes: { term: unified.ALL_PROBES.map(probe => probe.id).sort(), mux: [], lib: [] },
+  },
+  collectorRevision: "b".repeat(40),
+}
+const pixelGeometry = { cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 624 }
+const calibratedOrigin = { x: 17, y: 46 }
+const movedOrigin = { x: 17, y: 606 }
+const normalClasses = {
+  background: { anchor: [5, 5, 5], members: new Set([0x050505]) },
+  sentinel: { anchor: [255, 143, 253], members: new Set([0xff8ffd]) },
+}
+const decoded = { width: 1024, height: 674, rgba: new Uint8Array(1024 * 674 * 4) }
+const raw = { frame: { kind: "pixels", role: "control", label: "raw", capturedAt: 1, ref: "sha256:" + "0".repeat(64) }, trace: {} }
+const calls = []
+let nextCrop = { origin: calibratedOrigin }
+mock.module("./packages/terminfo.dev/src/sentinel-read.ts", () => ({
+  ...sentinelRead,
+  readThroughSentinel: async (input) => {
+    calls.push({ label: input.label, reading: input.reading, chooseOrigin: input.chooseOrigin })
+    return {
+      frame: {
+        kind: "pixels",
+        role: "control",
+        label: input.label,
+        capturedAt: 2,
+        ref: "sha256:" + "a".repeat(64),
+        cellCrop: {
+          origin: nextCrop.origin,
+          cell: { width: 8, height: 16 },
+          image: { width: 1024, height: 674 },
+          ...(nextCrop.acceptedRowMove !== undefined ? { acceptedRowMove: nextCrop.acceptedRowMove } : {}),
+        },
+      },
+      trace: {},
+    }
+  },
+}))
+mock.module("./packages/terminfo.dev/src/tty.ts", () => ({
+  ...tty,
+  withRawMode: async fn => fn(),
+  drainStdin: async () => {},
+  queryOutcome: async () => ({ reason: "reply", match: ["\x1b[6n", "1", "1"], raw: "\x1b[1;1R", rawBase64: "" }),
+  queryWithSentinelOutcome: async () => ({ reason: "sentinel", match: null, raw: "\x1b[?1;2c", rawBase64: "" }),
+  withTTYOperation: async fn => fn(),
+}))
+mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+  detectTerminal: async () => ({ name: "warp", version: "0.2026", os: "linux", osVersion: "6.0" }),
+}))
+mock.module("./packages/terminfo.dev/src/linux-input.ts", () => ({ createLinuxInput: async () => undefined }))
+mock.module("./packages/terminfo.dev/src/linux-capture.ts", () => ({
+  ...linux,
+  createLinuxCapture: async () => ({
+    declareWindowSize: () => {},
+    captureRaw: async () => ({ result: raw, decoded }),
+    capture: async () => { throw new Error("readThroughSentinel mocked") },
+  }),
+}))
+mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+  calibrateCaptureOrigin: async () => ({
+    origin: calibratedOrigin,
+    basis: "collector complete witnessed raster",
+    basisKind: "calibration witnessed raster",
+    pixelGeometry,
+    sentinel: { form: "basic", rgb: [255, 143, 253] },
+    paintClasses: normalClasses,
+  }),
+}))
+let checked = false
+mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({
+  ...unified,
+  runProbeBatch: async (options) => {
+    const source = { kind: "live", rows: 39, cols: 123, write: () => {} }
+    await options.prepareCapture({ source, featureId: "collector.captureCalibration", recordCapture: () => {} })
+    const read = (featureId, label) =>
+      options.capture({
+        featureId,
+        role: "control",
+        label,
+        cells: { top: 1, left: 1, bottom: 1, right: 1 },
+        pixelGeometry,
+      })
+    // 1. A probe that never proved a move gets no chooseOrigin.
+    nextCrop = { origin: calibratedOrigin }
+    await read("sgr.bold", "no-move-1")
+    await read("sgr.bold", "no-move-2")
+    assert.equal(calls[0].chooseOrigin, undefined)
+    assert.equal(calls[1].chooseOrigin, undefined)
+    // 2. Proved acceptedRowMove carries chooseOrigin into subsequent reads of the SAME probe, while reading stays calibrated.
+    nextCrop = { origin: movedOrigin, acceptedRowMove: { rows: 35, px: 560 } }
+    await read("sgr.bg.default", "baseline")
+    assert.equal(calls[2].chooseOrigin, undefined)
+    await read("sgr.bg.default", "paint-witness")
+    assert.deepEqual(calls[3].reading, calibratedOrigin)
+    assert.deepEqual(calls[3].chooseOrigin, movedOrigin)
+    // 3. Probe change resets carried origin.
+    nextCrop = { origin: calibratedOrigin }
+    await read("sgr.fg.default", "next-probe")
+    assert.equal(calls[4].chooseOrigin, undefined)
+    // 4. Read returning back to calibrated origin resets carried origin within the same probe.
+    nextCrop = { origin: movedOrigin, acceptedRowMove: { rows: 35, px: 560 } }
+    await read("sgr.fg.default", "moved")
+    nextCrop = { origin: calibratedOrigin }
+    await read("sgr.fg.default", "returned-to-calibrated")
+    assert.deepEqual(calls[6].chooseOrigin, movedOrigin)
+    await read("sgr.fg.default", "after-return")
+    assert.equal(calls[7].chooseOrigin, undefined)
+    // 5. prepareCapture resets carried origin even for the same probe id.
+    nextCrop = { origin: movedOrigin, acceptedRowMove: { rows: 35, px: 560 } }
+    await read("sgr.fg.default", "moved-again")
+    await options.prepareCapture({ source, featureId: "collector.captureCalibration.renewal.1", row: "sgr.fg.default", recordCapture: () => {} })
+    await read("sgr.fg.default", "after-prepare")
+    assert.equal(calls[9].chooseOrigin, undefined)
+    checked = true
+    throw new Error("rowmove fixture complete")
+  },
+}))
+const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+await collectProbeRun({ ids: ["sgr.bg.default"] }).catch((error) => { if (!checked) throw error })
+assert.equal(checked, true)
+`,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        FONT_CONTROL_PROOF_STATE: "absent",
+        HOME: home,
+        TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+        TERMINFO_RUNTIME_PROVENANCE: join(home, "runtime.json"),
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        TERMINFO_DISPOSABLE_RECEIPT: "",
+        TERMINFO_TARGET_ID: "",
+        TERMINFO_TARGET_VERSION: "",
+        TERMINFO_PROBE_HASH: "a".repeat(12),
+        TERMINFO_SOURCE_REVISION: "b".repeat(40),
       },
     },
   )
@@ -1320,6 +1543,7 @@ for (const [id, expected] of [["sgr.fg.default", 57], ["sgr.bg.default", 597]]) 
   expect(result.error, result.stderr).toBeUndefined()
   expect(result.status, result.stderr).toBe(0)
 })
+
 
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,

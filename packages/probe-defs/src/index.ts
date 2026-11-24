@@ -52,6 +52,8 @@ export type {
   CaptureRectangle,
   CaptureRenderingAxes,
   CaptureRequest,
+  AlternateScreenMode,
+  CaptureScreenMode,
   DeclaredViewportHold,
   ViewportScroll,
   ViewportStep,

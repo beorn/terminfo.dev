@@ -16,6 +16,7 @@ import {
   captureRegionGeometry,
   captureRegionCallbackResult,
   colourOnlyAttempts,
+  cropPositionRefusal,
   queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
@@ -3047,4 +3048,74 @@ test("a grid that moves 35 rows between the seed and the expected frame is decid
   // Decided, not refused: the exemption turns what used to be a tool-invalid row into a verdict.
   expect(result.observation.outcome).toBe("supported")
   expect(JSON.stringify(result.observation)).not.toMatch(/cropped from different positions/)
+})
+
+test("calibratedScreenModeExemption accepts Warp primary vs calibrated alternate-screen (-16,-10 px) and refuses cell/grid/uncalibrated mismatches (#37701)", () => {
+  const primaryCrop = (origin: { x: number; y: number }): PixelCellCrop => ({
+    origin,
+    basis: "calibration witnessed raster",
+    cell: { width: 8, height: 16 },
+    grid: { columns: 123, rows: 39 },
+    image: { width: 1024, height: 674 },
+    witness: {
+      a: { cell: { row: 2, col: 2 }, box: { x: origin.x + 8, y: origin.y + 16 } },
+      b: { cell: { row: 3, col: 1 }, box: { x: origin.x, y: origin.y + 32 } },
+    },
+  })
+  const altCrop = (
+    origin: { x: number; y: number },
+    overrides: Partial<PixelCellCrop> = {},
+  ): PixelCellCrop => ({
+    ...primaryCrop(origin),
+    screenMode: "alternate-1049",
+    ...overrides,
+  })
+  const warpCompared = [
+    { role: "the seed frame", rectangle: { x: 1, y: 36, width: 56, height: 16 }, crop: altCrop({ x: 1, y: 36 }) },
+    { role: "the post-sequence frame", rectangle: { x: 17, y: 46, width: 56, height: 16 }, crop: primaryCrop({ x: 17, y: 46 }) },
+    { role: "the expected frame", rectangle: { x: 17, y: 46, width: 56, height: 16 }, crop: primaryCrop({ x: 17, y: 46 }) },
+    { role: "the ignored-attribute frame", rectangle: { x: 1, y: 36, width: 56, height: 16 }, crop: altCrop({ x: 1, y: 36 }) },
+  ]
+  // New path: both modes calibrated with identical 8x16 cell and 123x39 grid -> accepted.
+  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: warpCompared, response: "{}", frames: [] })).toBeNull()
+
+  // Old path: without screenMode on the alternate frames, -16,-10 px is refused by name.
+  const unmodeled = warpCompared.map((entry) => ({
+    ...entry,
+    crop: { ...entry.crop, screenMode: undefined },
+  }))
+  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: unmodeled, response: "{}", frames: [] })?.tests?.[0]).toMatchObject({
+    status: "probe-invalid",
+    reason: expect.stringContaining("Compared frames were cropped from different positions"),
+  })
+
+  // Refuses when cell size differs between primary and alternate screen.
+  const diffCell = [
+    {
+      ...warpCompared[0]!,
+      crop: altCrop({ x: 1, y: 36 }, {
+        cell: { width: 9, height: 16 },
+        witness: {
+          a: { cell: { row: 2, col: 2 }, box: { x: 1 + 9, y: 36 + 16 } },
+          b: { cell: { row: 3, col: 1 }, box: { x: 1, y: 36 + 32 } },
+        },
+      }),
+    },
+    ...warpCompared.slice(1),
+  ]
+  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffCell, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
+
+  // Refuses when grid dimensions differ between primary and alternate screen.
+  const diffGrid = [
+    { ...warpCompared[0]!, crop: altCrop({ x: 1, y: 36 }, { grid: { columns: 125, rows: 39 } }) },
+    ...warpCompared.slice(1),
+  ]
+  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffGrid, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
+
+  // Refuses when one side is uncalibrated (no basis or no witness).
+  const uncalibrated = [
+    { ...warpCompared[0]!, crop: altCrop({ x: 1, y: 36 }, { basis: undefined }) },
+    ...warpCompared.slice(1),
+  ]
+  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: uncalibrated, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
 })
