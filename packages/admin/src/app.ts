@@ -269,6 +269,7 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
           typeof request.nonce !== "string" || !/^[a-f0-9-]{36}$/.test(request.nonce) ||
           typeof request.featureId !== "string" || typeof request.phase !== "string" ||
           (request.expectedCwd !== undefined && typeof request.expectedCwd !== "string") ||
+          (request.publishAtDeadline !== undefined && typeof request.publishAtDeadline !== "boolean") ||
           (request.awaitEvent !== undefined && request.awaitEvent !== "start" && request.awaitEvent !== "end") ||
           !Number.isFinite(request.requestedAt) || !Number.isFinite(request.deadline) ||
           request.deadline <= request.requestedAt) {
@@ -312,10 +313,17 @@ ${prefix === "cursor" ? '  await vscode.commands.executeCommand("workbench.actio
       fs.appendFileSync(join(directory, "editor-evaluations.jsonl"), JSON.stringify(reply) + "\\n", { mode: 0o600 });
       if (request.expectedCwd !== undefined &&
           (!reply.terminal.shellIntegrationCwd.present || reply.terminal.shellIntegrationCwd.value !== request.expectedCwd)) {
-        // The existing deadline-bounded interval or API event will evaluate the native object again.
-        // An unchanged cached value must not complete a known-state phase.
-        lastRequest = undefined;
-        return;
+        // #37240 (@cto 4d841f19): only an explicit target read opting into publishAtDeadline may
+        // publish an unchanged CWD at the deadline bound, marked cwdAtDeadline: true so it is
+        // never passed off as a change event. Controls and restoration keep strict refusal.
+        if (request.publishAtDeadline === true && Date.now() >= request.deadline - 300) {
+          reply.cwdAtDeadline = true;
+        } else {
+          // The existing deadline-bounded interval or API event will evaluate the native object again.
+          // An unchanged cached value must not complete a known-state phase.
+          lastRequest = undefined;
+          return;
+        }
       }
       if (reply.awaitedEvent && !reply.awaitedEvent.met && Date.now() < request.deadline - 300) {
         // 34685: a phase awaiting a native execution event holds until it arrives or the deadline nears, then

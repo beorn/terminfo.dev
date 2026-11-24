@@ -2440,6 +2440,7 @@ type NativeEditorReply = Pick<NativeEditorActivation, "runId" | "activationNonce
   executionApi?: Partial<Record<"start" | "end", { present: boolean; reason?: string }>>
   executions?: NativeExecutionFact[]
   awaitedEvent?: { kind: string; met: boolean }
+  cwdAtDeadline?: boolean
 }
 
 /** One native execution event as the 34666 observer publishes it: digests only, never command text. */
@@ -2574,9 +2575,9 @@ async function createNativeEditorExchange(input: {
   const availability: { reason?: string } = {}
   const exchange = async (
     phase: string,
-    options: { expectedCwd?: string; awaitEvent?: "start" | "end"; deadlineMs?: number } = {},
+    options: { expectedCwd?: string; publishAtDeadline?: boolean; awaitEvent?: "start" | "end"; deadlineMs?: number } = {},
   ): Promise<NativeEditorReply> => {
-    const { expectedCwd, awaitEvent } = options
+    const { expectedCwd, publishAtDeadline, awaitEvent } = options
     const current = statSync(activationPath)
     if (
       current.dev !== activationIdentity.dev ||
@@ -2607,6 +2608,7 @@ async function createNativeEditorExchange(input: {
       requestedAt,
       deadline: requestedAt + (options.deadlineMs ?? 4500),
       ...(expectedCwd === undefined ? {} : { expectedCwd }),
+      ...(publishAtDeadline ? { publishAtDeadline: true } : {}),
       ...(awaitEvent === undefined ? {} : { awaitEvent }),
     }
     const temporary = `${activation.requestPath}.${nonce}.tmp`
@@ -3088,7 +3090,8 @@ async function readNativeEditorState(input: {
   let reading: AppSemanticReading | undefined
   try {
     const original = await sample("initial")
-    if (input.featureId !== "extensions.osc633-p") {
+    const isOsc7 = input.featureId === "extensions.osc7-cwd"
+    if (input.featureId !== "extensions.osc633-p" && !isOsc7) {
       availability.reason = "Native editor API supplies no typed observable for this row"
       throw new Error(availability.reason)
     }
@@ -3103,7 +3106,9 @@ async function readNativeEditorState(input: {
       detail.restoration = { scope: "measured fixture baseline", reason: "Initial native API CWD was absent" }
     }
     const unknownBefore = await sample("unknown-before")
-    input.write(osc(`9999;Cwd=/terminfo-unknown-${randomUUID()}`))
+    input.write(
+      osc(isOsc7 ? `9999;file://localhost/terminfo-unknown-${randomUUID()}` : `9999;Cwd=/terminfo-unknown-${randomUUID()}`),
+    )
     const unknownAfter = await sample("unknown-after")
     const handledBefore = await sample("handled-before")
     const handled = `/terminfo-control-${randomUUID()}`
@@ -3112,9 +3117,24 @@ async function readNativeEditorState(input: {
     const handledAfter = await sample("handled-after", handledExpected)
     const targetBefore = await sample("target-before")
     const target = `/terminfo-target-${randomUUID()}`
-    input.write(osc(`633;P;Cwd=${target}`))
     const targetExpected = pathToFileURL(target).toString()
-    const targetAfter = await sample("target-after", targetExpected)
+    let targetAfter: string | undefined
+    if (isOsc7) {
+      input.write(osc(`7;file://localhost${target}`))
+      // #37240 (@cto 4d841f19): only the OSC 7 target sample opts into publishAtDeadline; controls
+      // and restoration keep strict expectedCwd refusal. Matching targetExpected decides supported;
+      // an unchanged value at deadline stays probe-todo (unavailable) with the exact unproven note.
+      const reply = await exchange("target-after", { expectedCwd: targetExpected, publishAtDeadline: true })
+      const cwd = reply.terminal.shellIntegrationCwd
+      if (!cwd.present || cwd.value !== targetExpected) {
+        availability.reason = "OSC 7 did not reach shellIntegration.cwd; whether the editor tracks it elsewhere is unproven"
+        throw new Error(availability.reason)
+      }
+      targetAfter = cwd.value
+    } else {
+      input.write(osc(`633;P;Cwd=${target}`))
+      targetAfter = await sample("target-after", targetExpected)
+    }
     detail.captures.push({ phase: "target", observation: await input.editor.capture(input.featureId, "target") })
     captured = true
     if (

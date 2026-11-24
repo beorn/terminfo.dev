@@ -1808,6 +1808,49 @@ test.each(["vscode", "cursor"] as const)(
         "file:///native/before-delivery",
         delayed.expectedCwd,
       ])
+      // #37240 (@cto 4d841f19): only a target request explicitly opting into publishAtDeadline may
+      // publish an unchanged CWD near the deadline, marked cwdAtDeadline: true. A control without
+      // publishAtDeadline must keep refusing even inside the deadline-300ms window.
+      nativeCwd = "file:///native/unchanged"
+      const now = Date.now()
+      const strictControl = {
+        runId: "private-run",
+        featureId: "extensions.osc7-cwd",
+        phase: "handled-after",
+        activationNonce: activation.activationNonce,
+        nonce: randomUUID(),
+        requestedAt: now - 4400,
+        deadline: now + 100,
+        expectedCwd: "file:///native/never-arrived",
+      }
+      fs.writeFileSync(activation.requestPath, JSON.stringify(strictControl))
+      await intervals[0]!()
+      expect(
+        fs.existsSync(join(activation.replyDirectory, `${strictControl.nonce}.json`)),
+        "controls without publishAtDeadline must never publish an unchanged CWD",
+      ).toBe(false)
+
+      const deadlineTarget = {
+        runId: "private-run",
+        featureId: "extensions.osc7-cwd",
+        phase: "target-after",
+        activationNonce: activation.activationNonce,
+        nonce: randomUUID(),
+        requestedAt: now - 4400,
+        deadline: now + 100,
+        expectedCwd: "file:///native/never-arrived",
+        publishAtDeadline: true,
+      }
+      fs.writeFileSync(activation.requestPath, JSON.stringify(deadlineTarget))
+      await intervals[0]!()
+      const deadlinePath = join(activation.replyDirectory, `${deadlineTarget.nonce}.json`)
+      await vi.waitFor(() => expect(fs.existsSync(deadlinePath)).toBe(true))
+      expect(JSON.parse(fs.readFileSync(deadlinePath, "utf8"))).toMatchObject({
+        nonce: deadlineTarget.nonce,
+        phase: "target-after",
+        cwdAtDeadline: true,
+        terminal: { shellIntegrationCwd: { present: true, value: "file:///native/unchanged" } },
+      })
       if (prefix === "cursor") {
         rejectPanel = true
         await expect(exported.activate!({ subscriptions: [] })).rejects.toThrow("panel command failed")
