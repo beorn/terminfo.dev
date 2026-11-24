@@ -43,10 +43,7 @@ import {
   basisScopeAdmits,
   basisScopeRefusal,
 } from "@terminfo/probe-defs"
-import {
-  WEZTERM_LINUX_POINTER_IMAGE_VERSIONS,
-  WEZTERM_LINUX_SYNC_OUTPUT_VERSIONS,
-} from "../wezterm-linux-reviewed.ts"
+import { WEZTERM_LINUX_POINTER_IMAGE_VERSIONS, WEZTERM_LINUX_SYNC_OUTPUT_VERSIONS } from "../wezterm-linux-reviewed.ts"
 
 import {
   MutationRestoreRefused,

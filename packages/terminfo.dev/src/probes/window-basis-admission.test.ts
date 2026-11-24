@@ -20,7 +20,7 @@ const WINDOW_CELLS = Object.entries(TERM_FOOTPRINTS)
 
 describe("window basis admission (#34148)", () => {
   test("every window cell lands in exactly one bucket, and the report adds up", () => {
-    expect(WINDOW_CELLS.length).toBe(18)
+    expect(WINDOW_CELLS.length).toBe(22)
     for (const id of WINDOW_CELLS) {
       const buckets = [
         WINDOW_BASIS_RULING_EXCLUSIONS[id] !== undefined,
@@ -33,7 +33,7 @@ describe("window basis admission (#34148)", () => {
       Object.keys(WINDOW_BASIS_PRE_SEED).length +
         Object.keys(WINDOW_BASIS_UNCLASSIFIABLE).length +
         Object.keys(WINDOW_BASIS_RULING_EXCLUSIONS).length,
-    ).toBe(18)
+    ).toBe(22)
   })
 
   test("an admitted cell carries the pre-seed derived from its trace", () => {

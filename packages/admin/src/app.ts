@@ -71,6 +71,11 @@ import {
   stopWitnessResponder,
   type WitnessRegistration,
 } from "../../terminfo.dev/src/witness-window.ts"
+import {
+  snapshotTerminalAppPlist,
+  verifyTerminalAppPlistIsolation,
+  type TerminalAppPlistSnapshot,
+} from "./terminal-app-plist.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 
@@ -593,6 +598,8 @@ export interface AppLaunch {
   /** Read-only witness window B for Terminal.app window-scoped ownership (#34080 Slice 2). */
   witnessWindow?: TerminalAppWindow
   witnessRegistrationPath?: string
+  /** Pre-launch key-level snapshot of com.apple.Terminal.plist (@cto 03d0efca). */
+  terminalAppPlistBefore?: TerminalAppPlistSnapshot
   /** The owned iTerm2 launch record, resolved into its window once the daemon registers. */
   iterm2?: Iterm2Launch
   identityPath?: string
@@ -807,6 +814,7 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
   }
 
   if (app.id === "terminal-app") {
+    const terminalAppPlistBefore = process.platform === "darwin" ? snapshotTerminalAppPlist() : undefined
     const terminalWindow = launchTerminalWindow(run.scriptPath)
     const witnessScriptPath = join(run.directory, `witness-${run.id}.sh`)
     const witnessRegistrationPath = join(run.directory, "witness.json")
@@ -826,7 +834,13 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
       closeOwnedTerminalWindow(terminalWindow)
       throw error
     }
-    return { proc: null, terminalWindow, witnessWindow, witnessRegistrationPath }
+    return {
+      proc: null,
+      terminalWindow,
+      witnessWindow,
+      witnessRegistrationPath,
+      ...(terminalAppPlistBefore !== undefined && { terminalAppPlistBefore }),
+    }
   }
 
   throw new Error(`${app.name} requires manually starting the probe server`)
@@ -1457,6 +1471,13 @@ async function runApp(
                 })
               }
               captured.rawReplies["collector.witnessWindowDisposal"] = witnessProof
+            }
+            if (capturedLaunch.terminalAppPlistBefore !== undefined) {
+              const plistReceipt = verifyTerminalAppPlistIsolation(
+                capturedLaunch.terminalAppPlistBefore,
+                snapshotTerminalAppPlist(),
+              )
+              captured.rawReplies["collector.terminalAppPlistIsolation"] = JSON.stringify(plistReceipt)
             }
             captured.rawReplies["collector.workerStderr"] = readFileSync(
               join(run.directory, "worker.stderr.log"),

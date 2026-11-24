@@ -54,6 +54,14 @@ export const WINDOW_BASIS_RESTORE_TARGET: Readonly<Record<string, Readonly<Recor
 }
 
 export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {
+  "extensions.osc104-reset-palette":
+    "write not on a closed list: 6 of 209 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
+  "extensions.osc110-reset-fg":
+    "cleanup target not derivable: the cell's last write to osc:10 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
+  "extensions.osc111-reset-bg":
+    "cleanup target not derivable: the cell's last write to osc:11 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
+  "extensions.osc112-reset-cursor":
+    'write not on a closed list: 69 of 175 retained writes refuse because CSI is on no closed list: "\\u001b[2 q"',
   "extensions.osc22-pointer":
     "cleanup target not derivable: the cell's last write to osc:22 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
   "extensions.reflow":

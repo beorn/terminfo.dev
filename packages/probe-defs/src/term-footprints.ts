@@ -57,12 +57,15 @@ export const TERM_FOOTPRINTS: Readonly<Record<string, TermFootprint>> = {
   "modes.utf8-mouse-1005": "window",
   "extensions.osc22-pointer": "window",
 
-  // App-instance: colour/cursor/highlight tables that may be shared across windows. Refused until
-  // the OSC 4 cross-window read measures them.
-  "extensions.osc104-reset-palette": "app-instance",
-  "extensions.osc110-reset-fg": "app-instance",
-  "extensions.osc111-reset-bg": "app-instance",
-  "extensions.osc112-reset-cursor": "app-instance",
+  // Window-confined colour resets (@cto 03d0efca, #34080): live Terminal.app 2.15 Window A/B/C + plist XML diff
+  // proved OSC 4/10/11/12 mutate strictly per-window with exact restoration via 104/110/111/112 and zero profile
+  // writes (other Terminal.app versions do not inherit without their own reading).
+  "extensions.osc104-reset-palette": "window",
+  "extensions.osc110-reset-fg": "window",
+  "extensions.osc111-reset-bg": "window",
+  "extensions.osc112-reset-cursor": "window",
+
+  // App-instance: pointer/highlight tables that may be shared across windows.
   "extensions.osc113-reset-pointer-fg": "app-instance",
   "extensions.osc114-reset-pointer-bg": "app-instance",
   "extensions.osc117-reset-highlight-bg": "app-instance",

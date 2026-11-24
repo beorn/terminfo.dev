@@ -30,13 +30,13 @@ const WINDOW = [
   "modes.mouse-all",
   "modes.utf8-mouse-1005",
   "extensions.osc22-pointer",
-] as const
-
-const APP_INSTANCE = [
   "extensions.osc104-reset-palette",
   "extensions.osc110-reset-fg",
   "extensions.osc111-reset-bg",
   "extensions.osc112-reset-cursor",
+] as const
+
+const APP_INSTANCE = [
   "extensions.osc113-reset-pointer-fg",
   "extensions.osc114-reset-pointer-bg",
   "extensions.osc117-reset-highlight-bg",
@@ -64,14 +64,14 @@ describe("term footprints (#34148)", () => {
     }
   })
 
-  test("the split is 18 window / 8 app-instance / 1 machine = 27", () => {
-    expect(WINDOW.length).toBe(18)
-    expect(APP_INSTANCE.length).toBe(8)
+  test("the split is 22 window / 4 app-instance / 1 machine = 27", () => {
+    expect(WINDOW.length).toBe(22)
+    expect(APP_INSTANCE.length).toBe(4)
     expect(MACHINE.length).toBe(1)
     expect(WINDOW.length + APP_INSTANCE.length + MACHINE.length).toBe(27)
   })
 
-  test("a window basis admits the 18 and refuses the 8 + 1 by name", () => {
+  test("a window basis admits the 22 and refuses the 4 + 1 by name", () => {
     for (const id of WINDOW) expect(basisScopeAdmits("window", id), `${id} is admitted`).toBe(true)
     for (const id of [...APP_INSTANCE, ...MACHINE]) {
       expect(basisScopeAdmits("window", id), `${id} is refused`).toBe(false)
