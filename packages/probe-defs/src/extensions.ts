@@ -6794,6 +6794,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           const bleed = samples.filter((sample) => sample.phase.startsWith("bleed-"))
           let positiveChanged = false
           let changed = 0
+          const bleedColumns: number[] = []
           for (const sample of [...bleed, ...target, ...positive]) {
             const control = [...first, ...second].find((entry) => entry.column === sample.column)
             if (!control) {
@@ -6823,13 +6824,8 @@ const extensionDefinitions: ProbeDefinition[] = [
             })
             if (moved) return moved
             if (sample.phase.startsWith("bleed-")) {
-              if (sample.digest !== control.digest) {
-                return finish(
-                  "inconclusive",
-                  "Underscore neighbour changed same-cell pixels at column " +
-                    sample.column +
-                    "; glyph bleed is not shaping evidence",
-                )
+              if (sample.digest !== control.digest && !bleedColumns.includes(sample.column)) {
+                bleedColumns.push(sample.column)
               }
             } else if (sample.phase === "positive") positiveChanged = sample.digest !== control.digest
             else if (sample.digest !== control.digest) changed++
@@ -6837,12 +6833,33 @@ const extensionDefinitions: ProbeDefinition[] = [
           if (!positiveChanged) {
             return finish("inconclusive", "Changed-character positive control did not change the same-cell pixels")
           }
-          return changed
-            ? finish("supported", "Contiguous operators changed " + changed + " of ten same-cell character digests")
-            : finish(
-                "unsupported",
-                "All ten same-cell character digests matched isolated controls; changed-character control changed",
-              )
+          // #37240 (@cto 3cd2c588): neighbouring overhang can only add pixels and fake a positive
+          // ("supported"), never cancel shaping byte-for-byte across all 10 operator cells.
+          // Keep the bleed refusal whenever any operator cell changed; at 0/10 with a moving
+          // positive control, record the bleed columns inline and decide unsupported.
+          if (changed > 0 && bleedColumns.length > 0) {
+            return finish(
+              "inconclusive",
+              "Underscore neighbour changed same-cell pixels at column " +
+                bleedColumns[0] +
+                "; glyph bleed is not shaping evidence",
+            )
+          }
+          if (changed > 0) {
+            return finish("supported", "Contiguous operators changed " + changed + " of ten same-cell character digests")
+          }
+          if (bleedColumns.length > 0) {
+            return finish(
+              "unsupported",
+              "0/10 operator cells differ from isolated controls; positive control changed; bleed controls tripped (cols " +
+                bleedColumns.join(", ") +
+                "), which cannot produce a false negative",
+            )
+          }
+          return finish(
+            "unsupported",
+            "All ten same-cell character digests matched isolated controls; changed-character control changed",
+          )
         } finally {
           endCaptureLifecycle(ctx)
         }

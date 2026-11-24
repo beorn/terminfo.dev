@@ -108,7 +108,11 @@ export function withAppSemanticObservation(definition: ProbeDefinition): ProbeDe
         const reading = await ctx.readAppSemanticState(definition.id, ctx.write)
         if (
           (definition.id === "extensions.osc7-cwd" || definition.id === "extensions.osc8") &&
-          reading.status === "unavailable"
+          reading.status === "unavailable" &&
+          !(
+            definition.id === "extensions.osc7-cwd" &&
+            reading.reason.startsWith("OSC 7 did not reach shellIntegration.cwd")
+          )
         ) {
           return term(ctx)
         }

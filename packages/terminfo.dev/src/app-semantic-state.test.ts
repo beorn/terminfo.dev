@@ -304,6 +304,162 @@ test.each([
   15_000,
 )
 
+// Requirement (#37240, @cto 4d841f19): native editors read extensions.osc7-cwd via the same live
+// terminal.shellIntegration.cwd API that proves extensions.osc633-p. Controls (baseline, handled
+// 633;P;Cwd, restore) keep strict expectedCwd refusal without publishAtDeadline; only the OSC 7
+// target sample opts into publishAtDeadline. Matching target grades supported; unchanged at
+// deadline stays probe-todo with the exact unproven note (and is not overwritten by title fallback).
+test.each(["osc7-supported", "osc7-unchanged-at-deadline", "osc7-control-unchanged"] as const)(
+  "native editor extensions.osc7-cwd via shellIntegration.cwd (%s)",
+  async (mode) => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-editor-osc7-"))
+    const captureRoot = mkdtempSync(join(tmpdir(), "terminfo-editor-osc7-capture-"))
+    const capture = join(captureRoot, "nested")
+    mkdirSync(capture, { recursive: true })
+    const runId = "2".repeat(32)
+    const activationNonce = "11111111-1111-4111-8111-111111111111"
+    const requestPath = join(directory, "editor-request.json")
+    const replyDirectory = join(directory, "editor-replies")
+    mkdirSync(replyDirectory, { recursive: true })
+    const app = { name: "Visual Studio Code", version: "1.147.0" }
+    writeFileSync(
+      join(directory, "editor-activation.json"),
+      JSON.stringify({
+        runId,
+        activationNonce,
+        extensionPid: process.pid,
+        activatedAt: Date.now() - 10,
+        app,
+        requestPath,
+        replyDirectory,
+      }),
+    )
+    const original = "file:///native-editor-initial"
+    let nativeCwd = original
+    let sequence = 0
+    const answered = new Set<string>()
+    const seenRequests: Array<{ phase: string; publishAtDeadline?: boolean; expectedCwd?: string }> = []
+    const writes: string[] = []
+    vi.stubEnv("TERMINFO_RUN_ID", runId)
+    vi.stubEnv("TERMINFO_TARGET_ID", "com.microsoft.VSCode")
+    vi.stubEnv("TERMINFO_MUX_KIND", "")
+    vi.stubEnv("TERMINFO_CAPTURE_DIRECTORY", capture)
+    vi.stubEnv("TERMINFO_EDITOR_RUN_DIRECTORY", directory)
+    const producer = setInterval(() => {
+      if (!existsSync(requestPath)) return
+      const request = JSON.parse(readFileSync(requestPath, "utf8")) as {
+        nonce: string
+        phase: string
+        expectedCwd?: string
+        publishAtDeadline?: boolean
+        [key: string]: unknown
+      }
+      if (answered.has(request.nonce)) return
+      seenRequests.push({
+        phase: request.phase,
+        publishAtDeadline: request.publishAtDeadline,
+        expectedCwd: request.expectedCwd,
+      })
+      const mismatch = request.expectedCwd !== undefined && request.expectedCwd !== nativeCwd
+      if (mismatch && !request.publishAtDeadline && mode !== "osc7-control-unchanged") return
+      answered.add(request.nonce)
+      writeFileSync(
+        join(replyDirectory, `${request.nonce}.json`),
+        JSON.stringify({
+          ...request,
+          activationNonce,
+          extensionPid: process.pid,
+          app,
+          evaluatedAt: Date.now(),
+          sequence: ++sequence,
+          delivery: "interval",
+          status: "observed",
+          ...(mismatch && request.publishAtDeadline ? { cwdAtDeadline: true } : {}),
+          terminal: {
+            name: `terminfo-${runId}`,
+            processId: { present: true, value: process.pid },
+            shellIntegrationCwd: { present: true, value: nativeCwd },
+          },
+        }),
+        { flag: "wx" },
+      )
+    }, 5)
+    try {
+      const reading = await readAppSemanticState({
+        featureId: "extensions.osc7-cwd",
+        runId,
+        editor: {
+          appId: "com.microsoft.VSCode",
+          assertProcess: async () => {},
+          capture: async (_featureId: string, phase: string) => ({ retained: `fixture-${phase}` }),
+        },
+        write(bytes: string) {
+          writes.push(bytes)
+          const cwd633 = /\x1b\]633;P;Cwd=([^\x07]*)\x07/u.exec(bytes)?.[1]
+          if (cwd633 !== undefined && !(mode === "osc7-control-unchanged" && cwd633.includes("/terminfo-control-"))) {
+            nativeCwd = cwd633.startsWith("file:") ? cwd633 : `file://${cwd633}`
+          }
+          const cwd7 = /\x1b\]7;file:\/\/localhost(\/[^\x07]*)\x07/u.exec(bytes)?.[1]
+          if (cwd7 !== undefined && mode === "osc7-supported") {
+            nativeCwd = `file://${cwd7}`
+          }
+        },
+      })
+      // Only target-after may opt into publishAtDeadline; controls and restoration never do.
+      for (const req of seenRequests) {
+        if (req.phase === "target-after") expect(req.publishAtDeadline).toBe(true)
+        else expect(req.publishAtDeadline).toBeUndefined()
+      }
+      expect(nativeCwd).toBe(original)
+      const { withAppSemanticObservation } = await import("../../probe-defs/src/app-semantic-state.ts")
+      const { extensionsProbes } = await import("../../probe-defs/src/extensions.ts")
+      const osc7Probe = withAppSemanticObservation(extensionsProbes.find((p) => p.id === "extensions.osc7-cwd")!)
+      let titleFallbackCalled = false
+      const graded = await osc7Probe.term!({
+        write() {},
+        query: async () => "",
+        queryCursorPosition: async () => null,
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        readTitle: async () => {
+          titleFallbackCalled = true
+          return "Visual Studio Code"
+        },
+        readAppSemanticState: async () => reading,
+      } as never)
+      if (mode === "osc7-supported") {
+        expect(reading.status).toBe("measured")
+        expect(writes.some((bytes) => bytes.includes("\x1b]7;file://localhost/terminfo-target-"))).toBe(true)
+        expect(graded.observation?.outcome).toBe("supported")
+        expect(titleFallbackCalled).toBe(false)
+      } else if (mode === "osc7-unchanged-at-deadline") {
+        expect(reading).toMatchObject({
+          status: "unavailable",
+          reason: "OSC 7 did not reach shellIntegration.cwd; whether the editor tracks it elsewhere is unproven",
+        })
+        expect(graded.observation).toBeUndefined()
+        expect(graded.tests).toEqual([
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason: "OSC 7 did not reach shellIntegration.cwd; whether the editor tracks it elsewhere is unproven",
+          },
+        ])
+        expect(titleFallbackCalled).toBe(false)
+      } else {
+        expect(reading).toMatchObject({
+          status: "unavailable",
+          reason: "Native editor did not observe the expected CWD; unchanged or absent state does not decide support",
+        })
+      }
+    } finally {
+      clearInterval(producer)
+      rmSync(directory, { recursive: true })
+      rmSync(captureRoot, { recursive: true })
+    }
+  },
+  15_000,
+)
+
 // Requirement (34685, @cto 34685-execution-scope-ruling-1435): the native editor reader qualifies OSC 133/633 C, D
 // and 633 E from execution events that the collector's own written bytes cause. Each selector trial is read after
 // A/B, after C before D, and after D, joined by execution identity; controls are the opposite selector (C/D) or a

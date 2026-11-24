@@ -389,7 +389,7 @@ function ligatureApp(
   options: {
     pair?: number
     font?: string
-    bleed?: boolean
+    bleed?: boolean | "underscore-only"
     blind?: boolean
     text?: boolean
     moved?: boolean
@@ -430,12 +430,12 @@ function ligatureApp(
         for (let col = cells.left; col <= cells.right; col++) {
           let glyph = surface.getCell(row - 1, col - 1).char
           // A raster crop may include neighbouring ink without any shaping engine.
-          if (
-            row === 3 &&
-            options.bleed &&
-            glyph !== " " &&
-            [surface.getCell(2, col - 2).char, surface.getCell(2, col).char].some((char) => char !== " ")
-          ) {
+          const neighbours = [surface.getCell(2, col - 2).char, surface.getCell(2, col).char]
+          const hasBleed =
+            options.bleed === "underscore-only"
+              ? neighbours.some((char) => char === "_")
+              : Boolean(options.bleed) && neighbours.some((char) => char !== " ")
+          if (row === 3 && hasBleed && glyph !== " ") {
             glyph += ":neighbour-ink"
           }
           const first = options.pair
@@ -480,6 +480,10 @@ test.each([
   ["only last pair shapes, rendering font reported", { pair: 15, font: "JetBrains Mono" }, "supported"],
   ["neighbour bleed without shaping", { bleed: true }, "inconclusive"],
   ["neighbour bleed even with shaping", { bleed: true, pair: 3 }, "inconclusive"],
+  // #37240 (@cto 3cd2c588): underscore-only overhang cannot produce a false negative when 0/10
+  // operator cells differ from isolated controls and the positive control moved.
+  ["underscore-only bleed with 0/10 operator diffs and moving positive control", { bleed: "underscore-only" }, "unsupported"],
+  ["underscore-only bleed with blind positive control stays inconclusive", { bleed: "underscore-only", blind: true }, "inconclusive"],
   ["blind positive control", { blind: true }, "inconclusive"],
   // #33639: the first paint-witness return has captured one frame. It must cite no frames, never a lone one.
   ["never paints, so no paint witness arrives", { neverPaint: true }, "inconclusive"],
@@ -501,6 +505,11 @@ test.each([
     if (outcome !== "inconclusive") {
       expect(JSON.parse(result.response!)).toMatchObject({ font: "font" in options ? options.font : "unreported" })
       expect(result.assertions).toHaveLength(1)
+      if ("bleed" in options && options.bleed === "underscore-only") {
+        expect(result.note).toBe(
+          "0/10 operator cells differ from isolated controls; positive control changed; bleed controls tripped (cols 3, 6, 9, 12, 15, 4, 7, 10, 13, 16), which cannot produce a false negative",
+        )
+      }
       const target = frames.filter((frame) => frame.role === "target")
       expect(target).toHaveLength(10)
       expect(target.map((frame) => frame.regionRectangle?.x)).toEqual([16, 24, 40, 48, 64, 72, 88, 96, 112, 120])
