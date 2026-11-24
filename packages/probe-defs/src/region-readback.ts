@@ -1926,6 +1926,12 @@ export async function queryPixelGeometry(
       transient: false,
     }
   }
+  if (geometry.textHeight % geometry.cellHeight !== 0 || geometry.textWidth % geometry.cellWidth !== 0) {
+    return {
+      missing: `the terminal reported a ${geometry.textWidth}x${geometry.textHeight} pixel text area with ${geometry.cellWidth}x${geometry.cellHeight} pixel cells, which does not divide into a whole-cell grid`,
+      transient: false,
+    }
+  }
   return { geometry, source: GEOMETRY_REPORTED }
 }
 

@@ -985,6 +985,33 @@ test("a text area that does not divide into whole pixels refuses BY NAME and map
   expect(mapped.missing).toContain("does not divide into a whole-pixel cell size")
 })
 
+test("a CSI 16 t / 14 t pair that does not divide into whole cells refuses BY NAME; a divisible pair passes (#37678)", async () => {
+  // iTerm2 3.7.9 answers CSI 16 t with exact 7x17 cell size while answering CSI 14 t with its
+  // outer window frame (570x462, vs the 80x25 = 560x425 text grid). Refusing non-divisible pairs
+  // as { missing, transient: false } keeps the same whole-cell invariant as the 14t/18t path and
+  // routes serve.ts to complete raster calibration.
+  const outerBounds = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  outerBounds.ctx.queryWithSentinelOutcome = async (sequence) =>
+    sequence === "\x1b[16t"
+      ? { match: ["\x1b[6;17;7t", "17", "7"], reason: "reply", raw: "", rawBase64: "" }
+      : { match: ["\x1b[4;462;570t", "462", "570"], reason: "reply", raw: "", rawBase64: "" }
+  const refused = await queryPixelGeometry(outerBounds.ctx)
+  if ("geometry" in refused) throw new Error("570x462 over 7x17 cells is not a whole-cell grid")
+  expect(refused.transient).toBe(false)
+  expect(refused.missing).toContain("570x462 pixel text area with 7x17 pixel cells")
+  expect(refused.missing).toContain("does not divide into a whole-cell grid")
+
+  const divisible = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  divisible.ctx.queryWithSentinelOutcome = async (sequence) =>
+    sequence === "\x1b[16t"
+      ? { match: ["\x1b[6;17;7t", "17", "7"], reason: "reply", raw: "", rawBase64: "" }
+      : { match: ["\x1b[4;425;560t", "425", "560"], reason: "reply", raw: "", rawBase64: "" }
+  const accepted = await queryPixelGeometry(divisible.ctx)
+  if (!("geometry" in accepted)) throw new Error("560x425 over 7x17 cells is an exact 80x25 grid")
+  expect(accepted.source).toBe("reported by CSI 16 t")
+  expect(accepted.geometry).toEqual({ cellWidth: 7, cellHeight: 17, textWidth: 560, textHeight: 425 })
+})
+
 /**
  * 28763 fix 2 (@cto 2026-10-12): the failure NAMES are the contract, so each one gets its own test.
  * Every case asserts the reply it names AND that no geometry is mapped — a refusal is not a guess.
