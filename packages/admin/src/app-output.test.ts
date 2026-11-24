@@ -24,6 +24,7 @@ import {
   parseKittyIdentity,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
+import { parseWitnessRegistration, stopWitnessResponder } from "../../terminfo.dev/src/witness-window.ts"
 
 vi.mock("node:fs", () => ({
   closeSync: vi.fn(),
@@ -64,6 +65,10 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
 }))
+vi.mock("../../terminfo.dev/src/witness-window.ts", () => ({
+  parseWitnessRegistration: vi.fn(),
+  stopWitnessResponder: vi.fn(),
+}))
 vi.mock("./collected-run.ts", () => ({
   writeCollectedRun: vi.fn(() => ({
     retained: "/private/http-responses/terminal-app.json",
@@ -74,6 +79,7 @@ vi.mock("./collected-run.ts", () => ({
 }))
 
 const window = { provider: "terminal-app" as const, windowId: 14, tty: "/dev/ttys003" }
+const witnessWindow = { provider: "terminal-app" as const, windowId: 15, tty: "/dev/ttys004" }
 const registration = {
   pid: 555,
   port: 1234,
@@ -116,7 +122,17 @@ beforeEach(() => {
     directory: "/private/run",
     scriptPath: "/private/run/serve-private-run.sh",
   })
-  vi.mocked(launchTerminalWindow).mockReturnValue(window)
+  vi.mocked(launchTerminalWindow).mockImplementation((scriptPath) =>
+    String(scriptPath).includes("witness-") ? witnessWindow : window,
+  )
+  vi.mocked(parseWitnessRegistration).mockReturnValue({
+    runId: "private-run",
+    pid: 556,
+    port: 4321,
+    token: "b".repeat(64),
+    tty: "/dev/ttys004",
+  })
+  vi.mocked(stopWitnessResponder).mockResolvedValue()
   vi.mocked(findOwnedDaemon).mockResolvedValue({ filepath: "/private/registration", registration })
   vi.mocked(requestDaemonProbe).mockResolvedValue(new Response("{}"))
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
