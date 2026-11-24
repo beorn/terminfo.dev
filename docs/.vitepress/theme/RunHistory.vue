@@ -5,6 +5,7 @@ import type { ClientProbeData, ClientWorkingView } from "../../data/probes.data"
 import { evidenceStatus, evidenceStatusWords } from "./evidence-status"
 import type { FeatureResultStatus } from "@terminfo/probe-defs"
 import { displayMeasuredDate, displayOs } from "./display-version"
+import { contextLabel } from "./context-label"
 
 const props = defineProps<{
   history: ClientWorkingView[]
@@ -23,12 +24,21 @@ const originalEntries = computed(() =>
     .flatMap(([contextKey, originals]) =>
       originals
         .filter((original) => matches({ engine: original.subject.id, kind: original.subject.kind }))
-        .map((original) => ({ key: contextKey + "/" + original.sha256, contextKey, original })),
+        .map((original) => ({
+          sortKey: contextKey + "/" + original.sha256,
+          contextKey,
+          original,
+        })),
     )
     .sort(
       (left, right) =>
-        left.original.measuredAt.localeCompare(right.original.measuredAt) || left.key.localeCompare(right.key),
-    ),
+        left.original.measuredAt.localeCompare(right.original.measuredAt) || left.sortKey.localeCompare(right.sortKey),
+    )
+    .map((entry, index) => ({
+      ...entry,
+      // #37631: short public option value (never embed raw contextKey with host paths/flags in HTML attributes).
+      key: `${index}-${entry.original.sha256.slice(0, 12)}`,
+    })),
 )
 const originalKey = ref(originalEntries.value.at(-1)?.key ?? "")
 const originalEntry = computed(() => originalEntries.value.find((entry) => entry.key === originalKey.value))
@@ -55,15 +65,20 @@ const collectionId = ref(
     "",
 )
 const selected = computed(() => props.history.find((view) => view.run.id === collectionId.value))
-const contexts = computed(
-  () =>
+const contexts = computed(() =>
+  (
     selected.value?.contexts.filter(
       (row) =>
         !props.subjects || props.subjects.some((subject) => subject.engine === row.engine && subject.kind === row.kind),
-    ) ?? [],
+    ) ?? []
+  ).map((row, index) => ({
+    ...row,
+    // #37631: short public option value (never embed raw contextKey with host paths/flags in HTML attributes).
+    optionId: `${index}-${row.sha256.slice(0, 12)}`,
+  })),
 )
-const contextKey = ref(contexts.value[0]?.contextKey ?? "")
-const context = computed(() => contexts.value.find((row) => row.contextKey === contextKey.value))
+const contextOptionId = ref(contexts.value[0]?.optionId ?? "")
+const context = computed(() => contexts.value.find((row) => row.optionId === contextOptionId.value))
 // #33037: a context names its shared status map; a name with no map is a broken payload, never "no statuses".
 const contextStates = computed(() => {
   const ref = context.value?.statesRef
@@ -108,7 +123,7 @@ const gaps = computed(() =>
       </select>
     </label>
     <template v-if="originalEntry">
-      <p>Context <code>{{ originalEntry.contextKey }}</code>; <strong>{{ kindLabel(originalEntry.original.subject.kind) }}: {{ originalEntry.original.subject.id }} {{ originalEntry.original.subject.version }}</strong>; OS {{ displayOs(originalEntry.original.subject.os) }}.</p>
+      <p>Context <code>{{ contextLabel(originalEntry.contextKey) }}</code>; <strong>{{ kindLabel(originalEntry.original.subject.kind) }}: {{ originalEntry.original.subject.id }} {{ originalEntry.original.subject.version }}</strong>; OS {{ displayOs(originalEntry.original.subject.os) }}.</p>
       <p>Original run <code>{{ originalEntry.original.runId }}</code>; measured {{ displayMeasuredDate(originalEntry.original.measuredAt) }}; suite <code>{{ originalEntry.original.suiteId }}</code>; source <code>{{ originalEntry.original.sourceRevision }}</code>; capture SHA-256 <code>{{ originalEntry.original.sha256 }}</code>.</p>
       <p>Stored Supported / graded features: {{ originalEntry.original.score.supported }} / {{ originalEntry.original.score.all }}. Environment groups are ungraded.</p>
       <p>Comparison unavailable: the selected-original projection does not retain qualified runtime identity.</p>
@@ -139,8 +154,8 @@ const gaps = computed(() =>
     </div>
     <template v-else-if="contexts.length">
       <label>Recorded context
-        <select v-model="contextKey">
-          <option v-for="row in contexts" :key="row.contextKey" :value="row.contextKey">{{ kindLabel(row.kind) }}: {{ row.engine }} {{ row.version }} · {{ row.contextKey }}</option>
+        <select v-model="contextOptionId">
+          <option v-for="row in contexts" :key="row.optionId" :value="row.optionId">{{ kindLabel(row.kind) }}: {{ row.engine }} {{ row.version }} · {{ contextLabel(row.contextKey) }}</option>
         </select>
       </label>
       <template v-if="context">

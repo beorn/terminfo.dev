@@ -31,7 +31,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  "hover-item": [item: ResultItem]
+  "hover-item": [item: ResultItem, rowEl: HTMLElement | null]
   "select-item": [item: ResultItem, event: MouseEvent]
 }>()
 </script>
@@ -47,8 +47,8 @@ const emit = defineEmits<{
         $slots.after && 'result-with-after',
         activeId === item.id && 'result-item-active',
       ]"
-      @mouseenter="emit('hover-item', item)"
-      @focusin="emit('hover-item', item)"
+      @mouseenter="emit('hover-item', item, $event.currentTarget as HTMLElement)"
+      @focusin="emit('hover-item', item, $event.currentTarget as HTMLElement)"
     >
       <component
         :is="item.href ? 'a' : 'span'"

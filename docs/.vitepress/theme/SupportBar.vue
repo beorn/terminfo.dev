@@ -13,7 +13,16 @@ import { RESULT_CATEGORIES, type CategoryId } from "../../data/result-categories
 import type { PublicContextSummary, PublicRunMetadata } from "../../data/public-results.ts"
 import { publicResultFor } from "../../data/release-scope.ts"
 import { data } from "../../data/probes.data"
-import { detailPaneSide, featureAnchorId, segmentPopoverShift, type DetailPaneSide } from "./bar-layout.ts"
+import {
+  clearActivePopover,
+  detailPaneSide,
+  featureAnchorId,
+  HOVER_CLOSE_GRACE_MS,
+  HOVER_OPEN_DELAY_MS,
+  registerActivePopover,
+  segmentPopoverShift,
+  type DetailPaneSide,
+} from "./bar-layout.ts"
 import ResultEvidenceCell from "./ResultEvidenceCell.vue"
 import ResultList, { type ResultItem } from "./ResultList.vue"
 
@@ -58,6 +67,8 @@ const shift = ref(0)
 const tab = ref<CategoryId>("supported")
 const activeFeatureId = ref<string | null>(null)
 const paneSide = ref<DetailPaneSide>("right")
+const detailTop = ref(0)
+const detailNotchTop = ref(24)
 const current = computed(() => RESULT_CATEGORIES.find((category) => category.id === tab.value) ?? RESULT_CATEGORIES[0]!)
 const items = computed(() =>
   open.value
@@ -77,6 +88,7 @@ const activeItem = computed(() =>
 const activeCell = computed(() =>
   props.version && activeItem.value ? publicResultFor(props.version, activeItem.value.id) : undefined,
 )
+let openTimer: ReturnType<typeof setTimeout> | undefined
 let hideTimer: ReturnType<typeof setTimeout> | undefined
 let suppressFocusReopen = false
 
@@ -94,7 +106,7 @@ function place(anchor?: HTMLElement | null) {
   })
 }
 
-function updateDetailPlacement() {
+function updateDetailPlacement(rowEl?: HTMLElement | null) {
   const page = document.documentElement.clientWidth
   const box = pop.value?.getBoundingClientRect()
   const popLeft = box?.left ?? (root.value?.getBoundingClientRect().left ?? 0) + shift.value
@@ -105,6 +117,17 @@ function updateDetailPlacement() {
     detailWidth: 360,
     pageWidth: page,
   })
+  if (box && rowEl) {
+    const rowBox = rowEl.getBoundingClientRect()
+    const rowCenter = rowBox.top - box.top + rowBox.height / 2
+    // Align the child pane's top near the hovered row while keeping it within the popover's vertical span.
+    const desiredTop = Math.max(0, Math.min(rowBox.top - box.top - 10, Math.max(0, box.height - 160)))
+    detailTop.value = Math.round(desiredTop)
+    detailNotchTop.value = Math.round(Math.max(16, Math.min(rowCenter - desiredTop, 240)))
+  } else {
+    detailTop.value = 0
+    detailNotchTop.value = 24
+  }
 }
 
 function onOutside(event: PointerEvent) {
@@ -120,19 +143,38 @@ function show(id: CategoryId, from: "hover" | "focus" | "tap", anchor?: HTMLElem
   if (from === "focus" && suppressFocusReopen) return
   clearTimeout(hideTimer)
   if (from === "hover" && open.value && engaged.value) return
+  if (from === "hover" && !open.value) {
+    clearTimeout(openTimer)
+    openTimer = setTimeout(() => {
+      openTimer = undefined
+      openPopover(id, false, anchor)
+    }, HOVER_OPEN_DELAY_MS)
+    return
+  }
+  clearTimeout(openTimer)
+  openPopover(id, from === "tap", anchor)
+}
+
+function openPopover(id: CategoryId, pin: boolean, anchor?: HTMLElement | null) {
   if (tab.value !== id) activeFeatureId.value = null
   tab.value = id
-  if (from === "tap") pinned.value = true
+  if (pin) pinned.value = true
   const seg = anchor ?? root.value?.querySelector<HTMLElement>(`.support-bar-seg[data-category="${id}"]`)
   place(seg)
   if (open.value) return
+  registerActivePopover(closeFromCoordinator)
   open.value = true
   document.dispatchEvent(new CustomEvent("terminfo:close-previews"))
   document.addEventListener("pointerdown", onOutside, true)
   document.addEventListener("keydown", onDocKeydown, true)
 }
 
+function closeFromCoordinator() {
+  close(false)
+}
+
 function close(explicitDismiss = false) {
+  clearTimeout(openTimer)
   clearTimeout(hideTimer)
   if (explicitDismiss && typeof performance !== "undefined") {
     dismissedUntil = performance.now() + 350
@@ -143,6 +185,7 @@ function close(explicitDismiss = false) {
   activeFeatureId.value = null
   document.removeEventListener("pointerdown", onOutside, true)
   document.removeEventListener("keydown", onDocKeydown, true)
+  clearActivePopover(closeFromCoordinator)
 }
 
 function stay() {
@@ -150,8 +193,9 @@ function stay() {
 }
 
 function leave() {
+  clearTimeout(openTimer)
   if (pinned.value) return
-  hideTimer = setTimeout(close, 250)
+  hideTimer = setTimeout(close, HOVER_CLOSE_GRACE_MS)
 }
 
 function onFocusOut(event: FocusEvent) {
@@ -178,10 +222,10 @@ function onSwitchTab(categoryId: CategoryId) {
   activeFeatureId.value = null
 }
 
-function onHoverItem(item: ResultItem) {
+function onHoverItem(item: ResultItem, rowEl: HTMLElement | null) {
   if (!props.version) return
   activeFeatureId.value = item.id
-  updateDetailPlacement()
+  updateDetailPlacement(rowEl)
 }
 
 function onSelectItem(item: ResultItem, event: MouseEvent) {
@@ -290,10 +334,12 @@ onBeforeUnmount(close)
         v-if="version && activeItem && paneSide !== 'below'"
         class="support-pop-detail"
         :class="'support-pop-detail--' + paneSide"
+        :style="{ top: `${detailTop}px`, '--detail-notch-top': `${detailNotchTop}px` }"
         @mouseenter="stay"
       >
         <ResultEvidenceCell
           inline
+          :breadcrumb="`${label} › ${activeItem.name}`"
           :feature-id="activeItem.id"
           :feature-name="activeItem.name"
           :probe-guidance="data.featureDescriptions[activeItem.id]?.probe"

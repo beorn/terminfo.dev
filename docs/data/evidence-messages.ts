@@ -42,6 +42,28 @@ export interface Region {
 /** A query wait the terminal did not answer. Older runs kept no time limit for a timed-out read. */
 export type Wait = { kind: "fence"; graceMs: number } | { kind: "limit"; ms?: number }
 
+export type ScreenDetail =
+  | { kind: "blink"; samples: number; spanMs: number }
+  | { kind: "smooth-scroll"; settledRow: number; firstElapsedMs: number; throttledMs: number }
+  | { kind: "ligatures" }
+  | { kind: "scroll-up"; stayedAtBottom: boolean }
+  | { kind: "animation"; elapsedMs: number }
+  | { kind: "reflow"; fromCols: number; toCols: number; shrink: string; grow: string }
+  | { kind: "viewport-hold" }
+  | { kind: "pointer"; unchanged: boolean }
+
+export type ScreenOutcome =
+  | "unchanged"
+  | "expected"
+  | "plain"
+  | "ignored"
+  | "walked"
+  | "single-underline"
+  | "plain-underline"
+  | "changed"
+  | "held"
+  | "unrecorded"
+
 export type EvidenceFacts =
   | { kind: "byte-reply"; queries: number; replies: CardValue[]; silent: Wait[] }
   | { kind: "no-reply"; queries: number; waits: Wait[]; readOnly: boolean }
@@ -55,7 +77,9 @@ export type EvidenceFacts =
   | {
       kind: "screen" | "text-readback"
       region?: Region
-      outcome: "unchanged" | "expected" | "plain" | "changed" | "held" | "failed"
+      outcome: ScreenOutcome
+      /** Structured measurement detail when the screen comparison is not a single seed/after/expected triple. */
+      detail?: ScreenDetail
       /** Where a text read came from: the app's own text snapshot (macOS) or the console host's buffer (Windows). */
       reader?: "app snapshot" | "console host"
     }
@@ -687,6 +711,35 @@ function waitOf(stored: StoredEvidence, query: StoredQuery): Wait {
 
 const answered = (query: StoredQuery) => Array.isArray(query.match) && typeof query.match[0] === "string"
 
+function parseEmbeddedJson(value: unknown): unknown {
+  if (typeof value !== "string" || !/^\s*[[{]/.test(value)) return undefined
+  return JSON.parse(value)
+}
+
+/** Collect every capture object nested in a callback (direct, `.capture`, `.fixtures[]`, or `[{ response }]`). */
+function captureObjects(callback: unknown): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  const push = (value: unknown): void => {
+    if (isRecord(value)) out.push(value)
+  }
+  if (Array.isArray(callback)) {
+    for (const item of callback) {
+      push(item)
+      if (isRecord(item)) push(parseEmbeddedJson(item.response))
+    }
+    return out
+  }
+  if (!isRecord(callback)) return out
+  push(callback)
+  push(parseEmbeddedJson(callback.capture))
+  if (Array.isArray(callback.fixtures)) {
+    for (const fixture of callback.fixtures) {
+      push(isRecord(fixture) ? fixture : parseEmbeddedJson(fixture))
+    }
+  }
+  return out
+}
+
 function readRegion(value: unknown): Region | undefined {
   if (!isRecord(value)) return undefined
   const { top, left, bottom, right } = value
@@ -695,9 +748,34 @@ function readRegion(value: unknown): Region | undefined {
     : undefined
 }
 
+function regionFromStart(record: Record<string, unknown>): Region | undefined {
+  const startRow = record.startRow
+  const startCol = record.startCol
+  if (!Number.isSafeInteger(startRow) || !Number.isSafeInteger(startCol)) return undefined
+  const sampleCells = Number.isSafeInteger(record.sampleCells)
+    ? (record.sampleCells as number)
+    : typeof record.sample === "string" && record.sample.length > 0
+      ? record.sample.length
+      : 1
+  return {
+    top: startRow as number,
+    bottom: startRow as number,
+    left: startCol as number,
+    right: (startCol as number) + Math.max(1, sampleCells) - 1,
+  }
+}
+
 function regionOf(stored: StoredEvidence): Region | undefined {
-  const fromCallback = readRegion(at(stored.callback, "region"))
-  if (fromCallback) return fromCallback
+  for (const obj of captureObjects(stored.callback)) {
+    const direct = readRegion(obj.region)
+    if (direct) return direct
+    const fromStart = regionFromStart(obj)
+    if (fromStart) return fromStart
+    if (isRecord(obj.samples)) {
+      const nestedStart = regionFromStart(obj.samples)
+      if (nestedStart) return nestedStart
+    }
+  }
   for (const assertion of stored.assertions) {
     const quoted = /region (\{"top":\d+,"left":\d+,"bottom":\d+,"right":\d+\})/.exec(assertion.expected)?.[1]
     if (quoted) return readRegion(JSON.parse(quoted))
@@ -705,23 +783,172 @@ function regionOf(stored: StoredEvidence): Region | undefined {
   return undefined
 }
 
-/** After vs. the screen before the test and the expected screen, when the run stored all three digests. */
-function screenOutcome(stored: StoredEvidence, kind: "screen" | "text-readback") {
-  const [seed, after, expected, plain] = ["seed", "after", "expected", "noAttribute"].map((key) =>
-    at(stored.callback, key),
-  )
-  const digest = (value: unknown) => typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value)
-  if (digest(seed) && digest(after) && digest(expected)) {
-    // A colour probe's plain-text frame can equal its expected frame; matching plain text is then the fact.
-    if (digest(plain) && after === plain) return "plain" as const
-    if (after === expected) return "expected" as const
-    if (after === seed) return "unchanged" as const
-    return "changed" as const
+const isDigest = (value: unknown): value is string => typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value)
+
+const REFLOW_OUTCOMES = new Set(["clipped", "preserved", "reflowed", "truncated", "wrapped"])
+
+type ScreenResult = { region?: Region; outcome: ScreenOutcome; detail?: ScreenDetail }
+
+function screenTripleOutcome(
+  stored: StoredEvidence,
+  captures: readonly Record<string, unknown>[],
+): ScreenResult | undefined {
+  let matched: ScreenResult | undefined
+  for (const obj of captures) {
+    const { seed, after, expected, noAttribute: plain, ignored, walked } = obj
+    if (!isDigest(seed) || !isDigest(after) || !isDigest(expected)) continue
+    let outcome: ScreenOutcome
+    // A colour probe's plain-text or walked-parameter frame can equal its expected frame; that match is then the fact.
+    if (isDigest(plain) && after === plain) outcome = "plain"
+    else if (isDigest(walked) && after === walked) outcome = "walked"
+    else if (after === expected) outcome = "expected"
+    else if (after === seed) outcome = "unchanged"
+    else if (isDigest(ignored) && after === ignored) outcome = "ignored"
+    else outcome = "changed"
+    const region = readRegion(obj.region) ?? regionOf(stored)
+    if (stored.status === "unsupported" && outcome !== "expected") return { region, outcome }
+    matched ??= { region, outcome }
   }
+  return matched
+}
+
+function blinkSpanMs(obj: Record<string, unknown>, timing: readonly unknown[]): number {
+  if (typeof obj.spanMs === "number" && Number.isFinite(obj.spanMs)) return Math.round(obj.spanMs)
+  const first = timing[0]
+  const last = timing[timing.length - 1]
+  if (
+    isRecord(first) &&
+    isRecord(last) &&
+    typeof first.styledCapturedAt === "number" &&
+    typeof last.styledCapturedAt === "number"
+  ) {
+    return Math.round(last.styledCapturedAt - first.styledCapturedAt)
+  }
+  return 0
+}
+
+function screenSamplesOutcome(
+  stored: StoredEvidence,
+  captures: readonly Record<string, unknown>[],
+): ScreenResult | undefined {
+  for (const obj of captures) {
+    const samples = obj.samples
+    if (!isRecord(samples)) continue
+    const region = readRegion(obj.region) ?? regionOf(stored)
+    if (isDigest(samples.target) && isDigest(samples.plain)) {
+      if (samples.target === samples.plain) return { region, outcome: "plain" }
+      if (isDigest(samples["single underline"]) && samples.target === samples["single underline"]) {
+        return { region, outcome: "single-underline" }
+      }
+      if (isDigest(samples["made-up"]) && samples.target === samples["made-up"]) return { region, outcome: "ignored" }
+      return { region, outcome: stored.status === "supported" ? "held" : "changed" }
+    }
+    if (isDigest(samples["B plain underline"])) {
+      const targets = Object.entries(samples)
+        .filter(([key, val]) => key.startsWith("C underline 58:") && isDigest(val))
+        .map(([, val]) => val as string)
+      if (targets.length > 0) {
+        if (targets.every((d) => d === samples["B plain underline"])) return { region, outcome: "plain-underline" }
+        return { region, outcome: stored.status === "supported" ? "held" : "changed" }
+      }
+    }
+    if (Array.isArray(samples.timing) && samples.timing.length > 0) {
+      const spanMs = blinkSpanMs(obj, samples.timing)
+      if (spanMs > 0) {
+        return {
+          region: regionFromStart(samples) ?? region,
+          outcome: stored.status === "supported" ? "held" : "unchanged",
+          detail: { kind: "blink", samples: samples.timing.length, spanMs },
+        }
+      }
+    }
+  }
+  return undefined
+}
+
+function screenSpecializedDetail(
+  stored: StoredEvidence,
+  cb: Record<string, unknown> | undefined,
+): ScreenResult | undefined {
+  if (stored.status !== "unsupported") return undefined
+  if (cb) {
+    const settledRow = at(cb, "marker.settledRow")
+    if (
+      Number.isSafeInteger(settledRow) &&
+      typeof cb.targetFirstBandElapsedMs === "number" &&
+      typeof cb.throttledDurationMs === "number"
+    ) {
+      return {
+        outcome: "changed",
+        detail: {
+          kind: "smooth-scroll",
+          settledRow: settledRow as number,
+          firstElapsedMs: Math.round(cb.targetFirstBandElapsedMs),
+          throttledMs: Math.round(cb.throttledDurationMs),
+        },
+      }
+    }
+    if (stored.featureId === "extensions.font-ligatures" && Array.isArray(cb.samples)) {
+      return { outcome: "unchanged", detail: { kind: "ligatures" } }
+    }
+    if (isDigest(cb.bottom) && isDigest(cb.afterOsc720)) {
+      const stayedAtBottom = cb.afterOsc720 === cb.bottom
+      return { outcome: stayedAtBottom ? "unchanged" : "changed", detail: { kind: "scroll-up", stayedAtBottom } }
+    }
+    if (stored.featureId === "extensions.kitty-graphics.animation" && typeof cb.playbackElapsedMs === "number") {
+      return {
+        region: readRegion(cb.region) ?? regionOf(stored),
+        outcome: "unchanged",
+        detail: { kind: "animation", elapsedMs: Math.round(cb.playbackElapsedMs) },
+      }
+    }
+    const fromCols = at(cb, "initial.cols")
+    const shrink = at(cb, "mainShrink.outcome")
+    const grow = at(cb, "mainGrow.outcome")
+    if (
+      Number.isSafeInteger(fromCols) &&
+      Number.isSafeInteger(cb.targetNarrowCols) &&
+      typeof shrink === "string" &&
+      REFLOW_OUTCOMES.has(shrink) &&
+      typeof grow === "string" &&
+      REFLOW_OUTCOMES.has(grow)
+    ) {
+      return {
+        outcome: "changed",
+        detail: { kind: "reflow", fromCols: fromCols as number, toCols: cb.targetNarrowCols as number, shrink, grow },
+      }
+    }
+    if (stored.featureId === "scrollback.viewport-hold-output") {
+      return { outcome: "changed", detail: { kind: "viewport-hold" } }
+    }
+  }
+  if (stored.featureId === "extensions.osc22-pointer") {
+    const parsed = parseEmbeddedJson(stored.assertions[0]?.observed)
+    const frames = isRecord(parsed) && Array.isArray(parsed.frames) ? parsed.frames : []
+    const baseline = frames.find((f) => isRecord(f) && typeof f.label === "string" && f.label.includes("baseline"))
+    const crosshair = frames.find((f) => isRecord(f) && typeof f.label === "string" && f.label.includes("crosshair"))
+    const unchanged =
+      isRecord(baseline) &&
+      isRecord(crosshair) &&
+      isDigest(baseline.pixelsDigest) &&
+      baseline.pixelsDigest === crosshair.pixelsDigest
+    return { outcome: unchanged ? "unchanged" : "changed", detail: { kind: "pointer", unchanged } }
+  }
+  return undefined
+}
+
+/** Extract a structured screen outcome and optional closed detail from recorded capture digests. */
+function screenResult(stored: StoredEvidence, kind: "screen" | "text-readback"): ScreenResult {
+  const captures = captureObjects(stored.callback)
+  const resolved =
+    screenTripleOutcome(stored, captures) ??
+    screenSamplesOutcome(stored, captures) ??
+    screenSpecializedDetail(stored, captures[0])
+  if (resolved) return resolved
   // No stored comparison: the outcome is the cell's own decided result, which its assertions reached.
   if (stored.assertions.length === 0) fail(stored, kind, "no stored comparison and no assertion")
-  if (stored.status === "supported") return "held" as const
-  if (stored.status === "unsupported") return "failed" as const
+  if (stored.status === "supported") return { region: regionOf(stored), outcome: "held" }
+  if (stored.status === "unsupported") return { region: regionOf(stored), outcome: "unrecorded" }
   return fail(stored, kind, `a screen read with status ${stored.status}`)
 }
 
@@ -924,16 +1151,19 @@ export function evidenceFacts(stored: StoredEvidence): EvidenceFacts {
   }
   if (stored.assertionType === "process_environment") return environment(stored)
   if (stored.assertionType === "notification") return notification(stored)
+  // App-state report/state logs (e.g. OSC 555 unhandled-command logs) stay app-state even if capture metadata sits alongside.
+  const readerKind = at(stored.callback, "reader")
+  if (readerKind === "report" || readerKind === "state") return appState(stored)
   if (stored.frameKinds.includes("text-cells")) {
+    const result = screenResult(stored, "text-readback")
     return {
       kind: "text-readback",
-      region: regionOf(stored),
-      outcome: screenOutcome(stored, "text-readback"),
+      ...result,
       reader: stored.os === "windows" ? "console host" : "app snapshot",
     }
   }
   if (stored.assertionType === "screenshot" || "captures" in stored.exchangeExtra) {
-    return { kind: "screen", region: regionOf(stored), outcome: screenOutcome(stored, "screen") }
+    return { kind: "screen", ...screenResult(stored, "screen") }
   }
   if (stored.assertionType === "buffer_state") return appState(stored)
   if (stored.queries.length > 0) {
@@ -1000,14 +1230,105 @@ function rows(region: Region): string {
   return `${span(region.top, region.bottom, "row")}, ${span(region.left, region.right, "column")}`
 }
 
-const SCREEN_OUTCOME = {
+const SCREEN_OUTCOME: Readonly<Record<ScreenOutcome, string>> = {
   unchanged: "did not change.",
   expected: "matched the expected result.",
   changed: "changed, but not to the expected result.",
   plain: "looked the same as plain text with no attribute set.",
+  ignored: "matched the ignored-command control rather than the expected result.",
+  walked: "matched the misparsed-parameter control instead of setting an underline color.",
+  "single-underline": "rendered the same as a single underline.",
+  "plain-underline": "kept the plain underline with no color change.",
   held: "showed the expected result.",
-  failed: "did not show the expected result.",
-} as const
+  unrecorded: "did not match; individual cell contents were not recorded in this run's trace.",
+}
+
+const SAVE_RESTORE_PROBES = new Set([
+  "cursor.save-restore",
+  "cursor.ansi-save",
+  "cursor.ansi-restore",
+  "modes.altscreen-1048",
+])
+
+/** Parse a CPR reply formatted by formatControlBytes (`ESC [ r;c R`) into `r;c`. */
+function cprCoord(value: CardValue): string | undefined {
+  if (!("shown" in value)) return undefined
+  return /^ESC \[ (\d+;\d+) R$/.exec(value.shown)?.[1]
+}
+
+/** Plain explanation of what cursor-position replies prove (#37631). */
+function cursorReplySentence(probeId: string, replies: readonly CardValue[]): string | undefined {
+  if (replies.length < 2) return undefined
+  const coords = replies.map(cprCoord)
+  if (coords.some((c) => c === undefined)) return undefined
+  const positions = coords as string[]
+  if (SAVE_RESTORE_PROBES.has(probeId) && positions.length === 3) {
+    const [saved, moved, restored] = positions as [string, string, string]
+    return restored === saved
+      ? `Cursor saved at ${saved}, moved to ${moved}, restored: back at ${restored}.`
+      : `Cursor saved at ${saved}, moved to ${moved}, restored: stayed at ${restored} instead of ${saved}.`
+  }
+  if (probeId === "cursor.position-report") {
+    return `Reported cursor positions ${positions.join(", ")} as requested.`
+  }
+  if (probeId.startsWith("cursor.")) {
+    if (positions.length === 2) return `Cursor moved from ${positions[0]} to ${positions[1]}.`
+    if (positions.length === 3) {
+      return `Cursor started at ${positions[1]}, moved to ${positions[2]} (replies: ${positions.join(" → ")}).`
+    }
+    return `Cursor reported ${positions.join(" → ")} across the position checks.`
+  }
+  return undefined
+}
+
+function screenDetailSentences(detail: ScreenDetail, region?: Region): string[] {
+  switch (detail.kind) {
+    case "blink":
+      return [
+        `Sampled ${region ? rows(region) : "the styled cells"} ${detail.samples} times across ${detail.spanMs} ms.`,
+        "Those cells never changed between samples (no blink).",
+      ]
+    case "smooth-scroll":
+      return [
+        `Checked row ${detail.settledRow} of the screen during a throttled scroll.`,
+        `The content was already settled after ${detail.firstElapsedMs} ms, inside the ${detail.throttledMs} ms throttled window.`,
+      ]
+    case "ligatures":
+      return [
+        "Compared the ligature cells against isolated single-character controls.",
+        "Every cell matched its isolated glyph with no ligature substitution.",
+      ]
+    case "scroll-up":
+      return [
+        "Captured the viewport at the bottom and scrolled into history before sending OSC 720.",
+        detail.stayedAtBottom
+          ? "After OSC 720, the viewport matched the bottom frame and did not scroll up."
+          : "After OSC 720, the viewport did not match the scrolled history frame.",
+      ]
+    case "animation":
+      return [
+        `Compared ${region ? rows(region) : "the image cells"} of the screen across ${detail.elapsedMs} ms of animation playback.`,
+        "The second frame appeared, but neither timed playback nor frame selection restored the first frame.",
+      ]
+    case "reflow":
+      return [
+        `Resized the terminal between ${detail.fromCols} and ${detail.toCols} columns and checked the screen cells.`,
+        `Lines were ${detail.shrink} on shrink and ${detail.grow} on grow rather than rewrapped.`,
+      ]
+    case "viewport-hold":
+      return [
+        "Scrolled into history and wrote new output while watching the viewport.",
+        "The screen returned to the bottom instead of holding its scrolled position.",
+      ]
+    case "pointer":
+      return [
+        "Compared pointer-cursor captures after OSC 22 with the baseline capture.",
+        detail.unchanged
+          ? "The cursor image matched the baseline and did not change."
+          : "The cursor image did not match the expected crosshair and restoration sequence.",
+      ]
+  }
+}
 
 const UNTESTABLE_REASON: Readonly<Record<string, string>> = {
   permission: "the test needed a permission this run did not have",
@@ -1019,12 +1340,14 @@ const UNTESTABLE_REASON: Readonly<Record<string, string>> = {
 type Template<K extends EvidenceKind> = (facts: EvidenceFacts & { kind: K }, probeId: string) => string[]
 
 const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
-  "byte-reply": ({ replies, silent }) => {
+  "byte-reply": ({ replies, silent }, probeId) => {
     const [only] = replies
+    const cursorProof = silent.length === 0 ? cursorReplySentence(probeId, replies) : undefined
     const sent =
-      replies.length === 1 && only !== undefined
+      cursorProof ??
+      (replies.length === 1 && only !== undefined
         ? `The terminal sent back ${words(only)}.`
-        : `The terminal sent back ${replies.length} replies: ${list(replies.map(words))}.`
+        : `The terminal sent back ${replies.length} replies: ${list(replies.map(words))}.`)
     if (silent.length === 0) return [sent]
     const other = silent.length === 1 ? "The other query" : `The other ${silent.length} queries`
     const wait = waited(silent)
@@ -1057,16 +1380,30 @@ const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
         : `it set ${variable} to ${quoted(value)} in the environment it gave the test.`
     }`,
   ],
-  screen: ({ region, outcome }) => [
-    region ? `Compared ${rows(region)} of the screen with the expected result.` : "Checked the screen after the test.",
-    `${region ? "Those cells" : "It"} ${SCREEN_OUTCOME[outcome]}`,
-  ],
-  "text-readback": ({ region, outcome, reader }) => [
-    `Read ${region ? rows(region) : "the screen"} as text from ${
-      reader === "console host" ? "the console host's buffer" : "the terminal's own text snapshot"
-    }, not from its pixels.`,
-    `${region ? "Those cells" : "It"} ${SCREEN_OUTCOME[outcome]}`,
-  ],
+  screen: ({ region, outcome, detail }) => {
+    if (detail) return screenDetailSentences(detail, region)
+    if (outcome === "unrecorded") {
+      return [
+        region ? `Checked ${rows(region)} of the screen after the test.` : "Checked the screen after the test.",
+        "Individual cell contents were not recorded in this run's trace.",
+      ]
+    }
+    return [
+      region
+        ? `Compared ${rows(region)} of the screen with the expected result.`
+        : "Checked the screen after the test.",
+      `${region ? "Those cells" : "It"} ${SCREEN_OUTCOME[outcome]}`,
+    ]
+  },
+  "text-readback": ({ region, outcome, detail, reader }) => {
+    if (detail) return screenDetailSentences(detail, region)
+    return [
+      `Read ${region ? rows(region) : "the screen"} as text from ${
+        reader === "console host" ? "the console host's buffer" : "the terminal's own text snapshot"
+      }, not from its pixels.`,
+      `${region ? "Those cells" : "It"} ${SCREEN_OUTCOME[outcome]}`,
+    ]
+  },
   "app-state": (facts) => {
     if (facts.read === "readings") {
       return [

@@ -170,3 +170,94 @@ function firstPlainSentence(raw?: string): string | undefined {
   if (sentence.length <= 180) return sentence
   return `${sentence.slice(0, 177).trimEnd()}…`
 }
+
+export interface TechnicalDetailsInput {
+  readonly declaredSequence?: string
+  readonly observedSummary: string
+  readonly hasStepTable: boolean
+  readonly fullSentBytes?: string
+  readonly fullReplyBytes?: string
+  readonly queryBytes?: string
+  readonly parserStatePre?: string
+  readonly selectionExplanation?: string
+  readonly evidenceError?: string
+}
+
+export interface TechnicalDetailsSelection {
+  readonly showSteps: boolean
+  readonly sentBytes?: string
+  readonly queryBytes?: string
+  readonly replyBytes?: string
+  readonly parserStatePre?: string
+  readonly selectionExplanation?: string
+  readonly evidenceError?: string
+  readonly hasContent: boolean
+}
+
+function normalizeSeq(text?: string): string {
+  return (text ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/ESC\s*\[\s*/g, "ESC[")
+    .replace(/ESC\s*\]\s*/g, "ESC]")
+    .replace(/ESC\s*P\s*/g, "ESCP")
+    .replace(/ESC\s*\\/g, "ESC\\")
+    .trim()
+}
+
+/**
+ * Strip the trailing DA1 device-check fence (`ESC [ c`) when the declared test sequence itself
+ * is not DA1 (`ESC [ c`), so Technical details never repeats a query that only adds the probe fence.
+ */
+function stripTrailingFence(query: string, declared: string): string {
+  if (/ESC\[c$/i.test(declared)) return query
+  return query.replace(/\s*ESC\[c\s*$/i, "").trim()
+}
+
+/**
+ * Select only non-duplicate technical details for a result card (#37631).
+ * Never repeats Expected, Observed, or a query/write identical to Test sequence (+ fence);
+ * when nothing genuinely new remains, `hasContent` is false and the disclosure is omitted.
+ */
+export function technicalDetailsContent(input: TechnicalDetailsInput): TechnicalDetailsSelection {
+  const normDeclared = normalizeSeq(input.declaredSequence)
+  const normObserved = normalizeSeq(input.observedSummary)
+
+  const normSent = normalizeSeq(input.fullSentBytes)
+  const sentBytes =
+    input.fullSentBytes && normSent !== "" && normSent !== normDeclared ? input.fullSentBytes : undefined
+
+  const rawQuery = input.queryBytes?.trim()
+  const normQuery = stripTrailingFence(normalizeSeq(rawQuery), normDeclared)
+  const queryBytes =
+    rawQuery && normQuery !== "" && normQuery !== normDeclared && normQuery !== normSent ? rawQuery : undefined
+
+  const normReply = normalizeSeq(input.fullReplyBytes)
+  const replyAlreadyInObserved = normReply !== "" && normObserved.includes(normReply)
+  const replyBytes =
+    input.fullReplyBytes && normReply !== "" && !replyAlreadyInObserved ? input.fullReplyBytes : undefined
+
+  const parserStatePre = input.parserStatePre?.trim() ? input.parserStatePre : undefined
+  const selectionExplanation = input.selectionExplanation?.trim() ? input.selectionExplanation : undefined
+  const evidenceError = input.evidenceError?.trim() ? input.evidenceError : undefined
+
+  const hasContent = Boolean(
+    input.hasStepTable ||
+    sentBytes ||
+    queryBytes ||
+    replyBytes ||
+    parserStatePre ||
+    selectionExplanation ||
+    evidenceError,
+  )
+
+  return {
+    showSteps: input.hasStepTable,
+    ...(sentBytes && { sentBytes }),
+    ...(queryBytes && { queryBytes }),
+    ...(replyBytes && { replyBytes }),
+    ...(parserStatePre && { parserStatePre }),
+    ...(selectionExplanation && { selectionExplanation }),
+    ...(evidenceError && { evidenceError }),
+    hasContent,
+  }
+}

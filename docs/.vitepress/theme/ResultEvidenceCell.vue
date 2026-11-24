@@ -23,8 +23,15 @@ import {
   evidenceSummaryLine,
   NO_RESULT_STATUS,
   plainExpectedSentence,
+  technicalDetailsContent,
 } from "./evidence-status"
-import { displayOs, displayVersion } from "./display-version"
+import { displayMeasuredDate, displayOs, displayVersion } from "./display-version"
+import {
+  clearActivePopover,
+  HOVER_CLOSE_GRACE_MS,
+  HOVER_OPEN_DELAY_MS,
+  registerActivePopover,
+} from "./bar-layout"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -45,6 +52,8 @@ const props = withDefaults(
     display?: "compact" | "text" | "label"
     /** Render the result card directly inline (used by SupportBar's cascading detail pane, #37631). */
     inline?: boolean
+    /** Optional parent-to-row breadcrumb shown at the top of a child detail pane (#37631). */
+    breadcrumb?: string
   }>(),
   { display: "compact", inline: false },
 )
@@ -68,16 +77,16 @@ const currentResult = computed(() => (props.cell && "status" in props.cell ? pro
 
 const trigger = ref<HTMLButtonElement | null>(null)
 const preview = ref<HTMLElement | null>(null)
+let previewOpenTimer: ReturnType<typeof setTimeout> | undefined
 let previewHideTimer: ReturnType<typeof setTimeout> | undefined
 const previewVisible = ref(false)
+const previewPinned = ref(false)
 const previewPosition = ref<Record<string, string>>({})
 const cellTrace = ref<LoadedCellTrace | null>(null)
 const evidenceLoading = ref(false)
 const evidenceError = ref<string | null>(null)
 let evidenceRequest = 0
 let evidenceController: AbortController | null = null
-// #30756 AC8: only one popover is open at a time. Module scope, because every cell is its own instance.
-let openPreviewClose: (() => void) | undefined
 const id = useId()
 const tooltipId = `${id}-preview`
 
@@ -185,12 +194,42 @@ const observedSummary = computed(() => {
   })
 })
 
+const showJoinedGrades = computed(
+  () => Boolean(joinedGrades.value) && (joined.value?.status === DIFFERS_BY_CONTEXT || (joined.value?.from.length ?? 0) > 1),
+)
 const publicContextLine = computed(() => {
   const run = sourceRun.value
   if (!run) return props.subjectName
-  const parts = [props.subjectName, displayVersion(run.subject.version), displayOs(run.subject.os)].filter(Boolean)
-  return parts.join(" · ")
+  const osName = run.subject.os ? displayOs(run.subject.os) : ""
+  const cleanName = osName
+    ? props.subjectName.replace(new RegExp(`\\s*\\(${osName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)$`, "i"), "")
+    : props.subjectName
+  const version = displayVersion(run.subject.version)
+  const subject = version ? `${cleanName} ${version}` : cleanName
+  const os = osName ? (run.subject.osVersion ? `${osName} ${run.subject.osVersion}` : osName) : ""
+  return [subject, os].filter(Boolean).join(" · ")
 })
+
+const technicalDetails = computed(() => {
+  const traceItems = tracePaneCopy.value?.tested.items ?? []
+  const queryCode = traceItems.find((item) => item.label === "Query")?.code
+  const parserStatePre = traceItems.find((item) => item.label === "Observed")?.pre
+  const sentFromTrace = traceItems.find((item) => item.label === "Sent")?.code
+  return technicalDetailsContent({
+    declaredSequence: declaredSequence.value,
+    observedSummary: observedSummary.value,
+    hasStepTable: Boolean(stepTable.value),
+    fullSentBytes: sentBytes.value?.full ?? sentFromTrace,
+    fullReplyBytes: replyBytes.value?.full,
+    queryBytes: queryCode,
+    parserStatePre,
+    selectionExplanation: selectionExplanation.value,
+    evidenceError: evidenceError.value ?? undefined,
+  })
+})
+const measuredDateLabel = computed(() =>
+  sourceRun.value?.measuredAt ? `Measured ${displayMeasuredDate(sourceRun.value.measuredAt)}` : undefined,
+)
 
 const actionLabel = computed(() => (props.cell ? "Opens how this was tested" : "No evidence in current selection"))
 const accessibleName = computed(
@@ -300,15 +339,33 @@ async function loadEvidence(): Promise<void> {
   }
 }
 
+function cancelOpenTimer(): void {
+  clearTimeout(previewOpenTimer)
+  previewOpenTimer = undefined
+}
+
 function keepPreview(): void {
   clearTimeout(previewHideTimer)
+  previewHideTimer = undefined
+}
+
+function scheduleOpenPreview(): void {
+  keepPreview()
+  if (previewVisible.value) return
+  cancelOpenTimer()
+  previewOpenTimer = setTimeout(() => {
+    previewOpenTimer = undefined
+    showPreview(false)
+  }, HOVER_OPEN_DELAY_MS)
 }
 
 function scheduleHidePreview(event?: FocusEvent): void {
+  cancelOpenTimer()
+  if (previewPinned.value) return
   const next = event?.relatedTarget
   if (next instanceof Node && (preview.value?.contains(next) || trigger.value?.contains(next))) return
   keepPreview()
-  previewHideTimer = setTimeout(hidePreview, 200)
+  previewHideTimer = setTimeout(hidePreview, HOVER_CLOSE_GRACE_MS)
 }
 
 function positionPreview(): void {
@@ -343,11 +400,12 @@ function onDocKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") closePreview()
 }
 
-function showPreview(): void {
+function showPreview(pin = false): void {
+  cancelOpenTimer()
   keepPreview()
   if (!trigger.value || typeof window === "undefined") return
-  if (openPreviewClose !== undefined && openPreviewClose !== hidePreview) openPreviewClose()
-  openPreviewClose = hidePreview
+  registerActivePopover(hidePreview)
+  if (pin) previewPinned.value = true
   previewVisible.value = true
   previewPosition.value = { width: `${Math.min(420, window.innerWidth - 16)}px` }
   document.addEventListener("pointerdown", outsidePreview)
@@ -359,7 +417,7 @@ function showPreview(): void {
 }
 
 async function focusPreview(): Promise<void> {
-  showPreview()
+  showPreview(true)
   await nextTick()
   preview.value?.focus({ preventScroll: true })
 }
@@ -376,13 +434,15 @@ function outsidePreview(event: PointerEvent): void {
 }
 
 function hidePreview(): void {
+  cancelOpenTimer()
   document.removeEventListener("pointerdown", outsidePreview)
   document.removeEventListener("keydown", onDocKeydown)
   document.removeEventListener("terminfo:close-previews", hidePreview)
   window.removeEventListener("resize", repositionPreview)
   keepPreview()
   previewVisible.value = false
-  if (openPreviewClose === hidePreview) openPreviewClose = undefined
+  previewPinned.value = false
+  clearActivePopover(hidePreview)
 }
 
 onMounted(() => {
@@ -407,18 +467,21 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="inline" class="result-evidence__inline-card" role="region" :aria-label="`${featureName} result`">
-    <div class="result-evidence__card-head">
-      <strong
-        class="result-evidence__trigger result-evidence__verdict"
-        :class="`result-evidence__trigger--${status.tone}`"
-      >
-        <span aria-hidden="true">{{ status.icon }}</span
-        >{{ status.text || status.title }}
-      </strong>
+    <div class="result-evidence__identity-group">
+      <div v-if="breadcrumb" class="result-evidence__breadcrumb">{{ breadcrumb }}</div>
+      <div class="result-evidence__card-head">
+        <strong
+          class="result-evidence__trigger result-evidence__verdict"
+          :class="`result-evidence__trigger--${status.tone}`"
+        >
+          <span aria-hidden="true">{{ status.icon }}</span
+          >{{ status.text || status.title }}
+        </strong>
+      </div>
+      <strong class="result-evidence__test-title">{{ featureName }}</strong>
+      <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
+      <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
     </div>
-    <p v-if="joinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
-    <strong class="result-evidence__test-title">{{ featureName }}</strong>
-    <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
 
     <div class="result-evidence__summary-block">
       <div class="result-evidence__field">
@@ -430,7 +493,7 @@ onBeforeUnmount(() => {
         <span class="result-evidence__field-label">Expected</span>
         <p class="result-evidence__plain">{{ expectedSentence }}</p>
       </div>
-      <div class="result-evidence__field">
+      <div v-if="!blank" class="result-evidence__field">
         <span class="result-evidence__field-label">Observed</span>
         <p class="result-evidence__plain">{{ observedSummary }}</p>
         <span v-if="evidenceLoading" class="result-evidence__field-muted">Loading recorded evidence…</span>
@@ -441,38 +504,29 @@ onBeforeUnmount(() => {
       </figure>
     </div>
 
-    <details v-if="!blank" class="result-evidence__compact-details">
+    <details v-if="!blank && technicalDetails.hasContent" class="result-evidence__compact-details">
       <summary>Technical details</summary>
       <div>
-        <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
-        <div v-if="sentBytes" class="result-evidence__bytes">
+        <ResultSteps v-if="technicalDetails.showSteps && stepTable" :rows="stepTable.rows" />
+        <div v-if="technicalDetails.sentBytes" class="result-evidence__bytes">
           <span class="result-evidence__bytes-label">Full sent bytes</span>
-          <pre>{{ sentBytes.full }}</pre>
+          <pre>{{ technicalDetails.sentBytes }}</pre>
         </div>
-        <div v-if="replyBytes" class="result-evidence__bytes">
-          <span class="result-evidence__bytes-label">Full reply bytes</span>
-          <pre>{{ replyBytes.full }}</pre>
+        <div v-if="technicalDetails.queryBytes" class="result-evidence__bytes">
+          <span class="result-evidence__bytes-label">Query bytes</span>
+          <pre>{{ technicalDetails.queryBytes }}</pre>
         </div>
-        <div v-if="!stepTable && tracePaneCopy" class="result-evidence__trace-pane">
-          <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
-            <div class="result-evidence__trace-label">{{ item.label }}</div>
-            <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
-            <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
-            <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
-          </template>
+        <div v-if="technicalDetails.replyBytes" class="result-evidence__bytes">
+          <span class="result-evidence__bytes-label">Raw reply bytes</span>
+          <pre>{{ technicalDetails.replyBytes }}</pre>
         </div>
-        <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
-        <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
-        <template v-if="tracePaneCopy">
-          <span>{{ tracePaneCopy.tested.sourceLine }}</span>
-          <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
-        </template>
-        <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
-        <code v-if="sourceRun">Run {{ sourceRun.runId }}</code>
-        <details v-if="probeGuidanceText">
-          <summary>Catalog test description</summary>
-          {{ probeGuidanceText }}
-        </details>
+        <div v-if="technicalDetails.parserStatePre" class="result-evidence__bytes">
+          <span class="result-evidence__bytes-label">Parser state</span>
+          <pre>{{ technicalDetails.parserStatePre }}</pre>
+        </div>
+        <span v-if="technicalDetails.selectionExplanation">{{ technicalDetails.selectionExplanation }}</span>
+        <span v-if="technicalDetails.evidenceError" role="alert">Evidence error: {{ technicalDetails.evidenceError }}</span>
+        <span v-if="measuredDateLabel" class="result-evidence__field-muted">{{ measuredDateLabel }}</span>
       </div>
     </details>
   </div>
@@ -489,9 +543,9 @@ onBeforeUnmount(() => {
       :class="`result-evidence__trigger--${status.tone}`"
       :aria-label="accessibleName"
       :aria-describedby="previewVisible ? tooltipId : undefined"
-      @pointerenter="showPreview"
+      @pointerenter="scheduleOpenPreview"
       @pointerleave="scheduleHidePreview()"
-      @focus="showPreview"
+      @focus="showPreview(false)"
       @blur="scheduleHidePreview"
       @keydown.esc.stop="closePreview"
       @click="focusPreview"
@@ -517,19 +571,21 @@ onBeforeUnmount(() => {
         @keydown.esc.stop="closePreview"
         @toggle.capture="repositionPreview"
       >
-        <div class="result-evidence__card-head">
-          <strong
-            v-if="status.text"
-            class="result-evidence__trigger result-evidence__verdict"
-            :class="`result-evidence__trigger--${status.tone}`"
-            ><span aria-hidden="true">{{ status.icon }}</span
-            >{{ status.text }}</strong
-          >
-          <button type="button" class="result-evidence__close-mini" aria-label="Close" @click="closePreview">×</button>
+        <div class="result-evidence__identity-group">
+          <div class="result-evidence__card-head">
+            <strong
+              v-if="status.text"
+              class="result-evidence__trigger result-evidence__verdict"
+              :class="`result-evidence__trigger--${status.tone}`"
+              ><span aria-hidden="true">{{ status.icon }}</span
+              >{{ status.text }}</strong
+            >
+            <button type="button" class="result-evidence__close-mini" aria-label="Close" @click="closePreview">×</button>
+          </div>
+          <strong class="result-evidence__test-title">{{ featureName }}</strong>
+          <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
+          <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
         </div>
-        <p v-if="joinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
-        <strong class="result-evidence__test-title">{{ featureName }}</strong>
-        <span class="result-evidence__compact-context">{{ publicContextLine }}</span>
 
         <div class="result-evidence__summary-block">
           <div class="result-evidence__field">
@@ -552,38 +608,29 @@ onBeforeUnmount(() => {
           </figure>
         </div>
 
-        <details class="result-evidence__compact-details">
+        <details v-if="technicalDetails.hasContent" class="result-evidence__compact-details">
           <summary>Technical details</summary>
           <div>
-            <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
-            <div v-if="sentBytes" class="result-evidence__bytes">
+            <ResultSteps v-if="technicalDetails.showSteps && stepTable" :rows="stepTable.rows" />
+            <div v-if="technicalDetails.sentBytes" class="result-evidence__bytes">
               <span class="result-evidence__bytes-label">Full sent bytes</span>
-              <pre>{{ sentBytes.full }}</pre>
+              <pre>{{ technicalDetails.sentBytes }}</pre>
             </div>
-            <div v-if="replyBytes" class="result-evidence__bytes">
-              <span class="result-evidence__bytes-label">Full reply bytes</span>
-              <pre>{{ replyBytes.full }}</pre>
+            <div v-if="technicalDetails.queryBytes" class="result-evidence__bytes">
+              <span class="result-evidence__bytes-label">Query bytes</span>
+              <pre>{{ technicalDetails.queryBytes }}</pre>
             </div>
-            <div v-if="!stepTable && tracePaneCopy" class="result-evidence__trace-pane">
-              <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
-                <div class="result-evidence__trace-label">{{ item.label }}</div>
-                <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
-                <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
-                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
-              </template>
+            <div v-if="technicalDetails.replyBytes" class="result-evidence__bytes">
+              <span class="result-evidence__bytes-label">Raw reply bytes</span>
+              <pre>{{ technicalDetails.replyBytes }}</pre>
             </div>
-            <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
-            <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
-            <template v-if="tracePaneCopy">
-              <span>{{ tracePaneCopy.tested.sourceLine }}</span>
-              <span v-if="tracePaneCopy.tested.identityLine">{{ tracePaneCopy.tested.identityLine }}</span>
-            </template>
-            <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
-            <code v-if="sourceRun">Run {{ sourceRun.runId }}</code>
-            <details v-if="probeGuidanceText">
-              <summary>Catalog test description</summary>
-              {{ probeGuidanceText }}
-            </details>
+            <div v-if="technicalDetails.parserStatePre" class="result-evidence__bytes">
+              <span class="result-evidence__bytes-label">Parser state</span>
+              <pre>{{ technicalDetails.parserStatePre }}</pre>
+            </div>
+            <span v-if="technicalDetails.selectionExplanation">{{ technicalDetails.selectionExplanation }}</span>
+            <span v-if="technicalDetails.evidenceError" role="alert">Evidence error: {{ technicalDetails.evidenceError }}</span>
+            <span v-if="measuredDateLabel" class="result-evidence__field-muted">{{ measuredDateLabel }}</span>
           </div>
         </details>
       </div>
@@ -592,6 +639,20 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.result-evidence__identity-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.result-evidence__breadcrumb {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--vp-c-text-2);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .result-evidence__card-head {
   display: flex;
   align-items: center;
@@ -620,26 +681,33 @@ onBeforeUnmount(() => {
   background: var(--vp-c-default-soft);
 }
 .result-evidence__inline-card {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  flex-direction: column;
   font-size: 0.8rem;
   line-height: 1.35;
 }
 .result-evidence__summary-block {
-  display: grid;
-  gap: 6px;
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-divider);
 }
 .result-evidence__field {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.result-evidence__field + .result-evidence__field {
+  margin-top: 14px;
 }
 .result-evidence__field-label {
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vp-c-text-2);
+  line-height: 1.2;
 }
 .result-evidence__field-muted {
   font-size: 0.68rem;
@@ -648,13 +716,13 @@ onBeforeUnmount(() => {
 .result-evidence__plain,
 :deep(.result-evidence__plain) {
   margin: 0 !important;
-  font-size: 0.74rem;
-  line-height: 1.4;
+  font-size: 0.76rem;
+  line-height: 1.45;
   overflow-wrap: anywhere;
   color: var(--vp-c-text-1);
 }
 .result-evidence__illustration {
-  margin: 4px 0 0;
+  margin: 12px 0 0;
   border: 1px solid var(--vp-c-divider);
   border-radius: 5px;
   overflow: hidden;
@@ -667,21 +735,23 @@ onBeforeUnmount(() => {
   background: #17191d;
 }
 .result-evidence__bytes {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .result-evidence__bytes-label {
-  font-size: 0.58rem;
+  font-size: 0.6rem;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vp-c-text-2);
 }
 .result-evidence__bytes pre {
-  margin: 2px 0 0;
-  padding: 4px 6px;
+  margin: 0;
+  padding: 5px 7px;
   border-radius: 4px;
   background: var(--vp-c-bg-soft);
-  font-size: 0.62rem;
+  font-size: 0.63rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

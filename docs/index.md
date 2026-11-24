@@ -867,8 +867,10 @@ strips, or mishandles.
 .support-legend { display:flex; flex-wrap:wrap; gap:8px 20px; margin:20px 0 12px; font-size:12px; color:var(--vp-c-text-2); }
 .support-legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:6px; border-radius:2px; background:var(--vp-c-divider); }
 .support-legend .legend-supported::before { background:#10b981; }
+.support-legend .legend-unsupported::before { background:#dc2626; }
+.dark .support-legend .legend-unsupported::before { background:#ef4444; }
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
-.support-legend .legend-no-result::before { background:var(--vp-c-bg-soft); border:1px solid var(--vp-c-divider); }
+.support-legend .legend-no-result::before { background:repeating-linear-gradient(-45deg, transparent 0 2px, rgba(148,163,184,0.35) 2px 3.5px); border:1px solid var(--vp-c-text-3); }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
 @media (max-width:600px) {

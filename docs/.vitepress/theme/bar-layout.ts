@@ -1,7 +1,30 @@
 /**
- * Pure placement and anchor helpers for SupportBar, its cascading right-side detail pane,
- * and result row scroll targets (#37631).
+ * Pure placement, anchor, and single-popover coordination helpers for SupportBar,
+ * ResultEvidenceCell hover cards, and result row scroll targets (#37631).
  */
+
+/** Hover-intent delay before opening any hover card so sweeping across pills opens nothing. */
+export const HOVER_OPEN_DELAY_MS = 300
+/** Short grace period on pointer leave before closing an unpinned card. */
+export const HOVER_CLOSE_GRACE_MS = 180
+
+let activePopoverClose: (() => void) | undefined
+
+/**
+ * Page-wide single-popover coordinator (#37631): opening any SupportBar card or ResultEvidenceCell
+ * preview immediately closes whichever card was previously open.
+ */
+export function registerActivePopover(close: () => void): void {
+  if (activePopoverClose !== undefined && activePopoverClose !== close) {
+    activePopoverClose()
+  }
+  activePopoverClose = close
+}
+
+/** Release coordinator ownership when the active popover closes on its own. */
+export function clearActivePopover(close: () => void): void {
+  if (activePopoverClose === close) activePopoverClose = undefined
+}
 
 /**
  * Horizontal shift (px from the bar's left edge) for SupportBar's segment hover popover.

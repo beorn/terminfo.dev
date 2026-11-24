@@ -108,6 +108,33 @@ function withoutReadWindows(value: unknown): unknown {
   )
 }
 
+/** True when a nested subcheck/measurement object carries an undecided internal status (#37341 Q4). */
+function isUndecidedSubcheck(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  if (typeof record.status === "string" && !isPublishedStatus(record.status)) return true
+  const measurement = record.measurement
+  if (measurement !== null && typeof measurement === "object" && !Array.isArray(measurement)) {
+    const mStatus = (measurement as Record<string, unknown>).status
+    if (typeof mStatus === "string" && !isPublishedStatus(mStatus)) return true
+  }
+  return false
+}
+
+/** Public headless parser state: read windows and undecided subcheck records removed before hashing. */
+function publicParserState(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.filter((item) => !isUndecidedSubcheck(item)).map(publicParserState)
+  }
+  if (value === null || typeof value !== "object") return value
+  const out: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value)) {
+    if (READ_WINDOW.test(key) || isUndecidedSubcheck(child)) continue
+    out[key] = publicParserState(child)
+  }
+  return out
+}
+
 /**
  * A stored reply is JSON or plain text, and plain text is a reply in its own right. Text that starts like
  * JSON must parse: published raw, it would carry its read windows (2026-10-21: all 141,699 such stored
@@ -276,7 +303,7 @@ function traceRecord(
   let stored: StoredExchange | undefined
   if (rawReply !== undefined && rawReply !== "") {
     const json = storedJson(rawReply, `${where}.rawReply`)
-    if (headless) parserState = json ? withoutReadWindows(json.value) : rawReply
+    if (headless) parserState = json ? publicParserState(json.value) : rawReply
     else stored = json && exchange(json.value, where)
   }
   // A probe that keeps the read itself as its reply (DA1, DA2, XTVERSION) stores its exchange beside it.

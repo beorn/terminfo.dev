@@ -136,17 +136,30 @@
   touch-action: manipulation;
   appearance: none;
 }
+/* Unified verdict palette (#37631): Supported green, Unsupported red, Untestable amber,
+   No result yet hollow/hatched empty track, Differs indigo. */
 .support-bar-seg.bar-yes {
   background: #10b981;
 }
 .support-bar-seg.bar-fail {
-  background: var(--vp-c-divider);
+  background: #dc2626;
+}
+.dark .support-bar-seg.bar-fail {
+  background: #ef4444;
 }
 .support-bar-seg.bar-differs {
   background: #6366f1;
 }
 .support-bar-seg.bar-partial {
   background: #f59e0b;
+}
+.support-bar-seg.bar-none {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    rgba(148, 163, 184, 0.28) 3px 5px
+  );
+  box-shadow: inset 0 0 0 1px var(--vp-c-text-3);
 }
 .support-bar-seg:hover,
 .support-bar-seg:focus-visible,
@@ -217,37 +230,80 @@
 }
 .support-pop-detail {
   position: absolute;
-  top: -1px;
-  z-index: 51;
+  top: 0;
+  z-index: 52;
   box-sizing: border-box;
   width: min(360px, calc(100vw - 32px));
-  max-height: min(60vh, 420px);
-  overflow: auto;
-  padding: 12px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  background: var(--vp-c-bg);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  max-height: min(65vh, 460px);
+  overflow: visible;
+  padding: 14px 15px;
+  border: 1px solid var(--vp-c-text-3);
+  border-radius: 10px;
+  background: var(--vp-c-bg-elv);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.34),
+    0 4px 12px rgba(0, 0, 0, 0.18);
   color: var(--vp-c-text-1);
 }
+/* Scrollable interior inside the elevated child pane so the seam arrow on the outer box is never clipped. */
+.support-pop-detail > .result-evidence__inline-card {
+  max-height: calc(min(65vh, 460px) - 28px);
+  overflow: auto;
+}
+/* Invisible pointer bridge spanning the gap between the hovered row and the child detail pane. */
+.support-pop-detail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+}
+/* Directional seam arrow pointing straight at the hovered row's vertical center (#37631). */
+.support-pop-detail::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--detail-notch-top, 24px) - 6px);
+  width: 11px;
+  height: 11px;
+  background: var(--vp-c-bg-elv);
+  transform: rotate(45deg);
+}
 .support-pop-detail--right {
-  left: calc(100% - 1px);
-  border-top-left-radius: 0;
+  left: calc(100% + 8px);
+}
+.support-pop-detail--right::before {
+  left: -12px;
+}
+.support-pop-detail--right::after {
+  left: -6px;
+  border-left: 1px solid var(--vp-c-text-3);
+  border-bottom: 1px solid var(--vp-c-text-3);
 }
 .support-pop-detail--left {
-  right: calc(100% - 1px);
-  border-top-right-radius: 0;
+  right: calc(100% + 8px);
+}
+.support-pop-detail--left::before {
+  right: -12px;
+}
+.support-pop-detail--left::after {
+  right: -6px;
+  border-right: 1px solid var(--vp-c-text-3);
+  border-top: 1px solid var(--vp-c-text-3);
 }
 .support-pop-detail-inline {
   margin: 4px 8px 8px 24px;
-  padding: 10px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  background: var(--vp-c-bg-soft);
+  padding: 12px;
+  border: 1px solid var(--vp-c-text-3);
+  border-radius: 8px;
+  background: var(--vp-c-bg-elv);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
 }
 .result-item-active > .result-row,
 .vp-doc .result-item-active > a.result-row {
-  background: var(--vp-c-default-soft);
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-text-1);
+  font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--vp-c-brand-1);
 }
 [id^="feature-"],
 [id^="term-"] {
@@ -290,16 +346,23 @@
   height: 8px;
   margin-right: 6px;
   border-radius: 2px;
-  background: var(--vp-c-bg-soft);
-  box-shadow: inset 0 0 0 1px var(--vp-c-divider);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    rgba(148, 163, 184, 0.35) 2px 3.5px
+  );
+  box-shadow: inset 0 0 0 1px var(--vp-c-text-3);
 }
 .support-pop-tab-yes::before {
   background: #10b981;
   box-shadow: none;
 }
 .support-pop-tab-fail::before {
-  background: var(--vp-c-divider);
+  background: #dc2626;
   box-shadow: none;
+}
+.dark .support-pop-tab-fail::before {
+  background: #ef4444;
 }
 .support-pop-tab-differs::before {
   background: #6366f1;
@@ -425,7 +488,11 @@ a.result-row:focus-visible {
 }
 .result-list-fail .result-mark,
 .result-tone-fail .result-mark {
-  color: var(--vp-c-text-2);
+  color: #dc2626;
+}
+.dark .result-list-fail .result-mark,
+.dark .result-tone-fail .result-mark {
+  color: #f87171;
 }
 .result-list-differs .result-mark,
 .result-tone-differs .result-mark {

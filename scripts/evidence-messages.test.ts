@@ -214,6 +214,34 @@ describe("one real record per evidence kind (#37341)", () => {
       "Read rows 1–6, columns 1–14 as text from the console host's buffer, not from its pixels. Those cells did not change.",
     )
   })
+
+  test("nested capture & fixture screen reads report the compared region and concrete mismatch (#37631)", () => {
+    expect(card("probes-apps", KITTY, "sgr.overline").observed).toBe(
+      "Compared row 3, columns 3–33 of the screen with the expected result. Those cells looked the same as plain text with no attribute set.",
+    )
+    expect(card("probes-apps", KITTY, "modes.xtpopsgr").observed).toBe(
+      "Compared row 3, column 4 of the screen with the expected result. Those cells matched the ignored-command control rather than the expected result.",
+    )
+    expect(card("probes-apps", KITTY, "modes.decsscls").observed).toMatch(
+      /^Checked row \d+ of the screen during a throttled scroll\. The content was already settled after \d+ ms, inside the \d+ ms throttled window\.$/,
+    )
+  })
+
+  test("cursor save/restore replies say what the replies prove (#37631)", () => {
+    expect(card("probes-apps", KITTY, "cursor.save-restore").observed).toBe(
+      "Cursor saved at 3;5, moved to 10;10, restored: back at 3;5.",
+    )
+    expect(card("probes-apps", KITTY, "cursor.ansi-save").observed).toBe(
+      "Cursor saved at 3;5, moved to 10;15, restored: back at 3;5.",
+    )
+  })
+
+  test("headless reflow trace strips undecided probe-todo subchecks while keeping decided state (#37631)", () => {
+    const reflow = card("probes-libs", "da6c3113-6bfb-4dbe-a765-b405c4d70090", "extensions.reflow")
+    expect(reflow.trace.bytes).not.toMatch(/"probe-(?:todo|invalid|conflict)"/)
+    expect(reflow.trace.bytes).toContain("main-grow")
+    expect(reflow.trace.bytes).toContain("history-grow")
+  })
 })
 
 describe("the Kitty Linux TERM_FEATURES card (#37341)", () => {

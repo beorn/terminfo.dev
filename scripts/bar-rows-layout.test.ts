@@ -11,12 +11,20 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
+  clearActivePopover,
   detailPaneSide,
   featureAnchorId,
+  HOVER_CLOSE_GRACE_MS,
+  HOVER_OPEN_DELAY_MS,
+  registerActivePopover,
   segmentPopoverShift,
   termAnchorId,
 } from "../docs/.vitepress/theme/bar-layout.ts"
-import { evidenceSummaryLine, plainExpectedSentence } from "../docs/.vitepress/theme/evidence-status.ts"
+import {
+  evidenceSummaryLine,
+  plainExpectedSentence,
+  technicalDetailsContent,
+} from "../docs/.vitepress/theme/evidence-status.ts"
 import { DIFFERS_BY_CONTEXT } from "../docs/data/app-cells.ts"
 
 const root = join(import.meta.dirname, "..")
@@ -67,6 +75,29 @@ describe("detailPaneSide & stable anchors (#37631 fixes 7-8)", () => {
     expect(featureAnchorId("sgr.fg.truecolor")).toBe("feature-sgr-fg-truecolor")
     expect(featureAnchorId("extensions.iterm2-images")).toBe("feature-extensions-iterm2-images")
     expect(termAnchorId("terminal-app")).toBe("term-terminal-app")
+  })
+
+  it("coordinates a single active popover page-wide with 300ms hover-intent delay (#37631)", () => {
+    expect(HOVER_OPEN_DELAY_MS).toBeGreaterThanOrEqual(250)
+    expect(HOVER_OPEN_DELAY_MS).toBeLessThanOrEqual(400)
+    expect(HOVER_CLOSE_GRACE_MS).toBeGreaterThanOrEqual(100)
+    let closedA = 0
+    let closedB = 0
+    const closeA = () => {
+      closedA += 1
+    }
+    const closeB = () => {
+      closedB += 1
+    }
+    registerActivePopover(closeA)
+    expect(closedA).toBe(0)
+    registerActivePopover(closeB)
+    expect(closedA).toBe(1)
+    expect(closedB).toBe(0)
+    clearActivePopover(closeB)
+    registerActivePopover(closeA)
+    expect(closedB).toBe(0)
+    clearActivePopover(closeA)
   })
 })
 
@@ -153,6 +184,67 @@ describe("layout, hover, and single-system CSS/component contracts (#37631 fixes
     expect(resultCardVue).toContain("observedSummary")
     expect(resultCardVue).toContain("No test sequence declared.")
     expect(resultCardVue).not.toContain("tracePaneCopy.expected.behavior")
+  })
+
+  it("omits Technical details when nothing adds to Test sequence + Expected + Observed, and keeps genuinely new detail (#37631)", () => {
+    // WezTerm OSC 776 no-reply: Query is just Test sequence + described ESC [ c fence, Observed is already above.
+    const osc776 = technicalDetailsContent({
+      declaredSequence: "ESC ] 776 BEL",
+      observedSummary:
+        "No reply came back to the query. The terminal did answer the device check sent after it, and nothing else came within 250 ms.",
+      hasStepTable: false,
+      queryBytes: "ESC ]776 BEL ESC [ c",
+    })
+    expect(osc776.hasContent).toBe(false)
+
+    // Single reply already quoted verbatim in Observed, no extra writes -> omit Technical details.
+    const singleReply = technicalDetailsContent({
+      declaredSequence: "ESC [ ?4 $ p",
+      observedSummary: "The terminal sent back ESC [ ?4;0 $ y.",
+      hasStepTable: false,
+      fullReplyBytes: "ESC [ ?4;0 $ y",
+      queryBytes: "ESC [ ?4 $ p ESC [ c",
+    })
+    expect(singleReply.hasContent).toBe(false)
+
+    // Cursor save/restore: Observed summarizes positions; raw reply bytes + setup writes are genuinely new.
+    const saveRestore = technicalDetailsContent({
+      declaredSequence: "ESC 7 / ESC 8",
+      observedSummary: "Cursor saved at 3;5, moved to 10;10, restored: back at 3;5.",
+      hasStepTable: false,
+      fullSentBytes: "ESC [ 3;5 H  ESC 7  ESC [ 10;10 H  ESC 8",
+      fullReplyBytes: "ESC [ 3;5 R  ESC [ 10;10 R  ESC [ 3;5 R",
+    })
+    expect(saveRestore.hasContent).toBe(true)
+    expect(saveRestore.sentBytes).toContain("ESC 7")
+    expect(saveRestore.replyBytes).toContain("ESC [ 3;5 R")
+
+    // Headless library parser state keeps Technical details.
+    const headless = technicalDetailsContent({
+      declaredSequence: "ESC [ 49 m",
+      observedSummary: "The library's state after the test is shown below.",
+      hasStepTable: false,
+      parserStatePre: 'after: "R" bg null (default)',
+    })
+    expect(headless.hasContent).toBe(true)
+    expect(headless.parserStatePre).toContain("bg null")
+  })
+
+  it("groups identity vs evidence with 12-16px heading spacing, 4px heading-to-text gap, and child-pane seam/breadcrumb (#37631)", () => {
+    expect(resultCardVue).toContain("result-evidence__identity-group")
+    expect(resultCardVue).toContain("result-evidence__breadcrumb")
+    expect(resultCardVue).toMatch(
+      /\.result-evidence__field\s*\+\s*\.result-evidence__field\s*\{[^}]*margin-top:\s*14px/s,
+    )
+    expect(resultCardVue).toMatch(/\.result-evidence__field\s*\{[^}]*gap:\s*4px/s)
+    expect(barCss).toContain("--detail-notch-top")
+    expect(barCss).toContain(".support-pop-detail::after")
+    expect(barCss).toContain(".support-bar-seg.bar-none")
+    expect(barCss).toMatch(/\.support-bar-seg\.bar-fail\s*\{[^}]*#dc2626/s)
+    expect(supportBarVue).toContain(":breadcrumb=")
+    expect(supportBarVue).toContain("registerActivePopover")
+    expect(resultCardVue).toContain("registerActivePopover")
+    expect(resultCardVue).toContain('v-if="!blank" class="result-evidence__field"')
   })
 
   it("deletes legacy summary-bars.css and removes legacy bar tooltip rules from tooltip.css (fix 9)", () => {

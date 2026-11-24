@@ -233,6 +233,8 @@ export const INTERNAL_STATE_TEXT: ReadonlyArray<{
   readonly name: string
   readonly pattern: RegExp
   readonly inScripts: boolean
+  /** When true, also matched against ALL HTML attribute values (not just visible text / ARIA attributes). */
+  readonly inAllAttributes?: boolean
 }> = [
   { name: "PROBE TODO", pattern: /PROBE TODO/g, inScripts: true },
   { name: "PROBE INVALID", pattern: /PROBE INVALID/g, inScripts: true },
@@ -243,17 +245,23 @@ export const INTERNAL_STATE_TEXT: ReadonlyArray<{
   { name: "unstable version string", pattern: /\b\d+-unstable-\d{4}-\d{2}-\d{2}\b/g, inScripts: false },
   { name: "placeholder: not stored by this run", pattern: /not stored by this run/gi, inScripts: true },
   { name: "placeholder: not reviewed for publication", pattern: /not reviewed for publication/gi, inScripts: true },
-  // #37631: public context line is terminal name, version and OS only — never launcher flags, store/binary paths,
-  // permissions, mux or outer-terminal internals.
-  { name: "launcher nice flag", pattern: /\bnice\s+-n\s+\d+\b/g, inScripts: false },
-  { name: "nix store path", pattern: /\/nix\/store\/[a-z0-9]{10,}/g, inScripts: false },
+  // #37631: public pages (including HTML attributes such as <option value="...">) must never carry launcher flags,
+  // store/binary paths, permissions, mux or outer-terminal internals.
+  { name: "launcher nice flag", pattern: /\bnice\s+-n\s+\d+\b/g, inScripts: false, inAllAttributes: true },
+  { name: "nix store path", pattern: /\/nix\/store\/[a-z0-9]{10,}/g, inScripts: false, inAllAttributes: true },
   {
     name: "terminal binary path",
     pattern: /\/bin\/(?:kitty|xterm|alacritty|ghostty|wezterm|warp|tmux|screen)\b/gi,
     inScripts: false,
+    inAllAttributes: true,
   },
-  { name: "internal context permissions", pattern: /\bperms\s+[a-z0-9-]+/gi, inScripts: true },
-  { name: "internal context mux/outer", pattern: /·\s*(?:mux|outer)\s+[a-z0-9._-]+/gi, inScripts: true },
+  { name: "internal context permissions", pattern: /\bperms\s+[a-z0-9-]+/gi, inScripts: true, inAllAttributes: true },
+  {
+    name: "internal context mux/outer",
+    pattern: /·\s*(?:mux|outer)\s+[a-z0-9._-]+/gi,
+    inScripts: true,
+    inAllAttributes: true,
+  },
 ]
 
 /** Undecided statuses the public JSON must not carry (@cpo/term f16a5a52 Q4: decided results only). */
@@ -281,28 +289,55 @@ const READ_ATTRIBUTE = /\s(?:title|data-tooltip|aria-label|alt)\s*=\s*(?:"([^"]*
 const SEARCH_DESCRIPTION =
   /^<meta\b(?=[^>]*\s(?:name|property)\s*=\s*["'](?:description|og:description|twitter:description)["'])[^>]*\scontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i
 
+const ANY_ATTRIBUTE = /\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+const READ_ATTR_NAME = /^(?:title|data-tooltip|aria-label|alt)$/i
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, name: string) => ENTITY[name] ?? " ")
+}
+
 /**
  * A built page's reader text: its visible text plus the read attribute values (@cto 97ba8eea D11) and its search
  * description, entities decoded. A state named only in script data or in another attribute is not counted.
  */
 export function visibleText(html: string): string {
-  return html
-    .replace(SCRIPT_OR_STYLE, " ")
-    .replace(TAG, (tag) => {
+  return decodeEntities(
+    html.replace(SCRIPT_OR_STYLE, " ").replace(TAG, (tag) => {
       const read = [...tag.matchAll(READ_ATTRIBUTE)].map((match) => match[1] ?? match[2] ?? "")
       const description = tag.match(SEARCH_DESCRIPTION)
       if (description) read.push(description[1] ?? description[2] ?? "")
       return " " + read.join(" ") + " "
-    })
-    .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, name: string) => ENTITY[name] ?? " ")
+    }),
+  )
 }
 
-function countsIn(text: string, inScripts: boolean, versionText = text): Array<{ name: string; count: number }> {
+/** Non-read HTML attribute values outside `<script>`/`<style>`, entity-decoded (for host-path leak scanning, #37631). */
+function extraAttributeValues(html: string): string {
+  const values: string[] = []
+  for (const tag of html.replace(SCRIPT_OR_STYLE, " ").matchAll(TAG)) {
+    for (const attr of tag[0].matchAll(ANY_ATTRIBUTE)) {
+      const name = attr[1]
+      const val = attr[2] ?? attr[3]
+      if (name && val && !READ_ATTR_NAME.test(name)) values.push(val)
+    }
+  }
+  return decodeEntities(values.join(" "))
+}
+
+function countsIn(
+  text: string,
+  inScripts: boolean,
+  versionText = text,
+  attributeText = "",
+): Array<{ name: string; count: number }> {
   return INTERNAL_STATE_TEXT.filter((needle) => !inScripts || needle.inScripts)
-    .map((needle) => ({
-      name: needle.name,
-      count: (needle.name === "unstable version string" ? versionText : text).match(needle.pattern)?.length ?? 0,
-    }))
+    .map((needle) => {
+      const primary =
+        (needle.name === "unstable version string" ? versionText : text).match(needle.pattern)?.length ?? 0
+      const inAttrs =
+        !inScripts && needle.inAllAttributes && attributeText ? (attributeText.match(needle.pattern)?.length ?? 0) : 0
+      return { name: needle.name, count: primary + inAttrs }
+    })
     .filter(({ count }) => count > 0)
 }
 
@@ -403,7 +438,7 @@ export function scanRendered(distDir: string): Violation[] {
         ? [{ name: "undecided status value", count: undecided }]
         : []
       : isPage
-        ? countsIn(visibleText(content), false, versionText)
+        ? countsIn(visibleText(content), false, versionText, extraAttributeValues(content))
         : countsIn(content, true)
     if (found.length === 0) return
     violations.push({

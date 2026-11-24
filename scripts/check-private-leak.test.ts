@@ -259,6 +259,20 @@ describe("check-private-leak — rendered internal states", () => {
     expect(scanRendered(dist)).toEqual([])
   })
 
+  it("refuses host paths and launcher flags in HTML attributes such as option values (#37631)", () => {
+    writeFileSync(
+      join(dist, "x.html"),
+      page(
+        '<select><option value="term:kitty@[&quot;term&quot;,&quot;kitty&quot;,&quot;linux&quot;,&quot;7.0&quot;,null,null,&quot;nice -n 10 /nix/store/fbpk67n6fd9kb95vl7ksrc7pkh3gx3qx-kitty/bin/kitty&quot;,null]">Kitty</option></select>',
+      ),
+    )
+    const reasons = scanRendered(dist).map((v) => v.reason)
+    expect(reasons).toHaveLength(1)
+    expect(reasons[0]).toContain("launcher nice flag x1")
+    expect(reasons[0]).toContain("nix store path x1")
+    expect(reasons[0]).toContain("terminal binary path x1")
+  })
+
   it("decodes entities before matching, so an escaped label is still found", () => {
     writeFileSync(join(dist, "x.html"), page("<td>PROBE&nbsp;TODO</td>"))
     expect(scanRendered(dist).map((v) => v.reason)).toEqual(["page text shows internal state: PROBE TODO x1"])
