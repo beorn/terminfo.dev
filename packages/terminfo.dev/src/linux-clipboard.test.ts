@@ -924,8 +924,12 @@ try {
         ttyMatch: null, socketPresent: true, executable: "wezterm",
       })
       nodeAssert.equal(/[\\/]/u.test(reading.detail.ownershipReceipt), false)
-      // An owned process alone cannot widen the reviewed version or borrow the launch's identity.
-      for (const [reported, launched] of [["unreviewed-version", "0-unstable-2026-10-10"], ["0-unstable-2026-10-10", "unreviewed-version"]]) {
+      // An owned process alone cannot widen the reviewed version or borrow another reviewed launch's identity.
+      for (const [reported, launched] of [
+        ["unreviewed-version", "0-unstable-2026-10-10"],
+        ["0-unstable-2026-10-10", "unreviewed-version"],
+        ["0-unstable-2026-11-08", "0-unstable-2026-11-20"],
+      ]) {
         weztermCliVersion = reported
         process.env.TERMINFO_TARGET_VERSION = launched
         const wrongVersion = await factory(process.stdout, "4".repeat(32))
@@ -938,6 +942,17 @@ try {
         nodeAssert.equal(cwdWrites, 4)
         await wrongVersion.dispose()
       }
+      // Audited Linux 0-unstable-2026-11-20 (rev ee6f3044d09f, @cto GO 146524d0) passes when CLI and target match.
+      weztermCliVersion = "0-unstable-2026-11-20"
+      process.env.TERMINFO_TARGET_VERSION = weztermCliVersion
+      const audited20 = await factory(process.stdout, "5".repeat(32))
+      const reading20 = await audited20.readAppSemanticState("extensions.osc7-cwd", () => {
+        throw new Error("CWD used the publishable writer")
+      })
+      nodeAssert.equal(reading20.status, "measured", JSON.stringify(reading20))
+      nodeAssert.equal(cwd, cwdInitial)
+      nodeAssert.equal(cwdWrites, 8)
+      await audited20.dispose()
       weztermCliVersion = "0-unstable-2026-10-10"
       process.env.TERMINFO_TARGET_VERSION = weztermCliVersion
       loseCwdOwnerAfterWrite = true
@@ -946,7 +961,7 @@ try {
         throw new Error("CWD used the publishable writer")
       }), /restoration failed: the pane's reported directory was left changed/)
       nodeAssert.equal(weztermReads - before, 1, "after ownership loss no CLI read may follow the initial list")
-      nodeAssert.equal(cwdWrites, 5, "after ownership loss no restoration write may reach the pane")
+      nodeAssert.equal(cwdWrites, 9, "after ownership loss no restoration write may reach the pane")
     } finally {
       cwdActive = false
       cwdLost = false

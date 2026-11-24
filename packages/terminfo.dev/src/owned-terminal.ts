@@ -2959,11 +2959,19 @@ export async function createOwnedTerminal(options: {
           const ownedPromptCwd = binding.platform === "darwin" && featureId === "extensions.osc633-p"
           const ownedOsc8 = binding.platform === "darwin" && featureId === "extensions.osc8"
           if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd || ownedOsc8)) {
-            const reviewedVersion = binding.platform === "linux" ? "0-unstable-2026-10-10" : "20240203-110809-5046fc22"
+            // Exact reviewed CLI versions: Linux e2a98e1b8af1 -> 458a100c1bf4 (docs/get-deps only) -> ee6f3044d09f
+            // (osc.rs, performer.rs, wezterm/src/cli/ byte-identical; @cto GO 146524d0).
+            const reviewedVersions =
+              binding.platform === "linux"
+                ? new Set(["0-unstable-2026-10-10", "0-unstable-2026-11-08", "0-unstable-2026-11-20"])
+                : new Set(["20240203-110809-5046fc22"])
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
+            const targetVersion = process.env.TERMINFO_TARGET_VERSION
             if (
-              cliVersion !== reviewedVersion ||
-              process.env.TERMINFO_TARGET_VERSION !== reviewedVersion ||
+              cliVersion === undefined ||
+              targetVersion === undefined ||
+              cliVersion !== targetVersion ||
+              !reviewedVersions.has(cliVersion) ||
               process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
               muxAttachmentProof !== undefined ||
               Boolean(process.env.TERMINFO_MUX_KIND)
