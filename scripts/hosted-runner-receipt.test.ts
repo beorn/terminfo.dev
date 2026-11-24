@@ -17,6 +17,7 @@ import { promisify } from "node:util"
 import { expect, test } from "vitest"
 import {
   MAC_ALACRITTY_LAUNCH_DEVIATION,
+  MAC_GHOSTTY_LAUNCH_DEVIATION,
   MAC_WARP_LAUNCH_DEVIATION,
   MAC_WARP_STOCK_HEADER_DEVIATION,
 } from "../packages/run-parser/src/app-launch.ts"
@@ -156,6 +157,17 @@ console.log(value);
     }
     expect(decoded.appLaunch).toEqual(launch)
     expect(parseDisposableReceipt(bytes).appLaunch).toEqual(launch)
+    // #37667: Mac Ghostty launched with --scrollbar=never states its launchDeviation; stock launch above states none.
+    const ghosttyNoScrollbarArgv = [join(bundle, "Contents/MacOS/ghostty"), "--scrollbar=never"]
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(ghosttyNoScrollbarArgv))
+    const ghosttyDeviationReceipt = join(dir, "ghostty-deviation-host-measured.json")
+    await run("emit", start, ghosttyDeviationReceipt)
+    expect(parseDisposableReceipt(await readFile(ghosttyDeviationReceipt, "utf8")).appLaunch).toEqual({
+      ...launch,
+      argv: ghosttyNoScrollbarArgv,
+      launchDeviation: MAC_GHOSTTY_LAUNCH_DEVIATION,
+    })
+    await writeFile(join(dir, "app-argv.json"), JSON.stringify(argv))
     // The qualified iTerm archive can differ from the current Homebrew cask. Measure what launched.
     const itermBundle = join(dir, "iTerm.app")
     await mkdir(join(itermBundle, "Contents", "MacOS"), { recursive: true })
