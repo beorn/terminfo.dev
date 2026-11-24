@@ -204,6 +204,7 @@ describe("owned Terminal.app receipt", () => {
     expect(script).toContain("every window whose id is 14")
     expect(script).toContain("count of tabs of w) is not 1")
     expect(script).toContain('tty of tab 1 of w) is not "/dev/ttys003"')
+    expect(script).toContain("repeat while (busy of tab 1 of w) is true and busyWaited < 50")
     expect(script).toContain("close w")
     expect(script).toContain("repeat while remaining is not 0 and waited < 50")
     expect(script).toContain("delay 0.1")

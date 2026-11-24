@@ -8182,6 +8182,38 @@ it("refuses reset.soft and the traceless cells on a window basis before any byte
   }
 })
 
+it("admits non-disposable cells on a window basis without refusing them as unlisted (#34080)", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const nonDisposable = ALL_PROBES.find((item) => item.id === "cursor.move.home")!
+  const original = nonDisposable.term
+  let ran = false
+  nonDisposable.term = async () => {
+    ran = true
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  try {
+    const batch = await runProbeBatch({
+      ids: ["cursor.move.home", "reset.soft"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+    expect(ran, "non-disposable cell runs under a window-scoped basis").toBe(true)
+    const home = batch.results.find((result) => result.featureId === "cursor.move.home")
+    expect(home?.status).toBe("supported")
+    expect(batch.rawReplies["cursor.move.home.ledger"]).toBeUndefined()
+    expect(batch.rawReplies["cursor.move.home.spillover"]).toBeUndefined()
+    const reset = batch.results.find((result) => result.featureId === "reset.soft")
+    expect(reset?.reason).toContain("not admitted on a window basis")
+  } finally {
+    nonDisposable.term = original
+  }
+})
+
 // @failure A cell whose probe resets its attribute to the DEFAULT is graded on a terminal that already
 //   holds the non-default value: pre is 1 and post is 2, the ledger throws, and one cell kills the rest
 //   of the run (@dev/brain e1b6910e1 review 1).

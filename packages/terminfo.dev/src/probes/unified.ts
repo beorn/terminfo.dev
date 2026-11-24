@@ -1038,9 +1038,11 @@ async function runProbeBatchInRun(
     // event; its reading is still this row's recorded evidence, so the assertion must cite the row's trace.
     let appSemanticRead = false
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
-    // #34148 fold 2: only a window-scoped basis needs the restore ledger. The process arm owns the whole
-    // instance and already leaves it; keeping the gate here is what makes the ledger inert today.
-    const windowBasis = processOwnerBasis?.scope === "window"
+    // #34148 fold 2 & #34080: only disposable cells under a window-scoped basis need the restore ledger and
+    // witness check. Non-disposable cells are already admitted by `authorizedToWrite` on owned windows, and the
+    // process arm owns the whole instance and leaves it; gating non-disposable cells here would refuse them as
+    // unlisted in `WINDOW_BASIS_PRE_SEED` (which is derived only for `termNeedsDisposable` cells).
+    const windowBasis = probe.termNeedsDisposable === true && !disposable && processOwnerBasis?.scope === "window"
     const witness = windowBasis
       ? witnessAdmission({
           app: options.witnessWindow?.app ?? options.subject?.id,

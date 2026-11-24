@@ -138,7 +138,14 @@ function ownedWindowScript(window: TerminalAppWindow, close: boolean): string {
   if (tty of tab 1 of w) is not ${JSON.stringify(tabTty)} then error "owned Terminal tab TTY changed"
   ${
     close
-      ? `close w
+      ? `-- Wait up to 5s for the owned tab's process to exit after SIGTERM/stop before issuing close,
+  -- so Terminal.app never opens a "terminate running processes?" confirmation sheet (#34080).
+  set busyWaited to 0
+  repeat while (busy of tab 1 of w) is true and busyWaited < 50
+    delay 0.1
+    set busyWaited to busyWaited + 1
+  end repeat
+  close w
   set remaining to count of (every window whose id is ${window.windowId})
   -- A close is a request: run 42560226484 answered 1, still present, and the login shell was alive
   -- afterwards. Re-read for up to 5s before refusing, and keep the zero-match absence requirement.
