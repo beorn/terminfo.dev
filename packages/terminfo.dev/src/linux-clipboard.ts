@@ -896,6 +896,13 @@ export const CLIPBOARD_READ_DEFAULTS: Readonly<
         "wezterm 458a100c1bf4 wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as QuerySelection, and " +
         "term/src/terminalstate/performer.rs:792 handles it as QuerySelection(_) => {}: no reply, no setting",
     },
+    {
+      posture: "absent",
+      version: "0-unstable-2026-11-20",
+      source:
+        "wezterm ee6f3044d09f (audit 458a100c1bf4..ee6f3044d09f, @cto GO 146524d0): wezterm-escape-parser/src/osc.rs:176 " +
+        "and term/src/terminalstate/performer.rs:792 are byte-identical — OSC 52 ? QuerySelection(_) => {}: no reply, no setting",
+    },
     // #37240: the Mac measures the release the hosted job installs, whose own --version prints this tag
     // (macos-measurement.yml exports it as TERMINFO_TARGET_VERSION). Read at that tag's source.
     {

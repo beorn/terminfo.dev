@@ -228,47 +228,50 @@ const declarations: readonly AppSemanticCapability[] = [
       targetLine: `resetting dynamic color ${colour} not implemented`,
     },
   })),
-  // WezTerm e2a98e1b8af1 term/src/terminalstate/performer.rs:776-785:
-  // Unspecified OSC parameters are space-joined in this warning when logging is on.
-  ...(
-    [
-      ["extensions.osc555-flash", "555", "555"],
-      ["extensions.osc710-font-normal", "710", "710;fixed"],
-      // #32889 step 1: the same performer warning already measured for 555 and 710 covers the four
-      // host-effect commands. Retained lines, run 2026-11-09T21-33-38-598Z (suite 76c756c56745):
-      // "Unhandled OSC  666 test-prop=value", "Unhandled OSC  3008 type=test",
-      // "Unhandled OSC  176 terminfo-test", "Unhandled OSC  440 bell.wav".
-      ["extensions.osc176-app-id", "176", "176;terminfo-test"],
-      ["extensions.osc3008-context", "3008", "3008;type=test"],
-      ["extensions.osc440-audio", "440", "440;bell.wav"],
-      ["extensions.osc666-termprop", "666", "666;test-prop=value"],
-      ["extensions.osc633-a", "633", "633;A"],
-      ["extensions.osc633-b", "633", "633;B"],
-      ["extensions.osc633-c", "633", "633;C"],
-      ["extensions.osc633-d", "633", "633;D;0"],
-      ["extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
-      ["extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
-      ["extensions.osc-633-vscode", "633", "633;A"],
-    ] as const
-  ).map(([featureId, code, body]) => ({
-    kind: "term",
-    id: "wezterm",
-    version: "0-unstable-2026-11-08",
-    os: "linux",
-    featureId,
-    reader: "report" as const,
-    command: { code, body },
-    reportControls: {
-      sentinel: { code: "7655", body: "7655;{nonce}", line: "Unhandled OSC  7655 {nonce}" },
-      handled: { code: "2", body: "2;Q-{nonce}", line: "Unhandled OSC  2 Q-{nonce}" },
-      targetLine: `Unhandled OSC  ${body.replaceAll(";", " ")}`,
-    },
-  })),
-  // CTO third-table Ask4: preserve the separately delivered fourteen bus-dependent rows.
+  // WezTerm e2a98e1b8af1 -> 458a100c1bf4 (docs/get-deps only) -> ee6f3044d09f (performer.rs byte-identical)
+  // term/src/terminalstate/performer.rs:776-785: Unspecified OSC parameters are space-joined in this warning when logging is on.
+  ...(["0-unstable-2026-11-08", "0-unstable-2026-11-20"] as const).flatMap((version) =>
+    (
+      [
+        ["extensions.osc555-flash", "555", "555"],
+        ["extensions.osc710-font-normal", "710", "710;fixed"],
+        // #32889 step 1: the same performer warning already measured for 555 and 710 covers the four
+        // host-effect commands. Retained lines, run 2026-11-09T21-33-38-598Z (suite 76c756c56745):
+        // "Unhandled OSC  666 test-prop=value", "Unhandled OSC  3008 type=test",
+        // "Unhandled OSC  176 terminfo-test", "Unhandled OSC  440 bell.wav".
+        ["extensions.osc176-app-id", "176", "176;terminfo-test"],
+        ["extensions.osc3008-context", "3008", "3008;type=test"],
+        ["extensions.osc440-audio", "440", "440;bell.wav"],
+        ["extensions.osc666-termprop", "666", "666;test-prop=value"],
+        ["extensions.osc633-a", "633", "633;A"],
+        ["extensions.osc633-b", "633", "633;B"],
+        ["extensions.osc633-c", "633", "633;C"],
+        ["extensions.osc633-d", "633", "633;D;0"],
+        ["extensions.osc633-e", "633", "633;E;ls -la;nonce123"],
+        ["extensions.osc633-p", "633", "633;P;Cwd=/tmp"],
+        ["extensions.osc-633-vscode", "633", "633;A"],
+      ] as const
+    ).map(([featureId, code, body]) => ({
+      kind: "term",
+      id: "wezterm",
+      version,
+      os: "linux",
+      featureId,
+      reader: "report" as const,
+      command: { code, body },
+      reportControls: {
+        sentinel: { code: "7655", body: "7655;{nonce}", line: "Unhandled OSC  7655 {nonce}" },
+        handled: { code: "2", body: "2;Q-{nonce}", line: "Unhandled OSC  2 Q-{nonce}" },
+        targetLine: `Unhandled OSC  ${body.replaceAll(";", " ")}`,
+      },
+    })),
+  ),
+  // CTO third-table Ask4: preserve the separately delivered bus-dependent rows.
   ...[
     { kind: "term", id: "kitty", version: "0.49.2" },
     { kind: "term", id: "ghostty", version: "1.4.0" },
     { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
+    { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20" },
     { kind: "term", id: "alacritty", version: "0.17.0" },
     { kind: "term", id: "xterm", version: "412" },
     { kind: "mux", id: "screen", version: "5.0.2" },
@@ -309,15 +312,16 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Kitty 0.49.2 has no OSC 133 B arm or input-mark reader. Read tag v0.49.2 kitty/screen.c:3590-3610 (A/C/D only) and docs/shell-integration.rst:434-452; no command-specific log reports this handled OSC's unknown letter.",
   },
-  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
-    kind: "term",
-    id: "wezterm",
-    version: "0-unstable-2026-11-08",
-    os: "linux",
-    featureId,
-    reason:
-      "Untestable (no way): WezTerm 0-unstable-2026-11-08 exposes semantic zones but no command-exit status, so it cannot observe OSC 133 D or the complete A/C/D cycle. Read e2a98e1b8af1 term/src/terminalstate/performer.rs:904-906 (empty CommandStatus arm), term/src/lib.rs:117-123 and public pane semantic-zone documentation.",
-  })),
+  ...(["0-unstable-2026-11-08", "0-unstable-2026-11-20"] as const).flatMap((version) =>
+    ["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+      kind: "term",
+      id: "wezterm",
+      version,
+      os: "linux",
+      featureId,
+      reason: `Untestable (no way): WezTerm ${version} exposes semantic zones but no command-exit status, so it cannot observe OSC 133 D or the complete A/C/D cycle. Read e2a98e1b8af1..ee6f3044d09f term/src/terminalstate/performer.rs:904-906 (empty CommandStatus arm, byte-identical through rev ee6f3044d09f), term/src/lib.rs:117-123 and public pane semantic-zone documentation.`,
+    })),
+  ),
   ...["extensions.osc633-e", "extensions.osc633-p"].map((featureId) => ({
     kind: "term",
     id: "ghostty",
@@ -895,15 +899,16 @@ const declarations: readonly AppSemanticCapability[] = [
   ),
   // 33628 (@cto 1957): Kitty's OSC 7 report, read through a background launch with --cwd=last_reported.
   { kind: "term", id: "kitty", version: "0.49.2", os: "linux", featureId: "extensions.osc7-cwd", reader: "kitty-cwd" },
-  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
-    kind: "term" as const,
-    id: "wezterm",
-    version: "0-unstable-2026-11-08",
-    os: "linux",
-    featureId,
-    reason:
-      "Untestable (no way): WezTerm 0-unstable-2026-11-08 parses OSC 133 A/B/C/P into Rust SemanticZone state with no wezterm cli semantic-zone readback and no unknown-OSC log line. Read e2a98e1b8af1 wezterm-escape-parser/src/osc.rs:500,750-830, term/src/terminalstate/performer.rs:867-908, term/src/terminalstate/mod.rs:2831 (get_semantic_zones) and wezterm/src/cli/ (get-text outputs text/escapes without zones). Injecting a custom Lua user-var-changed script into target launch configuration to dump pane:get_semantic_zones() is not a default-launch reader.",
-  })),
+  ...(["0-unstable-2026-11-08", "0-unstable-2026-11-20"] as const).flatMap((version) =>
+    ["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
+      kind: "term" as const,
+      id: "wezterm",
+      version,
+      os: "linux",
+      featureId,
+      reason: `Untestable (no way): WezTerm ${version} parses OSC 133 A/B/C/P into Rust SemanticZone state with no wezterm cli semantic-zone readback and no unknown-OSC log line. Read e2a98e1b8af1..ee6f3044d09f wezterm-escape-parser/src/osc.rs:500,750-830, term/src/terminalstate/performer.rs:867-908, term/src/terminalstate/mod.rs:2831 (get_semantic_zones) and wezterm/src/cli/ (byte-identical through rev ee6f3044d09f; get-text outputs text/escapes without zones). Injecting a custom Lua user-var-changed script into target launch configuration to dump pane:get_semantic_zones() is not a default-launch reader.`,
+    })),
+  ),
   {
     kind: "mux",
     id: "tmux",
@@ -959,14 +964,14 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no setup): Kitty 0.49.2 parses OSC 8 hyperlinks into Screen.hyperlink_pool and CPUCell.hyperlink_id, which are readable via kitten @ get-text --ansi when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 8. Read tag v0.49.2 kitty/vt-parser.c:483-510,583, kitty/screen.c:1043-1051,4514-4576, kitty/line.c:543-569,646-648 and kitty/rc/get_text.py:48-52,132-137; enabling -o allow_remote_control=socket-only --listen-on unix:<path> with before/after App qualification is tracked in #32955.",
   },
-  {
-    kind: "term",
+  ...(["0-unstable-2026-11-08", "0-unstable-2026-11-20"] as const).map((version) => ({
+    kind: "term" as const,
     id: "wezterm",
-    version: "0-unstable-2026-11-08",
+    version,
     os: "linux",
     featureId: "extensions.osc8",
-    reader: "osc8",
-  },
+    reader: "osc8" as const,
+  })),
 ] as const
 
 /** A prerequisite read from this terminal child's current environment, with no address value retained. */

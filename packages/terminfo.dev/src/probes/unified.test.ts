@@ -351,6 +351,7 @@ it.each([
   { kind: "term", id: "kitty", version: "0.49.2" },
   { kind: "term", id: "ghostty", version: "1.4.0" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20" },
   { kind: "term", id: "alacritty", version: "0.17.0" },
   { kind: "term", id: "xterm", version: "412" },
   { kind: "mux", id: "screen", version: "5.0.2" },
@@ -420,6 +421,9 @@ it.each([
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-d" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-a" },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", count: 8, feature: "extensions.osc133-p" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20", count: 8, feature: "extensions.osc133-d" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20", count: 8, feature: "extensions.osc133-a" },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20", count: 8, feature: "extensions.osc133-p" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-e" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc633-a" },
   { kind: "term", id: "ghostty", version: "1.4.0", count: 22, feature: "extensions.osc-633-vscode" },
@@ -4112,10 +4116,13 @@ it.each([
   // 34932 (@cto 1852): the exact 11-08 build the hourly runs measure is admitted; a near version, a prefix and an
   // absent version stay out.
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "linux", allowed: true },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20", os: "linux", allowed: true },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-21", os: "linux", allowed: false },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-09", os: "linux", allowed: false },
   { kind: "term", id: "wezterm", version: "0-unstable-2026", os: "linux", allowed: false },
   { kind: "term", id: "wezterm", version: undefined, os: "linux", allowed: false },
   { kind: "term", id: "wezterm", version: "0-unstable-2026-11-08", os: "darwin", allowed: false },
+  { kind: "term", id: "wezterm", version: "0-unstable-2026-11-20", os: "darwin", allowed: false },
   // 32593: the off-window control decides Ghostty 1.4.0 and Alacritty 0.17.0; other versions stay unreviewed.
   { kind: "term", id: "ghostty", version: "1.4.0", os: "linux", allowed: true },
   { kind: "term", id: "alacritty", version: "0.17.0", os: "linux", allowed: true },
@@ -8785,16 +8792,18 @@ describe("the row wall returns a held viewport to the bottom before the next row
   })
 })
 
-// 33628 (@cto 1957), 34961 (@cto cc2dac5d): only the two qualified WezTerm Linux builds are handed the rendered
-// hold; every other context keeps the reply criterion, so a change here cannot alter an unapproved row.
-it("only WezTerm Linux 0-unstable-2026-10-10 and 0-unstable-2026-11-08 are graded by the rendered hold", () => {
+// 33628 (@cto 1957), 34961 (@cto cc2dac5d), @cto GO 146524d0: only the qualified WezTerm Linux builds are handed the
+// rendered hold; every other context keeps the reply criterion, so a change here cannot alter an unapproved row.
+it("only qualified WezTerm Linux builds are graded by the rendered hold", () => {
   const wezterm = { kind: "term", id: "wezterm", os: "linux", version: "0-unstable-2026-10-10" } as const
   expect(syncOutputRenderedSubject(wezterm)).toBe(true)
   // 34961: the hourly runs since 2026-11-16 measure 0-unstable-2026-11-08 and fell back to the withheld in-mode reply.
   expect(syncOutputRenderedSubject({ ...wezterm, version: "0-unstable-2026-11-08" })).toBe(true)
+  expect(syncOutputRenderedSubject({ ...wezterm, version: "0-unstable-2026-11-20" })).toBe(true)
   for (const other of [
     { ...wezterm, version: "20240203" },
     { ...wezterm, version: "0-unstable-2026-11-09" },
+    { ...wezterm, version: "0-unstable-2026-11-21" },
     { ...wezterm, version: "0-unstable-2026" },
     { ...wezterm, version: undefined },
     { ...wezterm, os: "macos" },
