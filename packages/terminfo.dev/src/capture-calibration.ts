@@ -62,7 +62,11 @@ function paintTimeout(message: string, stage?: StageCaptures): Error {
 }
 
 /** Every pixel `after` changed from `before`: the count, bounding box, distinct after-colours and the first few. */
-function frameDifference(before: CapturedFrame, after: CapturedFrame): string {
+function frameDifference(
+  before: CapturedFrame,
+  after: CapturedFrame,
+  excused?: (x: number, y: number, offset: number) => boolean,
+): string {
   if (before.width !== after.width || before.height !== after.height) {
     return `is ${after.width}x${after.height}, the normal sentinel paint ${before.width}x${before.height}`
   }
@@ -79,6 +83,7 @@ function frameDifference(before: CapturedFrame, after: CapturedFrame): string {
     for (let x = 0; x < after.width; x++) {
       const offset = (y * after.width + x) * 4
       if ([0, 1, 2, 3].every((channel) => after.rgba[offset + channel] === before.rgba[offset + channel])) continue
+      if (excused?.(x, y, offset)) continue
       pixels++
       minX = Math.min(minX, x)
       minY = Math.min(minY, y)
@@ -579,13 +584,29 @@ function chebyshevRgb(left: RgbTriple, right: RgbTriple): number {
  * A pixel the window does not cover opaquely is outside its shape, so it joins the fillet instead. Linux frames carry
  * no alpha channel and decode opaque.
  */
-function inColorClass(frame: CapturedFrame, offset: number, colorClass: PaintColorClass): boolean {
-  if (frame.rgba[offset + 3] !== 255) return false
+function inColorClass(
+  frame: CapturedFrame,
+  offset: number,
+  colorClass: PaintColorClass,
+  options?: { readonly premultiplied?: boolean },
+): boolean {
+  const alpha = frame.rgba[offset + 3]
   const red = frame.rgba[offset]
   const green = frame.rgba[offset + 1]
   const blue = frame.rgba[offset + 2]
-  if (red === undefined || green === undefined || blue === undefined) return false
-  return colorClass.members.has(packRgb(red, green, blue))
+  if (alpha === undefined || red === undefined || green === undefined || blue === undefined) return false
+  if (alpha === 255) return colorClass.members.has(packRgb(red, green, blue))
+  if (!options?.premultiplied || alpha === 0) return false
+  // screencapture un-premultiplies CoreGraphics BGRA
+  const premulRed = Math.round((red * alpha) / 255)
+  const premulGreen = Math.round((green * alpha) / 255)
+  const premulBlue = Math.round((blue * alpha) / 255)
+  return colorClass.triples.some(
+    ([memberRed, memberGreen, memberBlue]) =>
+      Math.round((memberRed * alpha) / 255) === premulRed &&
+      Math.round((memberGreen * alpha) / 255) === premulGreen &&
+      Math.round((memberBlue * alpha) / 255) === premulBlue,
+  )
 }
 
 /**
@@ -1122,6 +1143,9 @@ export async function calibrateCaptureOrigin({
     | undefined
   // Set once DECSCNM is written, so every exit path resets it before the restore is witnessed.
   let reverseSet = false
+  // #37678 (@cto 5dd7b425 + c6b4ce8c): witnessed post-DECSCNM return frame and the outside-grid pixels it settled.
+  let reverseReturnSettledFrame: CapturedFrame | undefined
+  let reverseReturnNormalSolid: CapturedFrame | undefined
   const inBand = (x: number, y: number) =>
     bandBounds !== undefined &&
     y >= bandBounds.top &&
@@ -1341,14 +1365,17 @@ export async function calibrateCaptureOrigin({
     let reversePaintEqual = false
     let reverseAttempts: string[] = []
     let reverseTrace = ""
+    let reverseSettledTrace = ""
     if (screenMode === "reverse") {
       const rowsFrame = rows
       reverseSet = true
       ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5h`)
+      let reverseBlankFrame: CapturedFrame | undefined
       reverseScreen = await (async (): Promise<ReverseScreenWitness> => {
         let reverseBlank: CapturedFrame
         try {
           reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame))
+          reverseBlankFrame = reverseBlank
         } catch (cause) {
           if (!reverseStageTimedOut(cause)) throw cause
           return {
@@ -1430,10 +1457,68 @@ export async function calibrateCaptureOrigin({
       ctx.write(`\x1b[0m${eraseVisibleGrid}\x1b[?5l`)
       paintGrid("solid", form)
       const normalSolid = solidFrame
-      try {
-        await confirmedFrame("reverse screen return", (frame) =>
-          bandClearOfGrid ? bandDifference(frame, normalSolid).equalOutside : equal(frame, normalSolid),
+      // #37678 (@cto 5dd7b425 + c6b4ce8c): an outside-grid pixel DECSCNM itself painted may settle into
+      // backgroundClass (matching premultiplied channels when 0 < alpha < 255 with alpha unchanged); all
+      // grid pixels and all non-DECSCNM outside pixels remain byte-exact against normalSolid.
+      const isReverseSettledPixel = (
+        frame: CapturedFrame,
+        reverseBlank: CapturedFrame,
+        x: number,
+        y: number,
+        offset: number,
+      ): boolean => {
+        if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) return false
+        const paintedByReverse = [0, 1, 2, 3].some(
+          (channel) => reverseBlank.rgba[offset + channel] !== before.rgba[offset + channel],
         )
+        if (!paintedByReverse) return false
+        if (frame.rgba[offset + 3] !== normalSolid.rgba[offset + 3]) return false
+        return inColorClass(frame, offset, backgroundClass, { premultiplied: true })
+      }
+      const reverseReturnMatch = (
+        frame: CapturedFrame,
+        reverseBlank: CapturedFrame,
+      ): { accepted: boolean; settled: number; semiTransparent: number } => {
+        validateFrame(frame)
+        if (frame.width !== normalSolid.width || frame.height !== normalSolid.height) {
+          throw new Error("Capture calibration window dimensions changed")
+        }
+        let settled = 0
+        let semiTransparent = 0
+        for (let y = 0; y < frame.height; y++) {
+          for (let x = 0; x < frame.width; x++) {
+            const offset = (y * frame.width + x) * 4
+            if ([0, 1, 2, 3].every((channel) => frame.rgba[offset + channel] === normalSolid.rgba[offset + channel])) {
+              continue
+            }
+            if (!isReverseSettledPixel(frame, reverseBlank, x, y, offset)) {
+              return { accepted: false, settled, semiTransparent }
+            }
+            settled++
+            if ((frame.rgba[offset + 3] ?? 255) < 255) semiTransparent++
+          }
+        }
+        return { accepted: true, settled, semiTransparent }
+      }
+      try {
+        const reverseBlank = reverseBlankFrame
+        const returned = await confirmedFrame("reverse screen return", (frame) =>
+          bandClearOfGrid
+            ? bandDifference(frame, normalSolid).equalOutside
+            : reverseBlank !== undefined
+              ? reverseReturnMatch(frame, reverseBlank).accepted
+              : equal(frame, normalSolid),
+        )
+        if (!bandClearOfGrid && reverseBlank !== undefined) {
+          const { settled, semiTransparent } = reverseReturnMatch(returned, reverseBlank)
+          if (settled > 0) {
+            reverseReturnSettledFrame = returned
+            reverseReturnNormalSolid = normalSolid
+            reverseSettledTrace =
+              `; reverse return ${settled} px settled to background class` +
+              (semiTransparent > 0 ? ` (${semiTransparent} semi-transparent)` : "")
+          }
+        }
       } catch (cause) {
         if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout") throw cause
         // #37678: name what each capture did and archive the last frame against the paint it waited for, so a
@@ -1445,6 +1530,11 @@ export async function calibrateCaptureOrigin({
               `#${index + 1} ${ms} ms ${late ? "ended after the deadline" : accepted ? "accepted" : "not accepted"}`,
           )
           .join("; ")
+        const reverseBlank = reverseBlankFrame
+        const excused =
+          !bandClearOfGrid && reverseBlank !== undefined && last
+            ? (x: number, y: number, offset: number) => isReverseSettledPixel(last, reverseBlank, x, y, offset)
+            : undefined
         throw Object.assign(
           refusal(
             "Capture calibration reverse screen: the normal sentinel paint did not return after DECSCNM was reset, so this calibration is invalid",
@@ -1453,7 +1543,7 @@ export async function calibrateCaptureOrigin({
           {
             detail:
               `stage=reverse screen return, ${captures.length} capture(s) in ${timeoutMs} ms: ${each}` +
-              (last ? `; last frame ${frameDifference(normalSolid, last)}` : "; no frame captured"),
+              (last ? `; last frame ${frameDifference(normalSolid, last, excused)}` : "; no frame captured"),
             ...(last && { frames: { before: normalSolid, after: last, stage: "reverse screen return" } }),
           },
         )
@@ -1517,7 +1607,7 @@ export async function calibrateCaptureOrigin({
       },
       ...(reverseScreen === undefined ? {} : { reverseScreen }),
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reverseTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; paint ${form} (${attempts.join(", ")})${classTrace}${reverseTrace}${reverseSettledTrace}${reversePaintEqual ? "; reverse screen paint measured under DECSCNM stayed equal to the normal pair" : ""}; current paints and ${restoreTrace} confirmed${collectorLaunched ? "; owned disposable session cursor explicitly set before calibration and restored set" : ""}${bandTrace}`,
     }
     return result
   } catch (cause) {
@@ -1540,6 +1630,24 @@ export async function calibrateCaptureOrigin({
           failure instanceof Error && (failure as Partial<CaptureCalibrationRefusal>).code === "paint-outside-grid"
             ? witnessedGrid
             : undefined
+        const settledAfterReverse = (frame: CapturedFrame, returned: CapturedFrame, normal: CapturedFrame): boolean => {
+          validateFrame(frame)
+          if (frame.width !== before.width || frame.height !== before.height) {
+            throw new Error("Capture calibration window dimensions changed")
+          }
+          for (let offset = 0; offset < frame.rgba.length; offset += 4) {
+            const settled = [0, 1, 2, 3].some(
+              (channel) => returned.rgba[offset + channel] !== normal.rgba[offset + channel],
+            )
+            const expected = settled ? returned : before
+            if ([0, 1, 2, 3].some((channel) => frame.rgba[offset + channel] !== expected.rgba[offset + channel])) {
+              return false
+            }
+          }
+          return true
+        }
+        const settledReturn = reverseReturnSettledFrame
+        const settledNormal = reverseReturnNormalSolid
         const restored = await confirmedFrame(
           "restore grid paint",
           (frame) =>
@@ -1547,7 +1655,9 @@ export async function calibrateCaptureOrigin({
               ? equalInside(frame, before, gridBox)
               : bandClearOfGrid
                 ? bandDifference(frame, before).equalOutside
-                : equal(frame, before),
+                : settledReturn !== undefined && settledNormal !== undefined
+                  ? settledAfterReverse(frame, settledReturn, settledNormal)
+                  : equal(frame, before),
           observedPaint,
         )
         if (bandClearOfGrid && result) {

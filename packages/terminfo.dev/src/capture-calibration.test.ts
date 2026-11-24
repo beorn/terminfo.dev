@@ -2328,3 +2328,151 @@ test("after paint-outside-grid, a grid that genuinely fails to restore still thr
   expect(refused?.name).toBe("CaptureRestoreFailed")
   expect(refused?.cause).toMatchObject({ name: "CaptureCalibrationRefused", code: "paint-outside-grid" })
 })
+
+/** Codimac Terminal.app 2.15 run f0449026's 8 retained calibration frames, by stage, under their own sha256 names (#37678). */
+const TERMINAL_APP_F0449026_FRAMES: Record<string, string> = {
+  before: "cf6d695a7e020339646c40c8be309495abb61ee176c85b0c15d68e6c67faf777",
+  solid: "2206597ca409abda0e23badde55265c516c18809117c964e1ea5b05f6b0c9acb",
+  columns: "fe1d94482e3836ed9659f03cfff95a666086a8201d698f31ed1241b6e4df2ef3",
+  rows: "e97ab4c16044d1e0761fe210565caad33c8f28fe2659e10b05acd5d5f972f182",
+  reverseBlank: "e52902d675c977bedbbc20621e36e8c19c162ce95e4d8d219a66c73415213cd0",
+  reverseSolid: "de3aadebf1dc963de4d3d328822f3147722eacb3a2a967dbf201b1e63de7fe29",
+  reverseReturn: "e14cb739838387a63111bb3609e168f47193b284cb5a970075f2d63f2777427a",
+  restore: "f3dad45c7eaf285f683527a6638d380f98d12f6f01e3437c826a329e8502bdc8",
+}
+
+function cloneFrame(source: CapturedFrame): CapturedFrame {
+  return { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+}
+
+function terminalAppF0449026Frames() {
+  return {
+    before: retainedFrame("before", TERMINAL_APP_F0449026_FRAMES),
+    solid: retainedFrame("solid", TERMINAL_APP_F0449026_FRAMES),
+    columns: retainedFrame("columns", TERMINAL_APP_F0449026_FRAMES),
+    rows: retainedFrame("rows", TERMINAL_APP_F0449026_FRAMES),
+    reverseBlank: retainedFrame("reverseBlank", TERMINAL_APP_F0449026_FRAMES),
+    reverseSolid: retainedFrame("reverseSolid", TERMINAL_APP_F0449026_FRAMES),
+    reverseReturn: retainedFrame("reverseReturn", TERMINAL_APP_F0449026_FRAMES),
+    restore: retainedFrame("restore", TERMINAL_APP_F0449026_FRAMES),
+  }
+}
+
+function terminalAppF0449026Run(overrides?: { reverseReturn?: CapturedFrame; restore?: CapturedFrame }) {
+  const f = terminalAppF0449026Frames()
+  const reverseReturn = overrides?.reverseReturn ?? f.reverseReturn
+  const restore = overrides?.restore ?? f.restore
+  return calibration({
+    rows: 30,
+    cols: 120,
+    screenMode: "reverse",
+    frames: {
+      "before grid paint": [f.before, f.before],
+      "solid grid paint": [f.solid, f.solid],
+      "column edge paint": [f.columns, f.columns],
+      "row edge paint": [f.rows, f.rows],
+      "reverse screen blank": [f.reverseBlank, f.reverseBlank],
+      "reverse screen solid paint": [f.reverseSolid, f.reverseSolid],
+      "reverse screen return": [reverseReturn, reverseReturn],
+      "restore grid paint": [restore, restore],
+    },
+  })
+}
+
+// #37678 (@cto 5dd7b425 + c6b4ce8c): Terminal.app 2.15's DECSCNM reset repaints its top/bottom padding
+// margins (y=32..38 and y=489..498, 6,800 px including 16 semi-transparent rounded-corner pixels) from
+// AppKit's initial fill into Terminal.app's text-view fill (backgroundClass), while the 378,000 px grid,
+// titlebar (y<32), and left/right margins stay byte-identical and post-DECSCNM restore stays byte-identical.
+test("retained Terminal.app f0449026 DECSCNM margin settling calibrates and records settled counts (#37678)", async () => {
+  const result = await terminalAppF0449026Run().promise
+  expect(result.pixelGeometry).toEqual({ cellWidth: 7, cellHeight: 15, textWidth: 840, textHeight: 450 })
+  expect(result.origin).toEqual({ x: 10, y: 39 })
+  expect(result.reverseScreen?.status).toBe("witnessed")
+  expect(result.basis).toContain("reverse return 6800 px settled to background class (16 semi-transparent)")
+})
+
+test("reverse screen return refuses a DECSCNM-painted margin pixel left white after reset (#37678)", async () => {
+  const f = terminalAppF0449026Frames()
+  const stuckWhite = cloneFrame(f.reverseReturn)
+  // Top-margin pixel (100, 35) was painted white by DECSCNM; leave it white (226,226,226@255).
+  stuckWhite.rgba.set([226, 226, 226, 255], (35 * stuckWhite.width + 100) * 4)
+  const refused = await terminalAppF0449026Run({ reverseReturn: stuckWhite, restore: f.before }).promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  expect(refused?.detail).toContain("stage=reverse screen return")
+  expect(refused?.detail).toContain("(100,35)")
+})
+
+test("reverse screen return refuses one changed pixel outside the grid that DECSCNM never painted (#37678)", async () => {
+  const f = terminalAppF0449026Frames()
+  const titlebarMutated = cloneFrame(f.reverseReturn)
+  // Titlebar pixel (100, 10) was unchanged under DECSCNM; even setting it to backgroundClass anchor (32,35,45@255) refuses.
+  titlebarMutated.rgba.set([32, 35, 45, 255], (10 * titlebarMutated.width + 100) * 4)
+  const refused = await terminalAppF0449026Run({ reverseReturn: titlebarMutated, restore: f.before }).promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  expect(refused?.detail).toContain("(100,10)")
+})
+
+test("reverse screen return refuses a DECSCNM-painted margin pixel returning outside backgroundClass (#37678)", async () => {
+  const f = terminalAppF0449026Frames()
+  const wrongColour = cloneFrame(f.reverseReturn)
+  // Top-margin pixel (100, 35) returns to (32,35,50@255) — outside R<=1 of (32,35,45).
+  wrongColour.rgba.set([32, 35, 50, 255], (35 * wrongColour.width + 100) * 4)
+  const refused = await terminalAppF0449026Run({ reverseReturn: wrongColour, restore: f.before }).promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refused).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  expect(refused?.detail).toContain("(100,35)")
+})
+
+test("reverse screen return refuses a white or wrong-colour semi-transparent corner pixel (#37678)", async () => {
+  const f = terminalAppF0449026Frames()
+  const whiteCorner = cloneFrame(f.reverseReturn)
+  // Rounded bottom-right corner pixel (855, 494) keeps alpha 26 from normalSolid, but stays reversed white (226,226,226@26).
+  whiteCorner.rgba.set([226, 226, 226, 26], (494 * whiteCorner.width + 855) * 4)
+  const refusedWhite = await terminalAppF0449026Run({ reverseReturn: whiteCorner, restore: f.before }).promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refusedWhite).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+  expect(refusedWhite?.detail).toContain("(855,494)")
+
+  // Changed alpha at that same corner pixel also refuses even when RGB matches backgroundClass.
+  const shiftedAlpha = cloneFrame(f.reverseReturn)
+  shiftedAlpha.rgba.set([32, 35, 45, 27], (494 * shiftedAlpha.width + 855) * 4)
+  const refusedAlpha = await terminalAppF0449026Run({ reverseReturn: shiftedAlpha, restore: f.before }).promise.then(
+    () => undefined,
+    (error: unknown) => error as CaptureCalibrationRefusal,
+  )
+  expect(refusedAlpha).toMatchObject({
+    name: "CaptureCalibrationRefused",
+    message: expect.stringContaining("the normal sentinel paint did not return after DECSCNM was reset"),
+  })
+})
+
+test("restore grid paint after witnessed reverseReturn refuses an outside-grid drift from reverseReturn (#37678)", async () => {
+  const f = terminalAppF0449026Frames()
+  const driftedRestore = cloneFrame(f.restore)
+  driftedRestore.rgba.set([32, 35, 45, 255], (10 * driftedRestore.width + 100) * 4)
+  await expect(terminalAppF0449026Run({ restore: driftedRestore }).promise).rejects.toThrow(
+    /restore grid paint confirmation: paint witness timeout/,
+  )
+})
