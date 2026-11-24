@@ -1003,5 +1003,8 @@
   "iterm2:editing.decrqcra": {
     "note": "iTerm2 3.6.11 ships with DECRQCRA off: the advanced setting \"Disable DECRQCRA?\" (NoSyncDisableDECRQCRA) defaults to Yes, and while it is on iTerm2 drops the request without any reply (VT100Terminal.m:2052-2064) and asks in the window whether to enable it. This is the documented default, not a setting read from the measured run; a run with the setting off decides the row under that configuration.",
     "url": "https://github.com/gnachman/iTerm2/blob/v3.6.11/sources/iTermAdvancedSettingsModel.m#L458"
+  },
+  "iterm2:extensions.iterm2-images": {
+    "note": "Default-config iTerm2 3.7.9 prompts \"Allow Terminal-Initiated Display?\" before displaying an OSC 1337 inline image, dimming the window over the grid and blocking PTY replies until answered (codimac run 5ed559c9, diag/last.png). Scheduled last in the app batch so earlier rows run unmodified; remains unmeasured (probe-invalid) under default config rather than unsupported."
   }
 }

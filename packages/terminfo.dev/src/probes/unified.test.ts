@@ -8922,3 +8922,56 @@ describe("34961: the rendered hold runs on the collector's own probe source", ()
     expect(result.observation).toMatchObject({ outcome: "supported" })
   })
 })
+
+describe("iTerm2 Allow Terminal-Initiated Display modal prompt reason (#37678)", () => {
+  it("names the default-config iTerm2 3.7.9 prompt and evidence when modal background dims on extensions.iterm2-images", async () => {
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find((entry) => entry.id === "extensions.iterm2-images")
+    if (!probe) throw new Error("missing extensions.iterm2-images probe")
+    const original = probe.term
+    try {
+      probe.term = async () => {
+        throw new Error(
+          "extensions.iterm2-images: post-sequence target — baseline: projected frame modal background (202,202,202) differs from calibrated background anchor (249,249,249); refusing to select or verify blank sentinel cells against an unobserved dominant colour",
+        )
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(25, 80)),
+        subject: { kind: "term", id: "iterm2", version: "3.7.9", os: "macos" },
+      })
+      const row = batch.results.find((entry) => entry.featureId === probe.id)
+      expect(row?.status).toBe("probe-invalid")
+      expect(row?.reason).toContain('Default-config iTerm2 3.7.9 asks "Allow Terminal-Initiated Display?"')
+      expect(row?.reason).toContain("diag/last.png")
+      expect(row?.reason).toContain("projected frame modal background (202,202,202)")
+    } finally {
+      probe.term = original
+    }
+  })
+
+  it("keeps the plain modal background symptom for non-iTerm2 subjects", async () => {
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find((entry) => entry.id === "extensions.iterm2-images")
+    if (!probe) throw new Error("missing extensions.iterm2-images probe")
+    const original = probe.term
+    try {
+      probe.term = async () => {
+        throw new Error(
+          "extensions.iterm2-images: post-sequence target — baseline: projected frame modal background (202,202,202) differs from calibrated background anchor (249,249,249)",
+        )
+      }
+      const batch = await runProbeBatch({
+        ids: [probe.id],
+        ownedTerminal: geometryOwner(measured(25, 80)),
+        subject: { kind: "term", id: "ghostty", version: "1.4.0", os: "macos" },
+      })
+      const row = batch.results.find((entry) => entry.featureId === probe.id)
+      expect(row?.status).toBe("probe-invalid")
+      expect(row?.reason).not.toContain("Allow Terminal-Initiated Display?")
+      expect(row?.reason).toContain("projected frame modal background (202,202,202)")
+    } finally {
+      probe.term = original
+    }
+  })
+})

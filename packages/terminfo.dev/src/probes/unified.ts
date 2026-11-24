@@ -295,21 +295,32 @@ export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; 
 
 /**
  * OSC633 P can pin the pane cwd until it closes, so it follows cwd and prompt observations.
- * OSC 52 stays after the other probes so a clipboard write does not disturb them. DECRQCRA is
- * last: on iTerm2 it raises a consent banner that covers every later pixel probe (#31741).
+ * OSC 52 stays after the other probes so a clipboard write does not disturb them. Consent
+ * probes run last in fixed order: banner probes first (`editing.decrqcra` covers pixels on
+ * iTerm2, #31741) and modal probes last (`extensions.iterm2-images` raises "Allow
+ * Terminal-Initiated Display?" on default-config iTerm2 3.7.9 and blocks PTY replies,
+ * #37678 run 5ed559c9).
  */
 export function scheduleAppProbes<T extends { readonly id: string }>(requested: readonly T[]): T[] {
+  const consentOrder = ["editing.decrqcra", "extensions.iterm2-images"] as const
   const body: T[] = []
   const clipboard: T[] = []
-  const consent: T[] = []
+  const consent = new Map<string, T[]>()
   for (const probe of requested) {
-    if (probe.id === "editing.decrqcra") consent.push(probe)
-    else if (probe.id.startsWith("extensions.osc52-")) clipboard.push(probe)
-    else body.push(probe)
+    if ((consentOrder as readonly string[]).includes(probe.id)) {
+      const bucket = consent.get(probe.id) ?? []
+      bucket.push(probe)
+      consent.set(probe.id, bucket)
+    } else if (probe.id.startsWith("extensions.osc52-")) {
+      clipboard.push(probe)
+    } else {
+      body.push(probe)
+    }
   }
   const cwdPin = body.findIndex((probe) => probe.id === "extensions.osc633-p")
   if (cwdPin !== -1) body.push(...body.splice(cwdPin, 1))
-  return [...body, ...clipboard, ...consent]
+  const orderedConsent = consentOrder.flatMap((id) => consent.get(id) ?? [])
+  return [...body, ...clipboard, ...orderedConsent]
 }
 
 /**
@@ -2225,7 +2236,18 @@ async function runProbeBatchInRun(
       if (name === "MutationRestoreRefused" || name === "SpilloverRefused" || name === "ViewportReturnRefused") {
         throw error
       }
-      const message = error instanceof Error ? error.message : String(error)
+      const rawMessage = error instanceof Error ? error.message : String(error)
+      // #37678 (@cto 564eb98e condition 3): default-config iTerm2 3.7+ gates OSC 1337 inline images behind
+      // a modal confirmation sheet ("Allow Terminal-Initiated Display?") that dims the window over the grid
+      // (evidence: codimac run 5ed559c9 diag/last.png). Name the prompt as the cause beside the pixel symptom.
+      const message =
+        probe.id === "extensions.iterm2-images" &&
+        options.subject?.id === "iterm2" &&
+        /projected frame modal background \(\d+,\d+,\d+\) differs from calibrated background anchor \(\d+,\d+,\d+\)/.test(
+          rawMessage,
+        )
+          ? `Default-config ${options.subject.version ? `iTerm2 ${options.subject.version}` : "iTerm2"} asks "Allow Terminal-Initiated Display?" before an inline image, dimming the window over the grid (evidence: run 5ed559c9 diag/last.png; ${rawMessage})`
+          : rawMessage
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).
       // A read that cannot prove where its crop goes claims nothing about pixels: it is named as a
