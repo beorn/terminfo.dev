@@ -205,6 +205,8 @@ function runDarwinArm(scenario: {
   provider: "kitty" | "cli-process" | "iterm2"
   /** iTerm2's claim: the sole-instance basis and its CG window id in place of the marker. */
   soleInstance?: { windowId: number }
+  /** iTerm2's CG window id when proving the run-scoped -suite marker basis (#34080). */
+  windowId?: number
   launchRunId?: string
   workerPid?: number | "self"
   envRunId?: string
