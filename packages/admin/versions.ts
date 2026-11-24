@@ -58,6 +58,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/cmux-history-record.ts",
   "packages/terminfo.dev/src/terminal-child-environment.ts",
   "packages/terminfo.dev/src/app-semantic-state.ts",
+  "packages/terminfo.dev/src/wezterm-linux-reviewed.ts",
   "packages/terminfo.dev/src/owned-process.ts",
   "packages/terminfo.dev/src/darwin-owned-app.ts",
   "packages/terminfo.dev/src/owned-history-receipt.ts",
