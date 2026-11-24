@@ -366,7 +366,11 @@ function runDarwinArm(scenario: {
       executablePath,
       basis: scenario.soleInstance ? { kind: "sole-instance", preflightAbsent: true } : { kind: "marker", marker: scenario.marker },
       tty: scenario.tty ?? "/dev/ttys004",
-      ...(scenario.soleInstance && { windowId: scenario.soleInstance.windowId }),
+      ...(scenario.soleInstance
+        ? { windowId: scenario.soleInstance.windowId }
+        : scenario.windowId !== undefined
+          ? { windowId: scenario.windowId }
+          : {}),
       intendedVersion: "0.44.0",
     }
     try {
@@ -501,6 +505,32 @@ test("kitty is granted by the shared process proof: marker, executable, TTY and 
   })
   expect(result.stderr).toBe("")
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
+})
+
+test("iTerm2's run-scoped -suite marker basis is granted with process disposable basis and refuses missing argv token", () => {
+  const marker = { flag: "-suite", value: `dev.terminfo.iterm2.${launchRunId}` }
+  const granted = runDarwinArm({
+    provider: "iterm2",
+    windowId: 41,
+    workerPid: "self",
+    ownerPid: 4444,
+    marker,
+    command: `${process.execPath} -suite dev.terminfo.iterm2.${launchRunId} --command=/tmp/serve.sh`,
+    parent: { self: 4444, "4444": 1 },
+  })
+  expect(granted.stderr).toBe("")
+  expect(granted.stdout.trim()).toBe("GRANTED /dev/ttys004")
+
+  const refused = runDarwinArm({
+    provider: "iterm2",
+    windowId: 41,
+    workerPid: "self",
+    ownerPid: 4444,
+    marker,
+    command: process.execPath,
+    parent: { self: 4444, "4444": 1 },
+  })
+  expect(refused.stdout).toMatch(/REFUSED .*does not carry the launched marker -suite dev\.terminfo\.iterm2\./)
 })
 
 test("iTerm2's sole-instance basis is granted on the same pid, executable, TTY and ancestry, with no disposable claim", () => {
@@ -834,13 +864,18 @@ test("the process assertion has one strict shape: exact keys, known provider and
     basis: { kind: "sole-instance", preflightAbsent: true },
     windowId: 41,
   }
+  const iterm2Marker = {
+    ...iterm2,
+    basis: { kind: "marker", marker: { flag: "-suite", value: `dev.terminfo.iterm2.${launchRunId}` } },
+  }
   expect(parseProcessOwnerAssertion(iterm2)).toEqual(iterm2)
+  expect(parseProcessOwnerAssertion(iterm2Marker)).toEqual(iterm2Marker)
   for (const assertion of [
     { ...iterm2, basis: { kind: "unknown", preflightAbsent: true } },
     { ...iterm2, basis: { kind: "sole-instance", preflightAbsent: false } },
     { ...iterm2, basis: { kind: "sole-instance" } },
     { ...iterm2, basis: { kind: "sole-instance", preflightAbsent: true, extra: 1 } },
-    { ...iterm2, basis: valid.basis },
+    { ...iterm2Marker, basis: { kind: "marker", marker: { flag: "-suite", value: "" } } },
     { ...valid, basis: iterm2.basis },
     { ...iterm2, windowId: 0 },
     Object.fromEntries(Object.entries(iterm2).filter(([key]) => key !== "windowId")),

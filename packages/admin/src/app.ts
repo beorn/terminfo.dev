@@ -44,7 +44,14 @@ import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { APP_BUNDLE_IDS } from "../../terminfo.dev/src/app-bundles.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
-import { prepareIterm2Launch, resolveIterm2Window, type Iterm2Launch } from "./iterm2-launch.ts"
+import {
+  assertIterm2SuiteLive,
+  prepareIterm2Launch,
+  resolveIterm2Window,
+  teardownIterm2Suite,
+  verifyIterm2IsolationAfterClose,
+  type Iterm2Launch,
+} from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -740,7 +747,19 @@ function launchWithServe(app: AppDef, run: Run, mode: "probe" | "hand-read" = "p
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
     // launch to an already-running instance. The marker is what survives, so the owner is resolved
     // from it once the daemon has registered, never from this child handle.
-    const iterm2 = app.id === "iterm2" ? prepareIterm2Launch(run.scriptPath, app.cliLaunch.executablePath) : undefined
+    const iterm2 =
+      app.id === "iterm2"
+        ? prepareIterm2Launch(
+            run.scriptPath,
+            app.cliLaunch.executablePath,
+            runScopedMarker({
+              appName: app.name,
+              runId: run.id,
+              flag: app.cliLaunch.markerFlag,
+              value: app.cliLaunch.markerValue(run),
+            }),
+          )
+        : undefined
     const prepared = prepareCliLaunch(app.id, run)
     const launched = launchPreparedCli(prepared, mode === "hand-read" ? run.directory : undefined)
     return iterm2 === undefined ? launched : { ...launched, iterm2 }
@@ -1021,7 +1040,7 @@ function processOwnerAssertion(
         provider: "iterm2",
         ownerPid: window.ownerPid,
         executablePath: window.executablePath,
-        basis: { kind: "sole-instance", preflightAbsent: true },
+        basis: { kind: "marker", marker: window.marker },
         tty: window.tty,
         windowId: window.windowId,
         intendedVersion,
@@ -1276,6 +1295,7 @@ async function runApp(
   let daemon: OwnedDaemon | null = null
   let daemonStopAttempted = false
   let windowCloseAttempted = false
+  let iterm2TeardownAttempted = false
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
     progress(`  Launching ${app.name} v${version}...`)
@@ -1293,6 +1313,7 @@ async function runApp(
           : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
+    const iterm2SuiteLiveReadBytes = iterm2Launch === undefined ? undefined : assertIterm2SuiteLive(iterm2Launch)
     if (hand) {
       hand.owner = ownedWindow
       readOwnedWeztermPane(app, run, ownedWindow, daemon.registration.pid, hand)
@@ -1345,6 +1366,20 @@ async function runApp(
             )
           },
         }),
+        ...(ownedWindow.provider === "iterm2" &&
+          iterm2Launch !== undefined && {
+            beforeSave: async (captured: Parameters<typeof writeCollectedRun>[0]) => {
+              daemonStopAttempted = true
+              await stopOwnedDaemon(capturedDaemon)
+              windowCloseAttempted = true
+              stopLaunchedApp(app, capturedLaunch)
+              const isolation = verifyIterm2IsolationAfterClose(iterm2Launch, iterm2SuiteLiveReadBytes ?? 0)
+              iterm2TeardownAttempted = true
+              const teardown = teardownIterm2Suite(iterm2Launch)
+              captured.rawReplies["collector.iterm2Isolation"] = JSON.stringify(isolation)
+              captured.rawReplies["collector.iterm2Teardown"] = JSON.stringify(teardown)
+            },
+          }),
       })
       console.log(`  ${result.summary} (${result.mode})`)
       outcome = { success: true }
@@ -1407,6 +1442,13 @@ async function runApp(
       } catch (err) {
         cleanupErrors.push(`window: ${String(err)}`)
         if (hand) hand.cleanup.window = "failed"
+      }
+      if (launch.iterm2 !== undefined && !iterm2TeardownAttempted) {
+        try {
+          teardownIterm2Suite(launch.iterm2)
+        } catch (err) {
+          cleanupErrors.push(`iterm2-teardown: ${String(err)}`)
+        }
       }
     }
     if (outcome.success && cleanupErrors.length === 0 && !hand) {

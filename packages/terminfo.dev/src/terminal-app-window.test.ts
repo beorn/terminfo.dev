@@ -553,11 +553,12 @@ describe("recorded owner TTY", () => {
   })
 })
 
-describe("iTerm2 sole-instance ownership", () => {
+describe("iTerm2 run-scoped marker + sole-instance ownership", () => {
   const daemonPid = 7300
   const ownerPid = 6200
   const executablePath = "/Applications/iTerm.app/Contents/MacOS/iTerm2"
   const started = Date.UTC(2026, 10, 12, 13, 22, 1) / 1000
+  const marker = { flag: "-suite", value: "dev.terminfo.iterm2.run123" }
   const owner: OwnedTerminalWindow = {
     provider: "iterm2",
     windowId: 41,
@@ -565,6 +566,7 @@ describe("iTerm2 sole-instance ownership", () => {
     ownerPid,
     executablePath,
     startedAtEpochSeconds: started,
+    marker,
   }
   const cgWindow = {
     id: 41,
@@ -576,7 +578,13 @@ describe("iTerm2 sole-instance ownership", () => {
   }
 
   /** One host: the uid-scoped iTerm2 listing, the per-pid reads, and successive window-server censuses. */
-  function fakeHost(host: { second?: number | null; censuses?: unknown[][]; tty?: string; appleEvents?: string[] }) {
+  function fakeHost(host: {
+    second?: number | null
+    censuses?: unknown[][]
+    tty?: string
+    command?: string
+    appleEvents?: string[]
+  }) {
     const censuses = [...(host.censuses ?? [[cgWindow]])]
     vi.mocked(spawnSync).mockImplementation(((command: string, args: readonly string[]) => {
       const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
@@ -597,13 +605,18 @@ describe("iTerm2 sole-instance ownership", () => {
       const pid = Number(args[args.indexOf("-p") + 1])
       if (field === "tty=" && pid === daemonPid) return ok(`${host.tty ?? "ttys007"}\n`)
       if (field === "comm=" && pid === ownerPid) return ok(`${executablePath}\n`)
+      if (field === "command=" && pid === ownerPid) {
+        return ok(
+          `${host.command ?? `${executablePath} ${marker.flag} ${marker.value} --command=/private/run/serve.sh`}\n`,
+        )
+      }
       if (field === "ppid=" && pid === daemonPid) return ok("7000\n")
       if (field === "ppid=" && pid === 7000) return ok(`${ownerPid}\n`)
       return { status: 1, stdout: "", stderr: "" } as ReturnType<typeof spawnSync>
     }) as unknown as typeof spawnSync)
   }
 
-  test("assert holds on the same pid, binary, start time, TTY and owned CG window, with no Apple event", () => {
+  test("assert holds on the same pid, binary, exact -suite marker, start time, TTY and owned CG window, with no Apple event", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const appleEvents: string[] = []
     fakeHost({ appleEvents })
@@ -615,6 +628,16 @@ describe("iTerm2 sole-instance ownership", () => {
     ["a changed start time", { second: 5 }, /started at .*, not the launched owner's/],
     ["a vanished owner", { second: null }, /no longer runs/],
     ["a daemon TTY that is not the session's", { tty: "ttys009" }, /daemon TTY \/dev\/ttys009 differs/],
+    [
+      "a missing -suite marker in live argv",
+      { command: executablePath },
+      /does not carry the launched marker -suite dev\.terminfo\.iterm2\.run123/,
+    ],
+    [
+      "a prefix-only -suite marker in live argv",
+      { command: `${executablePath} -suite dev.terminfo.iterm2.run1234` },
+      /does not carry the launched marker -suite dev\.terminfo\.iterm2\.run123/,
+    ],
     ["a CG window that is gone", { censuses: [[]] }, /names no window with that id/],
     ["a CG window another pid owns", { censuses: [[{ ...cgWindow, ownerPid: 99 }]] }, /owned by PID 99/],
   ])("assert refuses %s", (_name, host, refusal) => {
@@ -629,6 +652,20 @@ describe("iTerm2 sole-instance ownership", () => {
     const kill = vi.spyOn(process, "kill").mockReturnValue(true)
     try {
       expect(() => closeOwnedTerminalWindow(owner)).toThrow(/started at .*; not signaling it/)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close re-asserts the exact -suite marker before the signal and signals nothing when absent", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeHost({ command: executablePath })
+    const kill = vi.spyOn(process, "kill").mockReturnValue(true)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(
+        /does not carry the launched marker -suite dev\.terminfo\.iterm2\.run123; not signaling it/,
+      )
       expect(kill).not.toHaveBeenCalled()
     } finally {
       kill.mockRestore()

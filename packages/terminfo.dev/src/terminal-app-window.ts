@@ -55,13 +55,15 @@ export type OwnedTerminalWindow =
       provider: "iterm2"
       /** The window server (CG) id of the one new layer-0 window the owner pid made; never iTerm's AppleScript id. */
       windowId: number
-      /** The session TTY the launch's one Apple event returned, equal to the TTY the run script recorded. */
+      /** The session TTY the run script recorded, verified against ps TTY and daemon ancestry. */
       tty: string
       /** The one iTerm2 process of this account after a preflight that found none. */
       ownerPid: number
       executablePath: string
-      /** The owner's `ps -o lstart=` start (UTC epoch seconds), no earlier than the preflight read. */
+      /** The owner's `ps -o lstart=` start (UTC epoch seconds), strictly later than the preflight read. */
       startedAtEpochSeconds: number
+      /** The run-scoped `-suite dev.terminfo.iterm2.<runId>` argv marker; live owner must still carry it (#34080). */
+      marker: ProcessMarker
     }
 
 export type TerminalAppWindow = Extract<OwnedTerminalWindow, { provider: "terminal-app" }>
@@ -211,11 +213,11 @@ const cliOwnedProcess = (window: CliProcessWindow): OwnedProcess => ({
   tty: window.tty,
 })
 
-/** iTerm2's arm is the shared proof with the launch preflight as its basis: it takes no argv marker. */
+/** iTerm2's arm combines the shared marker proof (`-suite dev.terminfo.iterm2.<runId>`) with sole-instance + CG window checks (#34080, @cto d43c34cc). */
 export const iterm2OwnedProcess = (window: Iterm2Window): OwnedProcess => ({
   ownerPid: window.ownerPid,
   executablePath: window.executablePath,
-  basis: { kind: "sole-instance", preflightAbsent: true },
+  basis: { kind: "marker", marker: window.marker },
   tty: window.tty,
 })
 
@@ -530,8 +532,8 @@ function markerRecheck(
   }
 }
 
-/** iTerm2's recheck (@cto 11983ea0, condition 3): the same pid, binary and start time, read from this
- * account's processes only. A pid this account no longer runs as iTerm2 is never signaled. */
+/** iTerm2's recheck (@cto 11983ea0 condition 3 + @cto d43c34cc): the same pid, binary, start time, AND
+ * exact run-scoped `-suite` argv marker, read from this account's processes only. */
 function iterm2Recheck(window: Iterm2Window): OwnerRecheck {
   return (stage) => {
     const live = liveIterm2Owner(window)
@@ -539,6 +541,12 @@ function iterm2Recheck(window: Iterm2Window): OwnerRecheck {
     if (live.startedAtEpochSeconds !== window.startedAtEpochSeconds) {
       throw new Error(
         `iterm2 owner close: pid ${window.ownerPid} started at ${live.startedAtEpochSeconds}, not the launched owner's ${window.startedAtEpochSeconds}; not ${stage}`,
+      )
+    }
+    const argv = processCommand(window.ownerPid)?.split(/\s+/) ?? []
+    if (!argvCarriesMarker(argv, window.marker)) {
+      throw new Error(
+        `iterm2 owner close: pid ${window.ownerPid} does not carry the launched marker ${markerText(window.marker)}; not ${stage}`,
       )
     }
     return true

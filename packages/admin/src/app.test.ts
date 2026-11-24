@@ -27,7 +27,13 @@ import {
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { prepareIterm2Launch, resolveIterm2Window } from "./iterm2-launch.ts"
+import {
+  assertIterm2SuiteLive,
+  prepareIterm2Launch,
+  resolveIterm2Window,
+  teardownIterm2Suite,
+  verifyIterm2IsolationAfterClose,
+} from "./iterm2-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -91,7 +97,34 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
   stopOwnedDaemon: vi.fn(),
   shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
-vi.mock("./iterm2-launch.ts", () => ({ prepareIterm2Launch: vi.fn(), resolveIterm2Window: vi.fn() }))
+vi.mock("./iterm2-launch.ts", () => ({
+  assertIterm2SuiteLive: vi.fn(() => 42),
+  prepareIterm2Launch: vi.fn(),
+  resolveIterm2Window: vi.fn(),
+  teardownIterm2Suite: vi.fn(() => ({
+    suiteDomain: "dev.terminfo.iterm2.private-run",
+    defaultsDeleted: true,
+    defaultsAbsentVerified: true,
+    stoppedServers: [],
+    remainingServers: 0,
+    removedDirs: [],
+  })),
+  verifyIterm2IsolationAfterClose: vi.fn(() => ({
+    suiteDomain: "dev.terminfo.iterm2.private-run",
+    suiteDomainPresentWhileLive: true,
+    suiteDomainLiveReadBytes: 42,
+    operatorPrefsBefore: {
+      path: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      present: true,
+      sha256: "a".repeat(64),
+    },
+    operatorPrefsAfter: {
+      path: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      present: true,
+      sha256: "a".repeat(64),
+    },
+  })),
+}))
 vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
@@ -276,7 +309,8 @@ test.each([undefined, "stale-parent"])("WezTerm preparation replaces inherited t
   }
 })
 
-test("the owned-window admission passes an iTerm2 sole-instance launch, with no live app", () => {
+test("the owned-window admission passes an iTerm2 run-scoped launch, with no live app", () => {
+  const suiteDomain = "dev.terminfo.iterm2.private-run"
   expect(() =>
     assertOwnedWindowAssertion(
       { name: "iTerm2", id: "iterm2" },
@@ -285,6 +319,19 @@ test("the owned-window admission passes an iTerm2 sole-instance launch, with no 
         identityPath: "/private/run/owner-tty.txt",
         iterm2: {
           executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+          marker: { flag: "-suite", value: suiteDomain },
+          targets: {
+            suiteDomain,
+            operatorPrefsPath: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+            suitePrefsPath: `/Users/codi/Library/Preferences/${suiteDomain}.plist`,
+            appSupportDir: `/Users/codi/Library/Application Support/${suiteDomain}`,
+            dotSuiteDir: `/Users/codi/.${suiteDomain}`,
+          },
+          operatorPrefsBefore: {
+            path: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+            present: true,
+            sha256: "a".repeat(64),
+          },
           preflightAtEpochSeconds: 1794489720,
           beforeWindowIds: [1],
         },
@@ -381,9 +428,24 @@ test("an omitted selection sends no ids to the daemon", async () => {
 })
 
 // The codimac census found a fresh untitled login window beside the daemon window.
-test("an isolated iTerm2 CLI launch disables the initial untitled window in its private suite", async () => {
+test("an isolated iTerm2 CLI launch verifies -suite marker basis, per-run prefs isolation, and exact-token teardown", async () => {
+  const suiteDomain = "dev.terminfo.iterm2.private-run"
+  const marker = { flag: "-suite", value: suiteDomain }
   const launch = {
     executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    marker,
+    targets: {
+      suiteDomain,
+      operatorPrefsPath: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      suitePrefsPath: `/Users/codi/Library/Preferences/${suiteDomain}.plist`,
+      appSupportDir: `/Users/codi/Library/Application Support/${suiteDomain}`,
+      dotSuiteDir: `/Users/codi/.${suiteDomain}`,
+    },
+    operatorPrefsBefore: {
+      path: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      present: true as const,
+      sha256: "a".repeat(64),
+    },
     preflightAtEpochSeconds: 1794489720,
     beforeWindowIds: [10],
   }
@@ -394,6 +456,7 @@ test("an isolated iTerm2 CLI launch disables the initial untitled window in its 
     ownerPid: 900,
     executablePath: launch.executablePath,
     startedAtEpochSeconds: 1794489721,
+    marker,
   }
   vi.mocked(prepareIterm2Launch).mockReturnValue(launch)
   vi.mocked(resolveIterm2Window).mockReturnValue(owned)
@@ -404,8 +467,11 @@ test("an isolated iTerm2 CLI launch disables the initial untitled window in its 
       .mocked(execFileSync)
       .mock.calls.filter(([path]) => path === "/usr/bin/defaults")
       .map(([, args]) => args),
-  ).toEqual([["write", "dev.terminfo.iterm2.private-run", "OpenNoWindowsAtStartup", "-bool", "YES"]])
+  ).toEqual([["write", suiteDomain, "OpenNoWindowsAtStartup", "-bool", "YES"]])
   const preferenceWrite = vi.mocked(execFileSync).mock.calls.findIndex(([path]) => path === "/usr/bin/defaults")
+  expect(vi.mocked(prepareIterm2Launch).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(execFileSync).mock.invocationCallOrder[preferenceWrite]!,
+  )
   expect(vi.mocked(execFileSync).mock.invocationCallOrder[preferenceWrite]).toBeLessThan(
     vi.mocked(spawn).mock.invocationCallOrder[0]!,
   )
@@ -422,18 +488,19 @@ test("an isolated iTerm2 CLI launch disables the initial untitled window in its 
   ).toEqual([
     [
       launch.executablePath,
-      ["-suite", "dev.terminfo.iterm2.private-run", "--command=/private/run/serve.sh"],
+      ["-suite", suiteDomain, "--command=/private/run/serve.sh"],
       { detached: true, stdio: "ignore" },
     ],
   ])
-  expect(vi.mocked(prepareIterm2Launch).mock.invocationCallOrder[0]).toBeLessThan(
-    vi.mocked(spawn).mock.invocationCallOrder[0]!,
-  )
-  expect(prepareIterm2Launch).toHaveBeenCalledWith("/private/run/serve.sh", launch.executablePath)
+  expect(prepareIterm2Launch).toHaveBeenCalledWith("/private/run/serve.sh", launch.executablePath, marker)
   const script = String(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1])
   expect(script).toContain(`printf '%s\\n' "$(tty)" > '/private/run/owner-tty.txt'`)
   expect(script).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
   expect(resolveIterm2Window).toHaveBeenCalledWith(launch, "/dev/ttys009")
+  expect(assertIterm2SuiteLive).toHaveBeenCalledWith(launch)
+  expect(vi.mocked(assertIterm2SuiteLive).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(requestDaemonProbe).mock.invocationCallOrder[0]!,
+  )
   expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(owned, 555)
   expect(requestDaemonProbe).toHaveBeenCalledWith(
     registration,
@@ -445,7 +512,7 @@ test("an isolated iTerm2 CLI launch disables the initial untitled window in its 
         provider: "iterm2",
         ownerPid: 900,
         executablePath: launch.executablePath,
-        basis: { kind: "sole-instance", preflightAbsent: true },
+        basis: { kind: "marker", marker },
         tty: "/dev/ttys009",
         windowId: 41,
         intendedVersion: "2.15",
@@ -454,9 +521,58 @@ test("an isolated iTerm2 CLI launch disables the initial untitled window in its 
     undefined,
   )
   expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(owned)
+  expect(verifyIterm2IsolationAfterClose).toHaveBeenCalledWith(launch, 42)
+  expect(teardownIterm2Suite).toHaveBeenCalledWith(launch)
+  expect(vi.mocked(verifyIterm2IsolationAfterClose).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(saveDaemonProbeRun).mock.invocationCallOrder[0]!,
+  )
+  const writtenRun = vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0] as { rawReplies?: Record<string, string> }
+  expect(writtenRun?.rawReplies?.["collector.iterm2Isolation"]).toContain(suiteDomain)
+  expect(writtenRun?.rawReplies?.["collector.iterm2Teardown"]).toContain(suiteDomain)
   // The isolated CLI launch, probe and cleanup send iTerm no Apple event.
   expect(vi.mocked(execFileSync).mock.calls.some(([file]) => file === "osascript")).toBe(false)
   expect(removeProbeRun).toHaveBeenCalled()
+})
+
+test("an iTerm2 run whose operator prefs sha256 changed refuses to save and still runs suite teardown", async () => {
+  const suiteDomain = "dev.terminfo.iterm2.private-run"
+  const marker = { flag: "-suite", value: suiteDomain }
+  const launch = {
+    executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    marker,
+    targets: {
+      suiteDomain,
+      operatorPrefsPath: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      suitePrefsPath: `/Users/codi/Library/Preferences/${suiteDomain}.plist`,
+      appSupportDir: `/Users/codi/Library/Application Support/${suiteDomain}`,
+      dotSuiteDir: `/Users/codi/.${suiteDomain}`,
+    },
+    operatorPrefsBefore: {
+      path: "/Users/codi/Library/Preferences/com.googlecode.iterm2.plist",
+      present: true as const,
+      sha256: "a".repeat(64),
+    },
+    preflightAtEpochSeconds: 1794489720,
+    beforeWindowIds: [10],
+  }
+  const owned = {
+    provider: "iterm2" as const,
+    windowId: 41,
+    tty: "/dev/ttys009",
+    ownerPid: 900,
+    executablePath: launch.executablePath,
+    startedAtEpochSeconds: 1794489721,
+    marker,
+  }
+  vi.mocked(prepareIterm2Launch).mockReturnValue(launch)
+  vi.mocked(resolveIterm2Window).mockReturnValue(owned)
+  vi.mocked(closeOwnedTerminalWindow).mockReturnValue(undefined)
+  vi.mocked(verifyIterm2IsolationAfterClose).mockImplementationOnce(() => {
+    throw new Error("com.googlecode.iterm2.plist changed during run")
+  })
+  await expect(handleApp("iterm2", {})).rejects.toThrow(/com\.googlecode\.iterm2\.plist changed during run/)
+  expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+  expect(teardownIterm2Suite).toHaveBeenCalledWith(launch)
 })
 
 describe("WezTerm cli-process arm", () => {

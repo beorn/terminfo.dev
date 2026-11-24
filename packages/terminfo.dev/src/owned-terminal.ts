@@ -237,14 +237,18 @@ export interface OwnedAppOwnerAssertion {
 const exactKeys = (object: Record<string, unknown>, keys: readonly string[]): boolean =>
   Object.keys(object).length === keys.length && keys.every((key) => Object.hasOwn(object, key))
 
-/** The basis is a tagged union, and each provider has exactly one kind: kitty and cli-process prove a
- * marker, iTerm2 the sole instance. An unknown kind, or a kind on the wrong provider, is invalid. */
+/** The basis is a tagged union: kitty, cli-process, and iTerm2 prove a run-scoped marker; legacy iTerm2
+ * sole-instance remains parseable without a disposable basis. An unknown kind, or sole-instance on another
+ * provider, is invalid. */
 function parseProcessOwnerBasis(value: unknown, provider: unknown): ProcessOwnerBasis | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   const basis = value as Record<string, unknown>
   switch (basis.kind) {
     case "marker": {
-      if (!exactKeys(basis, ["kind", "marker"]) || (provider !== "kitty" && provider !== "cli-process")) {
+      if (
+        !exactKeys(basis, ["kind", "marker"]) ||
+        (provider !== "kitty" && provider !== "cli-process" && provider !== "iterm2")
+      ) {
         return undefined
       }
       const marker = basis.marker
@@ -2962,9 +2966,7 @@ export async function createOwnedTerminal(options: {
           if (ownedAppId === "wezterm" && (featureId === "extensions.osc7-cwd" || ownedPromptCwd || ownedOsc8)) {
             // Exact reviewed CLI versions: Linux audited builds live in wezterm-linux-reviewed.ts (#38127).
             const reviewedVersions =
-              binding.platform === "linux"
-                ? WEZTERM_LINUX_OSC7_CLI_VERSIONS
-                : new Set(["20240203-110809-5046fc22"])
+              binding.platform === "linux" ? WEZTERM_LINUX_OSC7_CLI_VERSIONS : new Set(["20240203-110809-5046fc22"])
             const cliVersion = /^wezterm (\S+)/m.exec(ownedWezTermIdentity?.historyExecutable?.version ?? "")?.[1]
             const targetVersion = process.env.TERMINFO_TARGET_VERSION
             if (
