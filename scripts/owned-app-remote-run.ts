@@ -1385,10 +1385,18 @@ function main(options: Parsed): OwnedAppTransportProof {
       // The node_modules trees are what the marker already stands for; a light run never re-sends
       // them, which is the other half of the saving beside their hashes.
       if (light && entry === "node_modules") continue
+      if (entry === "node_modules" && rsyncExcludes.length > 0) {
+        // macOS openrsync (protocol 29) crashes/hangs on GNU rsync's `--delete-excluded` flag
+        // ("warning: zero-length name in identifier list"). Remove any stale excluded workspace
+        // symlinks left by an older pre-pruning stage explicitly via `test -L` instead (#33797).
+        const unlinkLines = [...excludedRelPaths]
+          .sort()
+          .map((rel) => `test -L ${shq(`${source}/${rel}`)} && rm -f ${shq(`${source}/${rel}`)} || true`)
+        sshRun(options, "prune excluded workspace links", "resource manifest mismatch", unlinkLines.join("\n"))
+      }
       transfers.push(
         rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
           "--delete",
-          ...(entry === "node_modules" && rsyncExcludes.length > 0 ? ["--delete-excluded"] : []),
           ...[...RESOURCE_EXCLUDES].map((name) => "--exclude=" + name),
           ...(entry === "node_modules" ? rsyncExcludes.map((path) => `--exclude=${path}`) : []),
         ]),
