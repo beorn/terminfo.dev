@@ -235,7 +235,12 @@ export async function startWitnessResponder(options: StartWitnessOptions): Promi
         sendJson(res, 400, { ok: false, error: "Invalid JSON body" })
         return
       }
-      if (!body || typeof body !== "object" || Array.isArray(body) || !exactKeys(body as Record<string, unknown>, ["attribute"])) {
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        !exactKeys(body as Record<string, unknown>, ["attribute"])
+      ) {
         sendJson(res, 400, { ok: false, error: "Expected exact body { attribute }" })
         return
       }

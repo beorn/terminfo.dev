@@ -909,7 +909,8 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "written" }> {
-  const { appId, version, ownedWindow, witness, invocation, outputDirectory, launcherStderr, outerLaunch, ids } = options
+  const { appId, version, ownedWindow, witness, invocation, outputDirectory, launcherStderr, outerLaunch, ids } =
+    options
   const appLaunch =
     invocation === undefined
       ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version)
