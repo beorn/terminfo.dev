@@ -189,6 +189,17 @@ export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): 
 type PlacedFacts = Pick<LoadedRun, "subject" | "sourceRevision" | "probeHash">
 
 /**
+ * True when a default run and supplement belong to the same collection pass (same source revision and suite;
+ * #33550, @cto 2c2f2394, @cto 336112d9). One predicate feeds both placement refusal and projection pairing.
+ */
+export function isSameSupplementPass(
+  candidate: Pick<LoadedRun, "sourceRevision" | "probeHash">,
+  supplement: Pick<LoadedRun, "sourceRevision" | "probeHash">,
+): boolean {
+  return candidate.sourceRevision === supplement.sourceRevision && candidate.probeHash === supplement.probeHash
+}
+
+/**
  * Why a supplement run may not be placed yet (33550, @cto 2c2f2394). The selection joins a supplement only to a default
  * run already in the corpus, and with none it fills nothing and only logs, so the default is placed first: with or
  * after it, never before, from the same source revision and suite (the same pass). Undefined when the run is no
@@ -201,9 +212,7 @@ export function supplementPlacementRefusal(
   const supplement = supplementOf(run.subject)
   if (supplement === undefined) return undefined
   const defaults = stored.filter((candidate) => isDefaultOf(candidate.subject, run.subject))
-  const same = (candidate: PlacedFacts) =>
-    candidate.sourceRevision === run.sourceRevision && candidate.probeHash === run.probeHash
-  if (defaults.some(same)) return undefined
+  if (defaults.some((candidate) => isSameSupplementPass(candidate, run))) return undefined
   const { kind, id, os, osVersion } = run.subject
   return (
     `supplement-default-missing: ${supplement.name} supplement run ${run.runId} needs its default ` +

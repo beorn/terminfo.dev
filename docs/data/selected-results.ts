@@ -12,7 +12,13 @@ import {
 } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import type { CensusContext } from "./full-census.ts"
-import { isDefaultOf, MUX_DEFAULT_CONFIG, supplementOf, type ContextSupplement } from "./context-supplements.ts"
+import {
+  isDefaultOf,
+  isSameSupplementPass,
+  MUX_DEFAULT_CONFIG,
+  supplementOf,
+  type ContextSupplement,
+} from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
 import {
   REMOVE_DECLARED_ROW,
@@ -633,18 +639,16 @@ export function projectResults(
   for (const run of supplementRuns) {
     const supplement = supplementOf(run.subject)
     if (!supplement || run.schemaVersion !== 4) continue
-    const defaults = [
-      ...new Set(
-        acceptedRuns
-          .filter((candidate) => isDefaultOf(candidate.subject, run.subject))
-          .map((candidate) =>
-            projectedContextKey(
-              candidate.subject,
-              contexts.get(`${candidate.subject.kind}:${candidate.subject.id}`)?.size ?? 0,
-            ),
-          ),
-      ),
-    ]
+    const defaultRuns = acceptedRuns.filter((candidate) => isDefaultOf(candidate.subject, run.subject))
+    const keyOf = (candidate: Pick<ProjectionRun, "subject">) =>
+      projectedContextKey(
+        candidate.subject,
+        contexts.get(`${candidate.subject.kind}:${candidate.subject.id}`)?.size ?? 0,
+      )
+    let defaults = [...new Set(defaultRuns.map(keyOf))]
+    if (defaults.length > 1) {
+      defaults = [...new Set(defaultRuns.filter((candidate) => isSameSupplementPass(candidate, run)).map(keyOf))]
+    }
     const [key] = defaults
     if (defaults.length !== 1 || !key) {
       policy.log?.(
