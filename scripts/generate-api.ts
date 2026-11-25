@@ -39,6 +39,9 @@ import { composeWorkingView, siteWorkingRun, type LoadedWorkingRun } from "../do
 import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 import { storedCounts } from "../docs/data/release-scope.ts"
 import { publicFeatureIds } from "../docs/data/public-features.ts"
+import { buildCardModel } from "../docs/.vitepress/theme/card-explain.ts"
+import { validateMeasuredCard } from "./validate-style5-cards.ts"
+import type { CurrentTraceDocument } from "../docs/data/run-trace.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -409,6 +412,55 @@ export function generateApi(
       },
     }),
   }
+  // Style 5 build check (#38269, card-style5-rule-0010.md): fail the build loudly if ANY published
+  // measured card lacks Expected words, Received, or 3–6 word verdict, or leaks internal text.
+  const cardViolations: string[] = []
+  let validatedMeasuredCards = 0
+  const runMetaByTraceUrl = new Map<string, { subjectName: string; subjectKind?: string }>()
+  for (const context of Object.values(published.projection.contexts)) {
+    for (const source of Object.values(context.sources)) {
+      if (source.trace?.url) {
+        runMetaByTraceUrl.set(source.trace.url, {
+          subjectName: source.subject.id,
+          subjectKind: source.subject.kind,
+        })
+      }
+    }
+  }
+  for (const [url, { document }] of published.documents) {
+    if (!url.startsWith("/api/v3/traces/") || !("featureResults" in document)) continue
+    const traceDoc = document as CurrentTraceDocument
+    const meta = runMetaByTraceUrl.get(url)
+    for (const [featureId, cell] of Object.entries(traceDoc.featureResults)) {
+      if (cell.status !== "supported" && cell.status !== "unsupported") continue
+      if (!allFeatureIds.has(featureId)) continue
+      const fMeta = featuresJson[featureId]
+      const model = buildCardModel({
+        status: cell.status,
+        featureId,
+        featureName: fMeta?.name ?? featureId,
+        shortSubjectName: meta?.subjectName,
+        subjectKind: meta?.subjectKind,
+        assertionType: cell.assertionType,
+        declaredSequence: (fMeta as { sequence?: string } | undefined)?.sequence,
+        expectedSentence: fMeta?.body ?? fMeta?.probe,
+        traceEvidence: cell.evidence,
+        logLine: cell.logLine,
+        exchange: cell,
+        parserState: cell.parserState,
+        captures: cell.captures,
+      })
+      validatedMeasuredCards++
+      cardViolations.push(...validateMeasuredCard(model, `${url}#${featureId}`))
+    }
+  }
+  if (cardViolations.length > 0) {
+    const sample = cardViolations.slice(0, 20).join("\n  ")
+    throw new Error(
+      `Style 5 measured card check failed (${cardViolations.length} violation(s) across ${validatedMeasuredCards} cards):\n  ${sample}`,
+    )
+  }
+
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })
   const dataPath = join(v3Dir, "data.json")

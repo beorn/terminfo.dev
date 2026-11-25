@@ -77,6 +77,8 @@ interface TraceRecord {
   events?: TraceEvent[]
   /** A headless engine's state as the run stored it, read windows removed. */
   parserState?: unknown
+  /** Allowlisted verbatim parser/app log line for report-reader probes (Style 5, #38269). */
+  logLine?: string
   /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
   captures?: TraceCaptures
   assertions: TraceAssertion[]
@@ -449,6 +451,78 @@ function extractCellCaptures(
   return undefined
 }
 
+const ALLOWED_APP_LOG_PATTERNS: readonly RegExp[] = [
+  /^\[PARSE ERROR\] (?:Ignoring|Unknown) OSC [A-Za-z0-9 _;:,=./-]{1,120}$/,
+  /^WARN wezterm_term::terminalstate::performer > Unhandled OSC [A-Za-z0-9 _;:,=./-]{1,120}$/,
+  /^warning\(io_handler\): [A-Za-z0-9 _()-]{1,120}$/,
+]
+const FORBIDDEN_APP_LOG_PATH = /(?:\/nix\/|\/home\/|\/Users\/|\/hh\/|\/var\/)/i
+
+/**
+ * Extract one allowlisted verbatim app-log line from a `reader: "report"` assertion's target phase
+ * (Style 5, #38269). Strips timing prefixes, excludes calibration/sentinel 7654/7655 lines and any
+ * host/store paths, and returns undefined if no line fits the closed parser-log grammar.
+ */
+export function extractAppLogLine(
+  assertions: ReadonlyArray<Pick<ProbeAssertion, "observed">>,
+  featureId: string,
+): string | undefined {
+  const featureHints: string[] = []
+  if (featureId.includes("highlight-bg")) featureHints.push("highlight_background")
+  if (featureId.includes("highlight-fg")) featureHints.push("highlight_foreground")
+  if (featureId.includes("pointer-fg")) featureHints.push("pointer_foreground")
+  if (featureId.includes("pointer-bg")) featureHints.push("pointer_background")
+
+  for (const assertion of assertions) {
+    if (typeof assertion.observed !== "string" || !assertion.observed.includes('"reader":"report"')) continue
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(assertion.observed)
+    } catch {
+      // silent-fallback-allow: non-JSON assertion.observed is not a structured report-reader record
+      continue
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) continue
+    const rec = parsed as {
+      reader?: unknown
+      target?: { code?: unknown }
+      detail?: { phases?: Array<{ name?: unknown; appended?: unknown; sentinel?: unknown }> }
+    }
+    if (rec.reader !== "report" || !Array.isArray(rec.detail?.phases)) continue
+    const targetPhase = rec.detail.phases.find((p) => p && p.name === "target")
+    if (!targetPhase || typeof targetPhase.appended !== "string") continue
+    const sentinel = typeof targetPhase.sentinel === "string" ? targetPhase.sentinel : "7655"
+    const targetCode = typeof rec.target?.code === "string" ? rec.target.code : undefined
+
+    const candidates: string[] = []
+    for (const rawLine of targetPhase.appended.split(/\r?\n/)) {
+      const cleaned = rawLine
+        .trim()
+        .replace(/^\[\d+(?:\.\d+)?\]\s*/, "")
+        .replace(/^\d{2}:\d{2}:\d{2}\.\d+\s+/, "")
+        .replace(/\s+/g, " ")
+        .trim()
+      if (!cleaned || cleaned.includes(sentinel) || cleaned.includes("7655") || cleaned.includes("7654")) continue
+      if (FORBIDDEN_APP_LOG_PATH.test(cleaned)) continue
+      if (ALLOWED_APP_LOG_PATTERNS.some((pattern) => pattern.test(cleaned))) {
+        candidates.push(cleaned)
+      }
+    }
+    if (candidates.length === 0) continue
+    for (const hint of featureHints) {
+      const hit = candidates.find((c) => c.toLowerCase().includes(hint))
+      if (hit) return hit
+    }
+    if (targetCode) {
+      const codeRe = new RegExp(`\\b${targetCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+      const hit = candidates.find((c) => codeRe.test(c))
+      if (hit) return hit
+    }
+    return candidates[0]
+  }
+  return undefined
+}
+
 function traceRecord(
   version: Pick<CurrentSelectedVersion, "runId" | "subject" | "readArtifact" | "readTextArtifact">,
   result: ProbeResult,
@@ -506,6 +580,7 @@ function traceRecord(
     }
   })
   const captures = DECIDED.has(result.status) ? extractCellCaptures(version, result, captureImages) : undefined
+  const logLine = DECIDED.has(result.status) ? extractAppLogLine(assertions, featureId) : undefined
   return {
     ...(reasonCode !== undefined && { reason: reasonCode }),
     ...(sentences && { evidence: sentences }),
@@ -518,6 +593,7 @@ function traceRecord(
           (sentences !== undefined || REPLY_SHAPES[featureId] !== undefined) && replyPublishable(evidence, reply),
       )),
     ...(parserState !== undefined && { parserState }),
+    ...(logLine !== undefined && { logLine }),
     ...(captures && { captures }),
     assertions: traced,
   }

@@ -22,16 +22,18 @@ import {
 } from "../docs/data/crop-png.ts"
 import {
   buildCardModel,
+  countVerdictWords,
   expectedVisualSpecimen,
   formatWhoLine,
   shortTerminalName,
   truncateCode,
   vendorExtensionOrigin,
 } from "../docs/.vitepress/theme/card-explain.ts"
+import { validateMeasuredCard } from "./validate-style5-cards.ts"
 import { readCellTrace } from "../docs/data/evidence-reader.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
-import { currentTrace } from "../docs/data/run-trace.ts"
+import { currentTrace, extractAppLogLine } from "../docs/data/run-trace.ts"
 import { scanDist } from "./check-private-leak.ts"
 
 const root = join(import.meta.dirname, "..")
@@ -96,8 +98,8 @@ describe("crop-png — pure-TS PNG cropping strictly inside calibrated terminal 
   })
 })
 
-describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () => {
-  it("formats DECRQM mouse card: drops DA1 fence, blue Reply readout, explains reply 2 in closing sentence", () => {
+describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#38269, card-style5-rule-0010.md)", () => {
+  it("formats DECRQM mouse card (passes: green): drops DA1 fence, Expected/Received reply bytes, 4-word verdict", () => {
     const model = buildCardModel({
       status: "supported",
       featureId: "input.mouse-any-event",
@@ -111,16 +113,18 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
         ],
       },
     })
+    expect(model.measured).toBe(true)
     expect(model.steps).toEqual([{ num: 1, code: "ESC [ ?1003 $ p", words: "Ask: do you know mode 1003?" }])
-    expect(model.readout).toEqual({
-      label: "Reply",
-      text: "“Yes, it is off right now”",
-      code: "ESC [ ?1003;2 $ y",
-      mark: "ok",
+    expect(model.expected).toEqual({
+      code: "ESC [ ?1003;1|2 $ y",
+      words: "“Yes, on” or “Yes, off”",
     })
-    expect(model.closing).toBe(
-      "Alacritty knows mode 1003, so an app can turn it on (it is off until one does). We did not move the mouse.",
-    )
+    expect(model.received).toEqual({
+      code: "ESC [ ?1003;2 $ y",
+      words: "“Yes, it is off right now”",
+    })
+    expect(model.verdict).toEqual({ tone: "ok", text: "Alacritty knows this mode" })
+    expect(validateMeasuredCard(model, "decrqm")).toEqual([])
   })
 
   it("formats no-reply with DA1 end marker (OSC 776 card)", () => {
@@ -138,20 +142,21 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     })
     expect(model.steps).toEqual([
       { num: 1, code: "ESC ]776; BEL", words: "Ask: how big is a cell?" },
-      { num: 2, code: "ESC [ c", words: "End marker (always answered)" },
+      { num: 2, code: "ESC [ c", setup: true, words: "End marker (always answered)" },
     ])
-    expect(model.readout).toEqual({
-      label: "Reply",
-      text: "answered only the end marker",
-      code: "ESC [ ?62;4 c",
-      mark: "no",
+    expect(model.expected).toEqual({
+      code: "ESC ]776;<w>;<h> BEL",
+      words: "Cell width and height",
     })
-    expect(model.closing).toBe(
-      "ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored. A supporting terminal answers ESC ] 776 ; <width> ; <height> BEL first.",
-    )
+    expect(model.received).toEqual({
+      code: "ESC [ ?62;4 c",
+      words: "Answered only the end marker",
+    })
+    expect(model.verdict).toEqual({ tone: "no", text: "Terminal ignored this query" })
+    expect(validateMeasuredCard(model, "osc776")).toEqual([])
   })
 
-  it("formats Kitty overline screen+DECRQSS card, iTerm2 light-theme cell note, and Cut (a) single-screen non-SGR card", () => {
+  it("formats Kitty overline screen+DECRQSS card, pure screenshot cards without fake bytes, and Cut (a) non-SGR card", () => {
     const fakeCap = {
       observed: { url: `/api/v3/captures/${"a".repeat(64)}.png`, sha256: "a".repeat(64), width: 100, height: 24 },
     }
@@ -177,14 +182,18 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     })
     expect(overline.steps).toEqual([
       { num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" },
-      { num: 2, code: "ESC P $ q m ESC \\", words: "Ask current setting (DECRQSS)" },
+      { num: 2, code: "ESC P $ q m ESC \\", words: "Ask the current text style" },
     ])
-    expect(overline.readout).toEqual({
-      label: "Reply",
-      text: "“Setting: plain (default)” (overline did not stick)",
-      code: "ESC P 1 $ r m ESC \\",
+    expect(overline.expected).toEqual({
+      code: "ESC P 1 $ r 53 m …",
+      words: "“Style: overline”",
     })
-    expect(overline.closing).toBe("No line above the text.")
+    expect(overline.received).toEqual({
+      code: "ESC P 1 $ r m ESC \\",
+      words: "“Style: plain”",
+    })
+    expect(overline.verdict).toEqual({ tone: "no", text: "Overline didn’t stick" })
+    expect(validateMeasuredCard(overline, "overline")).toEqual([])
     expect(expectedVisualSpecimen("sgr.overline")?.style.textDecoration).toBe("overline")
     expect(expectedVisualSpecimen("sgr.overline")?.text).toBe("AaBb 0123456789 - terminal text")
 
@@ -196,8 +205,11 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       captures: fakeCap,
       hasExpectedPicture: true,
     })
-    expect(iterm2.closing).toContain("stayed blank and did not change")
-    expect(iterm2.closing).toContain("xterm")
+    expect(iterm2.expected?.code).toBeUndefined()
+    expect(iterm2.received?.code).toBeUndefined()
+    expect(iterm2.received?.words).toContain("stayed blank")
+    expect(iterm2.verdict).toEqual({ tone: "no", text: "No image was drawn" })
+    expect(validateMeasuredCard(iterm2, "iterm2-images")).toEqual([])
 
     const deccara = buildCardModel({
       status: "unsupported",
@@ -208,12 +220,13 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       hasExpectedPicture: false,
       expectedSentence: "DECCARA changes SGR attributes inside a rectangular region.",
     })
-    expect(deccara.closing).toBe(
-      "Screen did not match. Expected: DECCARA changes SGR attributes inside a rectangular region.",
-    )
+    expect(deccara.expected).toEqual({ words: "DECCARA changes SGR attributes inside a rectangular region" })
+    expect(deccara.received?.code).toBeUndefined()
+    expect(deccara.verdict).toEqual({ tone: "no", text: "Screen did not match" })
+    expect(validateMeasuredCard(deccara, "deccara")).toEqual([])
   })
 
-  it("formats cursor save/restore, library readout, process_environment, clipboard truncation, Untestable, No result yet, and vendor tags", () => {
+  it("formats cursor save/restore, library, process_environment, clipboard, notification, app-log, non-measured kinds, and validator", () => {
     const saveRestore = buildCardModel({
       status: "supported",
       featureId: "cursor.save-restore",
@@ -228,13 +241,16 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     })
     expect(saveRestore.steps).toEqual([
       { num: 1, code: "ESC 7", words: "Save the cursor at 3;5" },
-      { num: 2, code: "ESC [ 10;10 H", words: "Move to 10;10" },
+      { num: 2, code: "ESC [ 10;10 H", setup: true, words: "Move to 10;10" },
       { num: 3, code: "ESC 8", words: "Restore" },
       { num: 4, code: "ESC [ 6 n", words: "Ask where the cursor is" },
     ])
-    expect(saveRestore.readout).toEqual({ label: "Reply", text: "“At 3;5”", code: "ESC [ 3;5 R", mark: "ok" })
-    expect(saveRestore.closing).toBe("The cursor came back. Saved colors were not checked.")
+    expect(saveRestore.expected).toEqual({ code: "ESC [ 3;5 R", words: "“At 3;5”" })
+    expect(saveRestore.received).toEqual({ code: "ESC [ 3;5 R", words: "“At 3;5”" })
+    expect(saveRestore.verdict).toEqual({ tone: "ok", text: "Cursor returned to spot" })
+    expect(validateMeasuredCard(saveRestore, "save-restore")).toEqual([])
 
+    // Headless library: NO fake bytes in Expected/Received
     const libModel = buildCardModel({
       status: "supported",
       featureId: "sgr.bold",
@@ -243,11 +259,14 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       declaredSequence: "ESC [ 1 m",
       parserState: { char: "X", bold: true, fg: null, bg: null },
     })
-    expect(libModel.readout?.label).toBe("Library says")
-    expect(libModel.readout?.codeMuted).toBe("read directly")
-    expect(libModel.readout?.text).toContain("bold")
-    expect(libModel.contextNote).toContain("library has no screen")
+    expect(libModel.expected?.code).toBeUndefined()
+    expect(libModel.received?.code).toBeUndefined()
+    expect(libModel.received?.codeMuted).toBeUndefined()
+    expect(libModel.received?.words).toContain("bold")
+    expect(libModel.verdict).toEqual({ tone: "ok", text: "Parser stored expected state" })
+    expect(validateMeasuredCard(libModel, "lib")).toEqual([])
 
+    // Process environment: NO fake bytes
     const envModel = buildCardModel({
       status: "unsupported",
       featureId: "device.term-features",
@@ -256,23 +275,98 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       traceEvidence: ["TERM_FEATURES was not set."],
     })
     expect(envModel.steps).toEqual([{ num: 1, code: "", codeMuted: "no bytes", words: "Read TERM_FEATURES at launch" }])
-    expect(envModel.readout?.label).toBe("TERM_FEATURES")
-    expect(envModel.readout?.codeMuted).toBe("read directly")
+    expect(envModel.expected).toEqual({ words: "TERM_FEATURES environment variable set" })
+    expect(envModel.received).toEqual({ words: "TERM_FEATURES was not set" })
+    expect(envModel.verdict).toEqual({ tone: "no", text: "TERM_FEATURES was not set" })
+    expect(validateMeasuredCard(envModel, "env")).toEqual([])
 
+    // Clipboard write with trailing CPR sync barrier: strips ESC [ 6 n, NO fake bytes, long base64 shortened with …
     const clipModel = buildCardModel({
       status: "supported",
       featureId: "extensions.osc52-write",
       featureName: "Clipboard write (OSC 52)",
       assertionType: "clipboard",
-      exchange: { writes: ["\x1b]52;c;dGVybWluZm8tY2xpcGJvYXJkLXBheWxvYWQ=\x07"] },
+      exchange: {
+        events: [
+          { kind: "write", sequence: "\x1b]52;c;dGVybWluZm8tY2xpcGJvYXJkLXBheWxvYWQ=\x07" },
+          { kind: "query", sequence: "\x1b[6n", match: ["\x1b[1;1R"] },
+        ],
+      },
     })
     expect(clipModel.truncated).toBe(true)
+    expect(clipModel.steps.some((s) => s.code.includes("6 n"))).toBe(false)
     expect(clipModel.steps[0]?.fullCode).toContain("dGVybWluZm8")
-    expect(clipModel.contextNote).toContain("Long data is shortened with …")
-    expect(clipModel.readout?.label).toBe("Clipboard")
-    expect(clipModel.readout?.codeMuted).toBe("read directly")
-    expect(clipModel.steps[1]?.codeMuted).toBe("no bytes")
+    expect(clipModel.expected?.code).toBeUndefined()
+    expect(clipModel.received?.code).toBeUndefined()
+    expect(clipModel.verdict).toEqual({ tone: "ok", text: "Clipboard received the text" })
+    expect(validateMeasuredCard(clipModel, "clipboard")).toEqual([])
     expect(truncateCode("ESC ]52;c;aGVsbG8td29ybGQtdGhpcy1pcy1sb25n BEL").text).toContain("… BEL")
+
+    // Semicolon-less OSC 776 query still produces exact expected reply bytes
+    const osc776NoSemi = buildCardModel({
+      status: "unsupported",
+      featureId: "extensions.osc776-cell-size",
+      featureName: "Cell size report (OSC 776)",
+      assertionType: "query_reply",
+      exchange: {
+        events: [
+          { kind: "query", sequence: "\x1b]776\x07", match: null },
+          { kind: "query", sequence: "\x1b[c", match: ["\x1b[?62;4c"] },
+        ],
+      },
+    })
+    expect(osc776NoSemi.expected).toEqual({ code: "ESC ]776;<w>;<h> BEL", words: "Cell width and height" })
+    expect(validateMeasuredCard(osc776NoSemi, "osc776-no-semi")).toEqual([])
+
+    // input_bytes probe with preparatory DECRQM setup query keeps input_bytes Expected/Received instead of DECRQM
+    const pasteModel = buildCardModel({
+      status: "supported",
+      featureId: "extensions.clipboard-paste",
+      featureName: "System clipboard paste",
+      assertionType: "input_bytes",
+      traceEvidence: ["Pasted test text arrived wrapped in bracketed paste markers."],
+      exchange: {
+        events: [
+          { kind: "query", sequence: "\x1b[?2004$p", match: ["\x1b[?2004;2$y"] },
+          { kind: "write", sequence: "\x1b[?2004h" },
+        ],
+      },
+    })
+    expect(pasteModel.expected).toEqual({
+      code: "ESC [ 200~ … ESC [ 201~",
+      words: "Pasted text in bracketed markers",
+    })
+    expect(pasteModel.received?.words).toContain("bracketed paste")
+    expect(validateMeasuredCard(pasteModel, "input-paste")).toEqual([])
+
+    // App-log report (Kitty OSC 440): strips 7654/7655/OSC 2/6n plumbing, verbatim blue log line, no fake bytes
+    const osc440Model = buildCardModel({
+      status: "unsupported",
+      featureId: "extensions.osc440-audio",
+      featureName: "Audio bell (OSC 440)",
+      shortSubjectName: "Kitty",
+      assertionType: "buffer_state",
+      logLine: "[PARSE ERROR] Ignoring OSC 440 used for audio by mintty",
+      exchange: {
+        events: [
+          { kind: "write", sequence: "\x1b[1;1H\x1b[2K" },
+          { kind: "write", sequence: "\x1b]440;bell.wav\x07" },
+          { kind: "query", sequence: "\x1b[6n", match: ["\x1b[1;1R"] },
+          { kind: "write", sequence: "\x1b]7654;8164fbbb\x07\x1b]7655;8164fbbb-0\x07" },
+          { kind: "write", sequence: "\x1b]2;Q-8164fbbb\x07\x1b]7655;8164fbbb-1\x07" },
+          { kind: "write", sequence: "\x1b]440;bell.wav\x07\x1b]7655;8164fbbb-2\x07" },
+          { kind: "write", sequence: "\x1b]2;bun\x07" },
+        ],
+      },
+    })
+    expect(osc440Model.steps).toEqual([{ num: 1, code: "ESC ]440;bell.wav BEL", words: "Play audio bell (OSC 440)" }])
+    expect(osc440Model.expected).toEqual({ words: "Handle OSC 440 without an error" })
+    expect(osc440Model.received).toEqual({
+      words: "[PARSE ERROR] Ignoring OSC 440 used for audio by mintty",
+      isLog: true,
+    })
+    expect(osc440Model.verdict).toEqual({ tone: "no", text: "Kitty ignored OSC 440" })
+    expect(validateMeasuredCard(osc440Model, "osc440")).toEqual([])
 
     // Risk #1: deciding query steps are NEVER dropped into Details even behind many writes.
     const manyWrites = buildCardModel({
@@ -293,23 +387,29 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       },
     })
     expect(manyWrites.steps.some((s) => s.code.includes("$ q m"))).toBe(true)
+    expect(validateMeasuredCard(manyWrites, "decrqss")).toEqual([])
 
-    // Risk #2: multi-reply unsupported cell omits per-reply mark rather than guessing which reply failed.
-    const multiReplyFail = buildCardModel({
-      status: "unsupported",
-      featureId: "cursor.position-report",
-      featureName: "Cursor position report",
-      assertionType: "query_reply",
-      exchange: {
-        events: [
-          { kind: "query", sequence: "\x1b[6n", match: ["\x1b[1;1R"] },
-          { kind: "query", sequence: "\x1b[6n", match: ["\x1b[1;2R"] },
-        ],
-      },
+    // Non-measured kinds (Untestable, Derived, Differs by context, No result): measured=false, NO panel!
+    const untestable = buildCardModel({
+      status: "untestable",
+      featureId: "extensions.osc555-flash",
+      featureName: "Flash",
+      reason: "Needs a human eye",
     })
-    expect(multiReplyFail.readout?.mark).toBeUndefined()
+    expect(untestable.measured).toBe(false)
+    expect(untestable.expected).toBeUndefined()
+    expect(untestable.verdict).toBeUndefined()
+    expect(untestable.closing).toBe("Needs a human eye. Not a no.")
 
-    // v13/v15 Differs: one ← row per setting with its own ✓/✕ mark, never a single ≠ reply row.
+    const derived = buildCardModel({
+      status: "unsupported",
+      featureId: "sgr.underline.curly",
+      featureName: "Curly underline",
+      derived: true,
+    })
+    expect(derived.measured).toBe(false)
+    expect(derived.expected).toBeUndefined()
+
     const differsModel = buildCardModel({
       status: "differs-by-context",
       featureId: "input.focus-events",
@@ -320,10 +420,28 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
         { context: "Default (off)", status: "unsupported" },
       ],
     })
-    expect(differsModel.readouts).toHaveLength(2)
-    expect(differsModel.readouts[0]?.mark).toBe("ok")
-    expect(differsModel.readouts[1]?.mark).toBe("no")
-    expect(differsModel.readouts[1]?.codeMuted).toBe("nothing")
+    expect(differsModel.measured).toBe(false)
+    expect(differsModel.expected).toBeUndefined()
+    expect(differsModel.closing).toContain("Setting on: supported")
+    expect(differsModel.closing).toContain("Default (off): unsupported")
+
+    // Build-check validator rejects missing fields, bad verdict word count, or internal text
+    expect(
+      validateMeasuredCard(
+        {
+          measured: true,
+          steps: [],
+          expected: { words: "" },
+          received: { words: "PROBE TODO leaked" },
+          verdict: { tone: "no", text: "Fail" },
+          readouts: [],
+          closing: "Fail",
+          truncated: false,
+        },
+        "bad-card",
+      ).length,
+    ).toBeGreaterThanOrEqual(3)
+    expect(countVerdictWords("Overline didn’t stick")).toBe(3)
 
     expect(
       formatWhoLine({ subjectName: "Kitty (lib)", subjectKind: "lib", osName: "Linux", measuredDate: "Nov 20, 2026" }),
@@ -391,6 +509,47 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
     expect(overlineCard.steps.some((s) => /overline/i.test(s.words))).toBe(true)
     expect(overlineCard.readout?.code).toBe("ESC P 1 $ r m ESC \\")
     expect(overlineCard.readout?.text).toContain("plain")
+    expect(overlineCard.verdict).toEqual({ tone: "no", text: "Overline didn’t stick" })
+
+    // Real Kitty 0.49.2 OSC 440 app-log line extracted verbatim into trace (no 7655 fence, no host paths)
+    const osc440 = trace!.document.featureResults["extensions.osc440-audio"]
+    expect(osc440?.logLine).toBe("[PARSE ERROR] Ignoring OSC 440 used for audio by mintty")
+    const osc440Card = buildCardModel({
+      status: "unsupported",
+      featureId: "extensions.osc440-audio",
+      featureName: "Audio bell (OSC 440)",
+      shortSubjectName: "Kitty",
+      assertionType: osc440?.assertionType,
+      logLine: osc440?.logLine,
+      exchange: { writes: osc440?.writes, queries: osc440?.queries, events: osc440?.events },
+    })
+    expect(osc440Card.steps).toEqual([{ num: 1, code: "ESC ]440;bell.wav BEL", words: "Play audio bell (OSC 440)" }])
+    expect(osc440Card.received).toEqual({
+      words: "[PARSE ERROR] Ignoring OSC 440 used for audio by mintty",
+      isLog: true,
+    })
+    expect(osc440Card.verdict).toEqual({ tone: "no", text: "Kitty ignored OSC 440" })
+    expect(validateMeasuredCard(osc440Card, "real-kitty-osc440")).toEqual([])
+    expect(
+      extractAppLogLine(
+        [
+          {
+            observed: JSON.stringify({
+              reader: "report",
+              detail: {
+                phases: [
+                  {
+                    name: "target",
+                    appended: "/nix/store/abc/bin/kitty\n[90.1] [PARSE ERROR] Unknown OSC escape code: 7655;nonce\n",
+                  },
+                ],
+              },
+            }),
+          },
+        ],
+        "extensions.osc440-audio",
+      ),
+    ).toBeUndefined()
 
     const loaded = readCellTrace(trace!.document, {
       schemaVersion: kittyRun.schemaVersion,
