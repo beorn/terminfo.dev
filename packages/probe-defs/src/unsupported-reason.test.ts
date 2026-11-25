@@ -26,7 +26,7 @@ it("derives an Unsupported reason from the deciding negative assertion, with con
   const result = recordExecutedProbe({
     featureId: "extensions.sixel-da1",
     attempt,
-    observation: { outcome: "unsupported", assertionType: "query_reply" },
+    observation: { featureId: "extensions.sixel-da1", outcome: "unsupported", assertionType: "query_reply" },
     assertions: [negative("extensions.sixel-da1", "Complete DA1 advertises Sixel attribute 4", "\x1b[?64;1;2;6c")],
   })
   const reason = "Expected: Complete DA1 advertises Sixel attribute 4. Observed: \\e[?64;1;2;6c"
@@ -45,14 +45,19 @@ it("keeps a named reason, and leaves Supported rows alone", () => {
   const named = recordExecutedProbe({
     featureId: "modes.altscreen-1048",
     attempt,
-    observation: { outcome: "unsupported", assertionType: "buffer_state", note: "probe note" },
+    observation: {
+      featureId: "modes.altscreen-1048",
+      outcome: "unsupported",
+      assertionType: "buffer_state",
+      note: "probe note",
+    },
     assertions,
   })
   expect(named.reason).toBe("probe note")
   const supported = recordExecutedProbe({
     featureId: "modes.altscreen-1048",
     attempt,
-    observation: { outcome: "supported", assertionType: "buffer_state" },
+    observation: { featureId: "modes.altscreen-1048", outcome: "supported", assertionType: "buffer_state" },
     assertions,
   })
   expect(supported.reason).toBeUndefined()
@@ -65,7 +70,7 @@ it("names the defect, never an empty reason, and says so on stderr once per prob
       recordExecutedProbe({
         featureId: "text.reasonless-fixture",
         attempt,
-        observation: { outcome: "unsupported", assertionType: "buffer_state" },
+        observation: { featureId: "text.reasonless-fixture", outcome: "unsupported", assertionType: "buffer_state" },
         assertions: [],
       })
     expect(record().reason).toBe("writer default: unsupported without a reason or negative assertion; callback defect")
@@ -116,7 +121,8 @@ it("stores no Unsupported row without a reason in any record measured after the 
         results?: { featureId: string; status: string; reason?: string }[]
       }
       for (const result of record.results ?? []) {
-        if (result.status === "unsupported" && !result.reason?.trim()) missing.push(`${dir}/${name}: ${result.featureId}`)
+        if (result.status === "unsupported" && !result.reason?.trim())
+          missing.push(`${dir}/${name}: ${result.featureId}`)
       }
     }
   }

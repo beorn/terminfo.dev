@@ -3506,8 +3506,7 @@ export function recordExecutedProbe(input: {
         ? undefined
         : observation?.reason) ??
     harnessStoppedReason
-  const reason =
-    namedReason ?? (status === "unsupported" ? unsupportedReason(featureId, input.assertions) : undefined)
+  const reason = namedReason ?? (status === "unsupported" ? unsupportedReason(featureId, input.assertions) : undefined)
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,
