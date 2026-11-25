@@ -697,14 +697,14 @@ test("indexed underline color follows two distinct measured palette controls", a
   const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-indexed")
   if (!probe?.lib || !probe.term) throw new Error("missing indexed underline color callback")
   const measure = probe.lib
-  const index4 = { r: 10, g: 20, b: 30 }
-  const index1 = { r: 40, g: 50, b: 60 }
+  const index6 = { r: 10, g: 20, b: 30 }
+  const index2 = { r: 40, g: 50, b: 60 }
   const run = (
-    colorOnOne: typeof index4 | null | undefined,
-    colorOnFour: typeof index1 | null | undefined,
-    secondFg = index1,
-    default4: typeof index4 | null | undefined = null,
-    default1: typeof index1 | null | undefined = null,
+    colorOnTwo: typeof index6 | null | undefined,
+    colorOnSix: typeof index2 | null | undefined,
+    secondFg = index2,
+    default6: typeof index6 | null | undefined = null,
+    default2: typeof index2 | null | undefined = null,
   ) =>
     measure(
       headless({
@@ -712,32 +712,32 @@ test("indexed underline color follows two distinct measured palette controls", a
           ...baseCell,
           char: ["A", "X", "B", "Y"][col] ?? "",
           underline: true,
-          fg: col < 2 ? index4 : secondFg,
-          underlineColor: [default4, colorOnOne, default1, colorOnFour][col],
+          fg: col < 2 ? index6 : secondFg,
+          underlineColor: [default6, colorOnTwo, default2, colorOnSix][col],
         }),
       }),
     )
 
   const unexposed = run(undefined, undefined)
   expectNoSamePathTodo(unexposed, undefined, underlineColorUnexposed)
-  expect(JSON.parse(unexposed.response ?? "")).toMatchObject({ target1: { char: "X" }, target4: { char: "Y" } })
+  expect(JSON.parse(unexposed.response ?? "")).toMatchObject({ target2: { char: "X" }, target6: { char: "Y" } })
 
-  const matched = run(index1, index4)
+  const matched = run(index2, index6)
   expect(matched.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(matched.assertions).toMatchObject([{ kind: "positive", observed: matched.response }])
   expect(JSON.parse(matched.response ?? "")).toMatchObject({
-    default4: { fg: index4, underlineColor: null },
-    target1: { fg: index4, underlineColor: index1 },
-    default1: { fg: index1, underlineColor: null },
-    target4: { fg: index1, underlineColor: index4 },
+    default6: { fg: index6, underlineColor: null },
+    target2: { fg: index6, underlineColor: index2 },
+    default2: { fg: index2, underlineColor: null },
+    target6: { fg: index2, underlineColor: index6 },
   })
 
   const ignoredColor = { r: 0, g: 0, b: 0 }
-  const ignored = run(ignoredColor, ignoredColor, index1, index4, index1)
+  const ignored = run(ignoredColor, ignoredColor, index2, index6, index2)
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
 
-  const indistinguishable = run(index4, index4, index4)
+  const indistinguishable = run(index6, index6, index6)
   expect(indistinguishable.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
@@ -746,7 +746,7 @@ test("indexed underline color follows two distinct measured palette controls", a
     tests: [
       expect.objectContaining({
         status: "probe-todo",
-        reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+        reason: "SGR 58:5:2 (colon form); Cursor advance does not verify SGR styling",
       }),
     ],
   })
@@ -816,7 +816,7 @@ test("a null underline color from an adapter with no color readback is PROBE TOD
     expectNoSamePathTodo(result, id, underlineColorUnexposed)
     expect(JSON.parse(result.response ?? ""), id).toMatchObject(
       indexed
-        ? { target1: { char: "X", underlineColor: null }, target4: { char: "Y", underlineColor: null } }
+        ? { target2: { char: "X", underlineColor: null }, target6: { char: "Y", underlineColor: null } }
         : { target: { char: "X", underlineColor: null } },
     )
   }

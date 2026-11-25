@@ -35,10 +35,10 @@ function digests(overrides: Record<string, string> = {}): (name: string) => stri
   const base: Record<string, string> = {
     [A]: "blank",
     [B]: "plain",
-    [C(1)]: "red",
-    [D(1)]: "red",
-    [C(4)]: "blue",
-    [D(4)]: "blue",
+    [C(2)]: "green",
+    [D(2)]: "green",
+    [C(6)]: "cyan",
+    [D(6)]: "cyan",
   }
   const table = { ...base, ...overrides }
   return (name) => {
@@ -49,14 +49,14 @@ function digests(overrides: Record<string, string> = {}): (name: string) => stri
 }
 
 describe("indexed underline colour witness phases", () => {
-  test("every colour frame sends the colon form only, on space cells, at indices 1 and 4", () => {
+  test("every colour frame sends the colon form only, on space cells, at indices 2 and 6 (#38523)", () => {
     expect(UNDERLINE_INDEXED_PHASES.map(({ name, sequence }) => [name, sequence])).toEqual([
       [A, ""],
       [B, "\x1b[4m"],
-      [C(1), "\x1b[4m\x1b[58:5:1m"],
-      [D(1), "\x1b[4m\x1b[38:5:1m"],
-      [C(4), "\x1b[4m\x1b[58:5:4m"],
-      [D(4), "\x1b[4m\x1b[38:5:4m"],
+      [C(2), "\x1b[4m\x1b[58:5:2m"],
+      [D(2), "\x1b[4m\x1b[38:5:2m"],
+      [C(6), "\x1b[4m\x1b[58:5:6m"],
+      [D(6), "\x1b[4m\x1b[38:5:6m"],
     ])
     for (const { sequence, sample } of UNDERLINE_INDEXED_PHASES) {
       expect(sequence).not.toMatch(/[34]8;/)
@@ -71,66 +71,66 @@ describe("indexed underline colour decision: five outcomes in the ruled order", 
       "Supported: 58:5:N equals the foreground-route underline at both indices",
       {},
       "supported",
-      `${ID}: 58:5:N paints the underline as palette entry N, matched exactly against an underline coloured by the foreground route (N = 1 and 4)`,
+      `${ID}: 58:5:N paints the underline as palette entry N, matched exactly against an underline coloured by the foreground route (N = 2 and 6)`,
     ],
     [
       "Unsupported: 58:5:N keeps the default underline at both indices (the xterm case)",
-      { [C(1)]: "plain", [C(4)]: "plain" },
+      { [C(2)]: "plain", [C(6)]: "plain" },
       "unsupported",
-      `${ID}: 58:5:N left the underline in its default colour while the same underline took palette entry N by the foreground route (N = 1 and 4): colour ignored, decoration kept`,
+      `${ID}: 58:5:N left the underline in its default colour while the same underline took palette entry N by the foreground route (N = 2 and 6): colour ignored, decoration kept`,
     ],
     [
       "not applicable: the plain underline drew nothing",
-      { [B]: "blank", [C(1)]: "blank", [C(4)]: "blank" },
+      { [B]: "blank", [C(2)]: "blank", [C(6)]: "blank" },
       "probe-todo",
       `${ID}: the plain underline drew nothing on these cells, so this row is not applicable here; the underline itself is decided by sgr.underline.single`,
     ],
     [
       "inconclusive: the underline does not follow the foreground, never a statement about 58",
-      { [D(1)]: "plain", [C(1)]: "plain", [C(4)]: "plain" },
+      { [D(2)]: "plain", [C(2)]: "plain", [C(6)]: "plain" },
       "probe-todo",
-      `${ID}: the underline under foreground 38:5:1 painted like the default underline, so palette entry 1 cannot be told apart on the foreground route; a terminal whose underline does not follow the foreground stays undecided by this probe, and this says nothing about 58`,
+      `${ID}: the underline under foreground 38:5:2 painted like the default underline, so palette entry 2 cannot be told apart on the foreground route; a terminal whose underline does not follow the foreground stays undecided by this probe, and this says nothing about 58`,
     ],
     [
       "inconclusive: the two palette entries render alike",
-      { [D(4)]: "red", [C(4)]: "red" },
+      { [D(6)]: "green", [C(6)]: "green" },
       "probe-todo",
-      `${ID}: the two palette entries render alike here: the foreground-route underlines for indices 1 and 4 are identical`,
+      `${ID}: the two palette entries render alike here: the foreground-route underlines for indices 2 and 6 are identical`,
     ],
     [
       "inconclusive: 58:5:N matches neither, with both samples named",
-      { [C(4)]: "teal" },
+      { [C(6)]: "teal" },
       "probe-todo",
-      `${ID}: 58:5:4 changed the underline but matched neither the default underline nor the foreground-route underline (58:5:4 sample teal, 38:5:4 sample blue)`,
+      `${ID}: 58:5:6 changed the underline but matched neither the default underline nor the foreground-route underline (58:5:6 sample teal, 38:5:6 sample cyan)`,
     ],
     [
       "inconclusive: the indices disagree",
-      { [C(4)]: "plain" },
+      { [C(6)]: "plain" },
       "probe-todo",
-      `${ID}: the indices disagree: index 1 matched the foreground route, index 4 kept the default colour`,
+      `${ID}: the indices disagree: index 2 matched the foreground route, index 6 kept the default colour`,
     ],
   ] as const)("%s", (_case, overrides, status, note) => {
     const decision = underlineColourIndexedDecision(digests(overrides))
     expect(decision).toMatchObject({ status })
     expect(decision.note).toContain(note)
-    expect(decision.note).toContain("SGR 58:5:1 (colon form) and SGR 58:5:4 (colon form)")
-    expect(decision.note).toContain("SGR 38:5:1 (colon form) and SGR 38:5:4 (colon form)")
+    expect(decision.note).toContain("SGR 58:5:2 (colon form) and SGR 58:5:6 (colon form)")
+    expect(decision.note).toContain("SGR 38:5:2 (colon form) and SGR 38:5:6 (colon form)")
     expect(decision.note).toContain("two contrasting palette entries rule out a coincidental default-colour match")
   })
 
   test("a blind control wins over every later check", () => {
     // B equals A and D' equals B: the underline row is named, never the foreground route or 58.
     const decision = underlineColourIndexedDecision(
-      digests({ [B]: "blank", [D(1)]: "blank", [D(4)]: "blank", [C(1)]: "blank", [C(4)]: "blank" }),
+      digests({ [B]: "blank", [D(2)]: "blank", [D(6)]: "blank", [C(2)]: "blank", [C(6)]: "blank" }),
     )
     expect(decision.note).toContain("not applicable here")
   })
 
   test("every outcome records all four digests per index", () => {
-    for (const overrides of [{}, { [C(1)]: "plain", [C(4)]: "plain" }, { [C(4)]: "teal" }]) {
+    for (const overrides of [{}, { [C(2)]: "plain", [C(6)]: "plain" }, { [C(6)]: "teal" }]) {
       expect(underlineColourIndexedDecision(digests(overrides)).evidence).toEqual({
-        "1": { A: "blank", B: "plain", C: overrides[C(1)] ?? "red", "D'": "red" },
-        "4": { A: "blank", B: "plain", C: overrides[C(4)] ?? "blue", "D'": "blue" },
+        "2": { A: "blank", B: "plain", C: overrides[C(2)] ?? "green", "D'": "green" },
+        "6": { A: "blank", B: "plain", C: overrides[C(6)] ?? "cyan", "D'": "cyan" },
       })
     }
   })
@@ -152,15 +152,15 @@ function run(): SameRunCapture {
       capture: {
         regionDigest: `d-${name}`,
         pixelsDigest: `p-${name}`,
-        frame: frame(name === C(1) ? "f-target" : `f-${name}`),
+        frame: frame(name === C(2) ? "f-target" : `f-${name}`),
       },
     })) as SameRunCapture["measured"],
   }
 }
 
 describe("indexed underline colour callback result", () => {
-  test("a decided outcome cites the 58:5:1 frame and carries the evidence in its response", () => {
-    const decision = underlineColourIndexedDecision(digests({ [C(1)]: "plain", [C(4)]: "plain" }))
+  test("a decided outcome cites the 58:5:2 frame and carries the evidence in its response", () => {
+    const decision = underlineColourIndexedDecision(digests({ [C(2)]: "plain", [C(6)]: "plain" }))
     const result = underlineColourIndexedResult(run(), decision)
     expect(result).toMatchObject({
       pass: false,
@@ -191,7 +191,7 @@ describe("indexed underline colour callback result", () => {
   })
 
   test("an inconclusive outcome asserts nothing and names its reason", () => {
-    const decision = underlineColourIndexedDecision(digests({ [C(4)]: "teal" }))
+    const decision = underlineColourIndexedDecision(digests({ [C(6)]: "teal" }))
     const result = underlineColourIndexedResult(run(), decision)
     expect(result.assertions).toBeUndefined()
     expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })

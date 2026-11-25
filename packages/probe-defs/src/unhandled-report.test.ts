@@ -177,8 +177,8 @@ test.each([
   [
     "sgr.underline-color-indexed",
     [
-      ["58:5:1m", "58:5:1m"],
-      ["58:5:4m", "58:5:4m"],
+      ["58:5:2m", "58:5:2m"],
+      ["58:5:6m", "58:5:6m"],
     ],
   ],
 ] as const)("%s uses only its measured exact unhandled report with a handled control", (id, targets) => {

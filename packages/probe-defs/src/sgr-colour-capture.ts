@@ -144,7 +144,9 @@ const COLOUR_ROWS: Record<string, ColourRow> = {
  * a route that is not 58. Colon form only; DECRQSS decides nothing here. Equality only, no tolerance.
  */
 const UNDERLINE_INDEXED_ID = "sgr.underline-color-indexed"
-const UNDERLINE_INDICES = [1, 4] as const
+// #38523 (@cto 08de1fb1): minimumContrastRatio 4.5 in VS Code (xterm.js) boosts 38:5:N but not 58:5:N,
+// so the indices must clear 4.5 against the default dark backgrounds (green 8.09, cyan 6.65).
+const UNDERLINE_INDICES = [2, 6] as const
 const UNDERLINE_SAMPLE = " ".repeat(8)
 
 const UNDERLINE_PHASE = {
