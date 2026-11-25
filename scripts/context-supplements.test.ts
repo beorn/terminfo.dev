@@ -279,6 +279,92 @@ describe("read-allowed supplement (33119)", () => {
     expect(Object.keys(projection.contexts)).toEqual([])
     expect(projection.versions).toEqual({})
   })
+
+  it("pairs each supplement to its own collection pass when multiple default contexts exist across passes (@cto 336112d9)", () => {
+    const revA = "a".repeat(40)
+    const revB = "b".repeat(40)
+    const passA: ProbeSuiteManifest & { schemaVersion: 4 } = {
+      ...suite,
+      probeHash: "suite-pass-a",
+      sourceRevision: revA,
+    }
+    const passB: ProbeSuiteManifest & { schemaVersion: 4 } = {
+      ...suite,
+      probeHash: "suite-pass-b",
+      sourceRevision: revB,
+    }
+    const baseA = {
+      ...run("alacritty", "default-a", { "sgr.bold": "supported" }, null, "2026-11-20T05:00:00.000Z", undefined, {
+        ids,
+        suite: passA,
+      }),
+      sourceRevision: revA,
+    }
+    const baseAWithCfg = { ...baseA, subject: { ...baseA.subject, config: "alacritty /nix/store/old-runner" } }
+    const suppA = {
+      ...run("alacritty", "supp-a", { [ROUND_TRIP]: "supported" }, allowed, "2026-11-20T05:05:00.000Z", undefined, {
+        ids,
+        suite: passA,
+      }),
+      sourceRevision: revA,
+    }
+    const baseB = {
+      ...run("alacritty", "default-b", { "sgr.bold": "supported" }, null, "2026-11-25T07:00:00.000Z", undefined, {
+        ids,
+        suite: passB,
+      }),
+      sourceRevision: revB,
+    }
+    const baseBWithCfg = { ...baseB, subject: { ...baseB.subject, config: "alacritty /nix/store/new-runner" } }
+    const suppB = {
+      ...run(
+        "alacritty",
+        "supp-b",
+        { [ROUND_TRIP]: "supported", [READ]: "supported" },
+        allowed,
+        "2026-11-25T07:05:00.000Z",
+        undefined,
+        { ids, suite: passB },
+      ),
+      sourceRevision: revB,
+    }
+    const logs: string[] = []
+    const projection = projectResults(
+      [baseAWithCfg, suppA, baseBWithCfg, suppB],
+      ids,
+      { currentProbeHash: passB.probeHash, log: (line) => logs.push(line) },
+      [],
+    )
+    expect(logs.filter((l) => l.includes("it fills nothing"))).toEqual([])
+    const entries = Object.values(projection.contexts)
+    expect(entries).toHaveLength(2)
+    const ctxA = entries.find((e) => e.subject?.config === "alacritty /nix/store/old-runner")!
+    const ctxB = entries.find((e) => e.subject?.config === "alacritty /nix/store/new-runner")!
+    expect(ctxA.cells[ROUND_TRIP]?.origin.runId).toBe("supp-a")
+    expect(ctxB.cells[ROUND_TRIP]?.origin.runId).toBe("supp-b")
+    expect(ctxB.cells[READ]?.origin.runId).toBe("supp-b")
+  })
+
+  it("still logs loudly and fills nothing when two default contexts exist in the SAME pass (@cto 336112d9)", () => {
+    const base1 = run("ghostty", "default-1", { "sgr.bold": "supported" }, null)
+    const base1Cfg = { ...base1, subject: { ...base1.subject, config: "ghostty --flag-a" } }
+    const base2 = run("ghostty", "default-2", { "sgr.bold": "supported" }, null)
+    const base2Cfg = { ...base2, subject: { ...base2.subject, config: "ghostty --flag-b" } }
+    const ambiguous = run("ghostty", "supp-ambig", { [READ]: "supported" }, allowed)
+    const logs: string[] = []
+    const projection = projectResults(
+      [base1Cfg, base2Cfg, ambiguous],
+      ids,
+      { currentProbeHash: suite.probeHash, log: (line) => logs.push(line) },
+      [],
+    )
+    expect(
+      logs.some((l) => l.includes("supplement supp-ambig (read-allowed) has 2 default contexts; it fills nothing")),
+    ).toBe(true)
+    for (const entry of Object.values(projection.contexts)) {
+      expect(entry.cells[READ]?.origin.runId).not.toBe("supp-ambig")
+    }
+  })
 })
 
 /** One Linux Screen run through Kitty, recording `config` as its mux config. */

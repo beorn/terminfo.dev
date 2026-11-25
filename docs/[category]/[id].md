@@ -57,11 +57,12 @@ function resultRows(rows) {
     const base = facts.name(r.name)
     const platform = facts.platform(r.name)
     const shortOs = platform === 'macOS' ? 'Mac' : platform
-    const displayName = shortOs && (baseNameCounts.get(base) ?? 0) > 1 ? `${base} (${shortOs})` : base
+    const hasPlatformTwin = Boolean(shortOs && (baseNameCounts.get(base) ?? 0) > 1)
+    const displayName = hasPlatformTwin ? `${base} (${shortOs})` : base
     return {
       id: r.name,
       categoryId: category.id,
-      anchor: termAnchorId(r.slug),
+      anchor: termAnchorId(hasPlatformTwin ? `${r.slug}-${platform}` : r.slug),
       name: displayName,
       href: '/terminals/' + r.slug,
       mark: category.mark,
