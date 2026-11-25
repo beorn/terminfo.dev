@@ -148,6 +148,7 @@
   border-radius: 0;
   background: transparent;
   cursor: pointer;
+  touch-action: manipulation;
 }
 /* Unified verdict palette (#37631): Supported green, Unsupported red, Untestable amber,
    No result yet hollow/hatched empty track, Differs indigo. */
