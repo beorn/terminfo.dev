@@ -419,7 +419,7 @@ export function generateApi(
 }
 
 // Allow standalone execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const { dataPath } = generateApi()
   const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
     contexts: Record<string, unknown>

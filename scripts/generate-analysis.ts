@@ -1369,7 +1369,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
 // --- CLI ---
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const args = process.argv.slice(2)
   const isDryRun = args.includes("--dry-run")
   const isValidate = args.includes("--validate")

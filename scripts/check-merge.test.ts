@@ -1,6 +1,6 @@
 // @testonly none
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { checkStoredRunSourceHistory, runTerminfoMergeCheck, type ExecFn } from "./check-merge.ts"
@@ -128,5 +128,13 @@ describe("terminfo check:merge pre-merge gate (@cto 9768f1cf)", () => {
     expect(observedScratchDir).not.toBe("")
     expect(existsSync(observedScratchDir)).toBe(false)
     expect(logs.some((l) => l.includes("sampled-peak-rss=20971520 KiB"))).toBe(true)
+  })
+
+  it("build entrypoint scripts use import.meta.main so tilde/encoded checkout paths (e.g. hh-dev~main) never silently skip", () => {
+    for (const rel of ["generate-analysis.ts", "generate-api.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, rel), "utf8")
+      expect(source).not.toContain("file://${process.argv[1]}")
+      expect(source).toContain("import.meta.main")
+    }
   })
 })
