@@ -115,14 +115,17 @@ it("stores no Unsupported row without a reason in any record measured after the 
         undated.push(`${dir}/${name}`)
         continue
       }
-      if (Date.parse(measuredAt) < WRITER_LANDED) continue
+      if (Date.parse(measuredAt) < WRITER_LANDED) {
+        continue
+      }
       checked += 1
       const record = JSON.parse(readFileSync(path, "utf8")) as {
         results?: { featureId: string; status: string; reason?: string }[]
       }
       for (const result of record.results ?? []) {
-        if (result.status === "unsupported" && !result.reason?.trim())
+        if (result.status === "unsupported" && !result.reason?.trim()) {
           missing.push(`${dir}/${name}: ${result.featureId}`)
+        }
       }
     }
   }

@@ -3386,7 +3386,7 @@ export function escapeControlBytes(text: string): string {
   )
   let out = ""
   for (const ch of escaped) {
-    const code = ch.codePointAt(0)!
+    const code = ch.codePointAt(0) ?? 0
     out += code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f) ? controlForm(code) : ch
   }
   return out
