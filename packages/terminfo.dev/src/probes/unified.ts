@@ -1087,7 +1087,8 @@ async function runProbeBatchInRun(
     // The admission table decides that here, before any byte: a ruling exclusion (DECSTR, the cells with
     // no retained trace) or a write only the tokenizer can name refuses by name rather than being graded
     // on a restore nothing can read back (@cto 69ad9f37, 0.29.2 ruling point 2).
-    const windowAdmission = windowBasis ? windowBasisAdmission(probe.id) : undefined
+    const windowAdmission =
+      windowBasis && basisScopeAdmits(processOwnerBasis.scope, probe.id) ? windowBasisAdmission(probe.id) : undefined
     const windowRefusal = windowAdmission?.admitted === false ? windowAdmission.reason : undefined
     const refusedBecause = !needsOwnership
       ? undefined
@@ -1097,15 +1098,15 @@ async function runProbeBatchInRun(
           : (ordinaryOpenGrant?.refusal ?? "an ordinary-open receipt was not admitted for this row")
         : !authorizedToWrite
           ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
-          : windowRefusal !== undefined
-            ? windowRefusal
-            : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
-              ? "no verified disposable-ownership receipt was presented"
-              : probe.termNeedsDisposable === true &&
-                  !disposable &&
-                  processOwnerBasis &&
-                  !basisScopeAdmits(processOwnerBasis.scope, probe.id)
-                ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
+          : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
+            ? "no verified disposable-ownership receipt was presented"
+            : probe.termNeedsDisposable === true &&
+                !disposable &&
+                processOwnerBasis &&
+                !basisScopeAdmits(processOwnerBasis.scope, probe.id)
+              ? basisScopeRefusal(processOwnerBasis.scope, probe.id)
+              : windowRefusal !== undefined
+                ? windowRefusal
                 : witness?.admitted === false
                   ? witness.refusal
                   : undefined
