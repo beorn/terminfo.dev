@@ -5,6 +5,8 @@
  * @consumer terminfo.dev bar rows, SupportBar hover system, and result lists
  * @testonly none
  * @reach fs-walk vendor/terminfo.dev/docs/**
+ * @source-grep the layout contract is carried by CSS text (bar density, unscoped widths), so the
+ *   stylesheets themselves are the evidence; rendering a page cannot show a rule that is absent.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
