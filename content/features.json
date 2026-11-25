@@ -2635,7 +2635,7 @@
     "url": "https://mintty.github.io/",
     "tags": ["osc"],
     "body": "OSC 440 plays a WAV audio file as terminal output. The sequence is <code>ESC ] 440 ; wavfile BEL</code> where <code>wavfile</code> is a path or identifier for an audio sample. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-only extension and one of the most unusual terminal features in the wild — no other terminal emulator exposes general-purpose audio playback through an escape sequence. mintty originally added this for accessibility and notification scripting on Windows, where Cygwin/MSYS shell scripts could trigger arbitrary sound effects without a separate player. Other terminals silently consume the sequence; audio playback happens nowhere except mintty.",
-    "probe": "Send <code>OSC 440 ; bell.wav BEL</code>, then ask for the cursor position. No reply is defined for this sequence, and audio playback leaves no trace on the cell grid: an ignored sequence and a played sound leave the same screen. The attempted cursor query gives no result for audio playback; the cell grid provides no evidence of that external effect.",
+    "probe": "Send <code>OSC 440 ; bell.wav BEL</code> alongside a made-up control command. Terminals that record unhandled OSC commands in their log (such as Kitty, Ghostty, WezTerm, Alacritty, and xterm) grade Unsupported when their log lists OSC 440 as unhandled. No audio-device check exists to confirm sound playback, so terminals without an unhandled-command log stay Open.",
     "baseline": "legacy",
     "sequence": "ESC ] 440 ; wavfile BEL"
   },
