@@ -603,11 +603,19 @@ export interface PixelCellCrop {
   }
   /**
    * Pixels that changed between this frame's pre-paint frame and the frame itself, outside the
-   * located pair. A held viewport shifted by whole rows shows a small delta here; a re-anchored
-   * viewport shows a large one. Absent means the read made no such comparison, never zero
-   * (33982, @cto).
+   * located pair. Under a proven row move (`acceptedRowMove`), counts only pixels inside the moved
+   * grid's rectangle (`y >= derived.y` and within its columns), while `changedOutsideGrid` records
+   * changed pixels outside that moved grid (app chrome). With no proven row move, keeps its
+   * whole-frame meaning. Absent means the read made no such comparison, never zero
+   * (33982, #37701, @cto).
    */
   changedOutside?: number
+  /**
+   * Non-sentinel pixels that changed outside the moved grid's rectangle under a proven whole-row
+   * move (#37701, @cto 548edef1). Present only when a proven row move scoped `changedOutside` to
+   * the moved grid's rectangle, so app chrome activity outside the terminal grid stays visible.
+   */
+  changedOutsideGrid?: number
   /**
    * The whole-row displacement this read accepted, in rows and pixels (33982). Present only when a
    * MEASURED bound licensed it, so a reader can count accepted moves without parsing prose.
@@ -1101,7 +1109,11 @@ export type UngradedDiagnostic =
        * frame record exists, so this is the only place its evidence can survive. Present only for
        * refusals that produce it; absent is "the read produced none", never a zero.
        */
-      evidence?: { changedOutside: number; rowShift?: { rows: number; px: number } }
+      evidence?: {
+        changedOutside: number
+        changedOutsideGrid?: number
+        rowShift?: { rows: number; px: number }
+      }
     }
 
 /**

@@ -212,6 +212,32 @@ test("the crop record carries the changed-pixel count, and stays silent when the
     },
   })
   expect(withCount.frame.cellCrop?.changedOutside).toBe(797)
+  expect(withCount.frame.cellCrop && "changedOutsideGrid" in withCount.frame.cellCrop).toBe(false)
+  const withMovedGridCount = await finishCapture({
+    directory: directory(),
+    onRetained: () => {},
+    source: { bytes: PNG_STUB, format: "png", width: 4, height: 3, capturedAt: 1 },
+    png: PNG_STUB,
+    decoded: { width: 4, height: 3, rgba: FRAME_RGBA },
+    origin: {
+      origin: { x: 0, y: 0 },
+      basis: "measured fixture",
+      basisKind: "sentinel pair located by frame difference",
+      changedOutside: 0,
+      changedOutsideGrid: 74,
+      acceptedRowMove: { rows: 35, px: 560 },
+    },
+    trace: {},
+    checkpoint: {
+      featureId: "crop-fixture",
+      role: "target" as const,
+      label: "two rows",
+      cells: { top: 2, left: 2, bottom: 3, right: 3 },
+      pixelGeometry: { cellWidth: 1, cellHeight: 1, textWidth: 4, textHeight: 3 },
+    },
+  })
+  expect(withMovedGridCount.frame.cellCrop?.changedOutside).toBe(0)
+  expect(withMovedGridCount.frame.cellCrop?.changedOutsideGrid).toBe(74)
   // Absence is named by absence: a read that measured nothing must not publish a 0 a later bound
   // would happily accept as a quiet frame.
   const without = await finishCapture({

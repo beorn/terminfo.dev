@@ -146,15 +146,25 @@ export class SentinelFrameMoved extends Error {
    */
   readonly changedOutside: number
   /**
+   * Non-sentinel pixels that changed outside the moved grid's rectangle under a proven whole-row
+   * move (#37701, @cto 548edef1). Present only when the row move itself was proven (`geometryProves`
+   * and `clearBeforePaint`), so a non-moved or unproven refusal keeps whole-frame `changedOutside`.
+   */
+  readonly changedOutsideGrid: number | undefined
+  /**
    * The whole-row displacement that would align the pre-paint frame, present only when the pair
    * landed an exact number of rows off with no horizontal component. Absent means no such shift was
    * observed — never zero rows (33982, @cto).
    */
   readonly rowShift: { rows: number; px: number } | undefined
 
-  constructor(message: string, evidence: { changedOutside: number; rowShift?: { rows: number; px: number } }) {
+  constructor(
+    message: string,
+    evidence: { changedOutside: number; changedOutsideGrid?: number; rowShift?: { rows: number; px: number } },
+  ) {
     super(message)
     this.changedOutside = evidence.changedOutside
+    this.changedOutsideGrid = evidence.changedOutsideGrid
     this.rowShift = evidence.rowShift
   }
 }
@@ -496,8 +506,11 @@ export async function readThroughSentinel<T>(input: {
           derived,
           size,
           pixelGeometry,
+          before,
           frame,
           beforeProjected,
+          sentinelRgb: input.sentinel.rgb,
+          sentinelMembers: paintClasses?.sentinel.members,
           a,
           b,
           where: where(),
@@ -617,14 +630,56 @@ function declaredHoldRefusal(label: string, scroll: DeclaredViewportHold): Captu
  * CaptureHoldUnresolved, ungraded, and the probe records a named todo. Measuring the row a notch
  * moves needs a non-pixel read (@i/terminfo/34222-wheel-notch-row-unit).
  */
+function partitionNonSentinelChangesByGrid(input: {
+  before: CapturedFrame
+  after: CapturedFrame
+  rgb: readonly [number, number, number]
+  sentinelMembers?: ReadonlySet<number>
+  gridRect: { x: number; y: number; width: number; height: number }
+}): { insideGrid: number; outsideGrid: number } {
+  const { before, after, rgb, sentinelMembers, gridRect } = input
+  const { width, height } = after
+  const x0 = gridRect.x
+  const y0 = gridRect.y
+  const x1 = gridRect.x + gridRect.width
+  const y1 = gridRect.y + gridRect.height
+  let insideGrid = 0
+  let outsideGrid = 0
+  for (let y = 0; y < height; y++) {
+    const inY = y >= y0 && y < y1
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4
+      const changed =
+        before.rgba[offset] !== after.rgba[offset] ||
+        before.rgba[offset + 1] !== after.rgba[offset + 1] ||
+        before.rgba[offset + 2] !== after.rgba[offset + 2]
+      if (!changed) continue
+      const r = after.rgba[offset] ?? 0
+      const g = after.rgba[offset + 1] ?? 0
+      const b = after.rgba[offset + 2] ?? 0
+      const matches =
+        sentinelMembers !== undefined
+          ? sentinelMembers.has((r << 16) | (g << 8) | b)
+          : r === rgb[0] && g === rgb[1] && b === rgb[2]
+      if (matches) continue
+      if (inY && x >= x0 && x < x1) insideGrid++
+      else outsideGrid++
+    }
+  }
+  return { insideGrid, outsideGrid }
+}
+
 function acceptOrRefuseMovedSentinelOrigin(input: {
   label: string
   reading: { x: number; y: number }
   derived: { x: number; y: number }
   size: { width: number; height: number }
   pixelGeometry: CapturePixelGeometry
+  before: CapturedFrame
   frame: CapturedFrame
   beforeProjected: CapturedFrame
+  sentinelRgb: readonly [number, number, number]
+  sentinelMembers?: ReadonlySet<number>
   a: { row: number; col: number }
   b: { row: number; col: number }
   where: string
@@ -640,8 +695,11 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
     derived,
     size,
     pixelGeometry,
+    before,
     frame,
     beforeProjected,
+    sentinelRgb,
+    sentinelMembers,
     a,
     b,
     where,
@@ -656,8 +714,7 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
   const rowShift =
     dx === 0 && dy !== 0 && size.height > 0 && dy % size.height === 0 ? { rows: dy / size.height, px: dy } : undefined
   const bound = noiseBound ?? ROW_MOVE_NOISE_BOUND_PX
-  const withinBound = bound !== undefined && ignoredPixels <= bound
-  if (rowShift !== undefined && withinBound) {
+  if (rowShift !== undefined) {
     const columns = pixelGeometry.textWidth / pixelGeometry.cellWidth
     const rows = pixelGeometry.textHeight / pixelGeometry.cellHeight
     const cropCandidate: PixelCellCrop = {
@@ -680,16 +737,47 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
       columns,
       cells: [a, b],
     })
-    if (geometryProves && clearBeforePaint && withinBound) {
-      return {
-        origin: derived,
-        basis: basisText,
-        basisKind,
-        witness,
-        changedOutside: ignoredPixels,
-        acceptedRowMove: { rows: rowShift.rows, px: rowShift.px },
-        basisDetail: `the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
+    if (geometryProves && clearBeforePaint) {
+      // #37701 (@cto 548edef1): once the row move itself is proven (geometryProves and clearBeforePaint),
+      // changedOutside counts only pixels inside the moved grid's rectangle (y >= derived.y and within
+      // its columns), while changedOutsideGrid records pixels that changed outside the moved grid so app
+      // chrome activity (such as Warp's block-header clock above the grid) stays visible. The bound stays 0.
+      const { insideGrid, outsideGrid } =
+        ignoredPixels === 0
+          ? { insideGrid: 0, outsideGrid: 0 }
+          : partitionNonSentinelChangesByGrid({
+              before,
+              after: frame,
+              rgb: sentinelRgb,
+              sentinelMembers,
+              gridRect: {
+                x: derived.x,
+                y: derived.y,
+                width: pixelGeometry.textWidth,
+                height: pixelGeometry.textHeight,
+              },
+            })
+      const withinBound = bound !== undefined && insideGrid <= bound
+      if (withinBound) {
+        return {
+          origin: derived,
+          basis: basisText,
+          basisKind,
+          witness,
+          changedOutside: insideGrid,
+          changedOutsideGrid: outsideGrid,
+          acceptedRowMove: { rows: rowShift.rows, px: rowShift.px },
+          basisDetail: `the text area moved ${rowShift.rows} whole rows (${rowShift.px} px) since ${where} were chosen, and those cells were clear where they sat in the frame this read painted over (33982)`,
+        }
       }
+      throw new SentinelFrameMoved(
+        `${label}: the frame moved after ${where} were chosen at ${reading.x},${reading.y} — the pair landed ${dx},${dy} px from it — so this read cannot show those cells were blank in the frame it painted, and it will not re-anchor from a pair that may have covered ink`,
+        {
+          changedOutside: insideGrid,
+          changedOutsideGrid: outsideGrid,
+          rowShift,
+        },
+      )
     }
   }
   throw new SentinelFrameMoved(
