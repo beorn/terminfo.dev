@@ -26,6 +26,8 @@ const FORBIDDEN_METHOD_PATTERNS: ReadonlyArray<{ readonly name: string; readonly
   { name: "Compared row method prose", pattern: /^Compared rows?\b/i },
   { name: "Checked screen method prose", pattern: /^Checked (?:rows?|the screen)\b/i },
   { name: "Sampled row method prose", pattern: /^Sampled rows?\b/i },
+  { name: "Set title/cwd method prose", pattern: /^Set the (?:window title|working directory)\b/i },
+  { name: "Read title/icon method prose", pattern: /^Read the (?:icon name|window title)\b/i },
   { name: "run-on multi-reply list", pattern: /^The terminal sent back \d+ replies:/i },
   { name: "prose reply instead of columns", pattern: /^The terminal sent back ESC \[/i },
 ]

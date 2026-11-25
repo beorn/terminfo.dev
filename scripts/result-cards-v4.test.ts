@@ -378,7 +378,7 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
       },
     })
     expect(pixelMouseFail.replyFamily).toBe(true)
-    expect(pixelMouseFail.expected).toEqual({ code: "ESC [<0;360;240M", words: "Mouse position in pixels" })
+    expect(pixelMouseFail.expected).toEqual({ code: "ESC [ <0;<x>;<y> M", words: "Mouse position in pixels" })
     expect(pixelMouseFail.received).toEqual({
       code: "ESC [<0;45;15M",
       words: "Position in cells (45,15), not pixels",
@@ -475,8 +475,11 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
       captures: { textCells: "┘┐┌└─│j", regionText: "row 1, columns 1–7" },
     })
     expect(decLineModel.expected).toEqual({ words: "Line-drawing glyphs: ┘┐┌└─│" })
-    expect(decLineModel.received).toEqual({ words: "Row 1 shows ┘┐┌└─│j" })
-    expect(expectedVisualSpecimen("charsets.dec-line-drawing")?.text).toBe("┘┐┌└─│j")
+    expect(decLineModel.received).toEqual({ words: "Row 1 shows ┘┐┌└─│ (plus ASCII “j” after reset)" })
+    expect(expectedVisualSpecimen("charsets.dec-line-drawing")).toMatchObject({
+      text: "┘┐┌└─│j",
+      caption: "Box glyphs ┘┐┌└─│, then ASCII j after reset",
+    })
     expect(
       validateMeasuredCard(decLineModel, "dec-line", {
         featureId: "charsets.dec-line-drawing",
@@ -485,6 +488,7 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     ).toEqual([])
 
     // Rule 6: Window title collapses calibration/control/negative/restore writes to one real step
+    // and phrases Received as a result rather than method prose (#38585).
     const titleModel = buildCardModel({
       status: "supported",
       featureId: "extensions.osc2-title",
@@ -505,7 +509,16 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(titleModel.steps).toHaveLength(1)
     expect(titleModel.steps[0]?.code).toContain("terminfo-title-target-A")
     expect(titleModel.steps[0]?.words).toBe("Set window title")
+    expect(titleModel.received).toEqual({ words: "Window title matched 4 of 4 test titles" })
     expect(validateMeasuredCard(titleModel, "osc2-title")).toEqual([])
+
+    // #38585 item 4: OSC 440 catalog "How this is tested" prose matches the log-based card.
+    const features = JSON.parse(readFileSync(join(contentDir, "features.json"), "utf8")) as Record<
+      string,
+      { probe?: string }
+    >
+    expect(features["extensions.osc440-audio"]?.probe).toContain("unhandled")
+    expect(features["extensions.osc440-audio"]?.probe).not.toContain("ask for the cursor position")
 
     // Risk #1: deciding query steps are NEVER dropped into Details even behind many writes.
     const manyWrites = buildCardModel({

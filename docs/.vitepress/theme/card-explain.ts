@@ -853,13 +853,13 @@ function sgrExpectedStyleName(featureId: string, sentCommands: readonly string[]
 }
 
 const METHOD_DESCRIPTION_RE =
-  /(?:\bfrom the terminal's own text snapshot\b|\bfrom the console host's buffer\b|\bnot from its pixels\b|^Read rows?\b|^Compared rows?\b|^Checked (?:rows?|the screen)\b|^Sampled rows?\b|^The terminal sent back \d+ replies:|^The terminal sent back ESC \[)/i
+  /(?:\bfrom the terminal's own text snapshot\b|\bfrom the console host's buffer\b|\bnot from its pixels\b|^Read rows?\b|^Compared rows?\b|^Checked (?:rows?|the screen)\b|^Sampled rows?\b|^Set the (?:window title|working directory)\b|^Read the (?:icon name|window title)\b|^The terminal sent back \d+ replies:|^The terminal sent back ESC \[)/i
 
 function isMethodDescription(text: string | undefined): boolean {
   return Boolean(text && METHOD_DESCRIPTION_RE.test(text.trim()))
 }
 
-function summarizeTextCellsReceived(captures: TraceCaptures): string {
+function summarizeTextCellsReceived(captures: TraceCaptures, featureId?: string): string {
   const firstLine = (captures.textCells ?? "")
     .split("\n")
     .map((l) => l.trimEnd())
@@ -868,6 +868,9 @@ function summarizeTextCellsReceived(captures: TraceCaptures): string {
   const rowLabel = regionMatch?.[1] ? capitalizeFirst(regionMatch[1]) : "Captured cells"
   const verb = /^Rows\s/i.test(rowLabel) || rowLabel === "Captured cells" ? "show" : "shows"
   if (!firstLine) return `${rowLabel} ${verb} blank text`
+  if ((featureId === "charsets.dec-line-drawing" || featureId === "charsets.dec-special") && firstLine === "┘┐┌└─│j") {
+    return `${rowLabel} ${verb} ┘┐┌└─│ (plus ASCII “j” after reset)`
+  }
   const multiLine = (captures.textCells ?? "").includes("\n")
   const preview = firstLine.length > 24 ? `${firstLine.slice(0, 23)}…` : multiLine ? `${firstLine}…` : firstLine
   return `${rowLabel} ${verb} ${preview}`
@@ -1104,7 +1107,7 @@ function expectedReplyForProbe(opts: {
   if (assertionType === "input_bytes") {
     if (featureId.includes("paste")) return apply("ESC [ 200~ … ESC [ 201~", "Paste wrapped in the markers")
     if (featureId.includes("focus")) return apply("ESC [ O  ESC [ I", "Focus out / focus in events")
-    if (featureId === "input.pixel-mouse") return apply("ESC [<0;360;240M", "Mouse position in pixels")
+    if (featureId === "input.pixel-mouse") return apply("ESC [ <0;<x>;<y> M", "Mouse position in pixels")
     if (featureId === "input.button-event-mouse") return apply("ESC [ <32;… M", "Mouse drag motion report")
     if (featureId === "input.kitty-click-events") return apply("ESC [ <0;… M", "Prompt click report")
     if (featureId === "input.urxvt-mouse") return apply("ESC [ 32;… M", "urxvt decimal mouse report")
@@ -2375,7 +2378,7 @@ export function buildCardModel(input: {
   } else if (isScreen) {
     let words: string
     if (captures?.textCells) {
-      words = summarizeTextCellsReceived(captures)
+      words = summarizeTextCellsReceived(captures, featureId)
     } else if (cleanEv && !/shown below/i.test(cleanEv)) {
       words = capitalizeFirst(cleanEv.replace(/^Those cells\b/i, "Screen cells").replace(/^It\b/i, "Screen"))
     } else if (
@@ -2411,6 +2414,38 @@ export function buildCardModel(input: {
         : status === "supported"
           ? "Notification arrived at desktop service"
           : "No notification arrived",
+    }
+  } else if (featureId === "extensions.osc2-title" || featureId === "extensions.osc7-cwd") {
+    const label = featureId === "extensions.osc2-title" ? "Window title" : "Working folder"
+    const unit = featureId === "extensions.osc2-title" ? "test titles" : "test paths"
+    const matched = /(\d+)\s+of\s+(\d+)\s+readings matched/i.exec(traceEvidence?.[0] ?? "")
+    received = {
+      words:
+        status === "supported"
+          ? matched
+            ? `${label} matched ${matched[1]} of ${matched[2]} ${unit}`
+            : `${label} updated to test text`
+          : matched
+            ? `${label} matched ${matched[1]} of ${matched[2]} ${unit}`
+            : `${label} stayed unchanged`,
+    }
+  } else if (
+    featureId === "extensions.osc0-icon-title" ||
+    featureId === "extensions.osc1-icon" ||
+    featureId === "device.xtwinops-22" ||
+    featureId === "device.xtwinops-23"
+  ) {
+    const rawEv = sanitizeCardText(traceEvidence?.[0])
+    const stripped = rawEv?.replace(/^Read the [^:]+:\s*/i, "").trim()
+    received = {
+      words:
+        stripped && stripped !== rawEv
+          ? capitalizeFirst(stripped)
+          : cleanEv
+            ? capitalizeFirst(cleanEv)
+            : status === "supported"
+              ? "Window title updated to test text"
+              : "Window title stayed unchanged",
     }
   } else {
     received = {
@@ -2525,7 +2560,11 @@ export function expectedVisualSpecimen(featureId: string): ExpectedVisual | unde
       }
     case "charsets.dec-line-drawing":
     case "charsets.dec-special":
-      return { text: "┘┐┌└─│j", style: { letterSpacing: "0.02em" } }
+      return {
+        text: "┘┐┌└─│j",
+        style: { letterSpacing: "0.02em" },
+        caption: "Box glyphs ┘┐┌└─│, then ASCII j after reset",
+      }
     default:
       return undefined
   }
