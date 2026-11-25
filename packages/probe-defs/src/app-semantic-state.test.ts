@@ -85,7 +85,11 @@ test("osc633-p's third directory value is no result, not probe-invalid", () => {
 
 test("a fresh exact-command report gives only Unsupported; empty or unrelated logs decide nothing", () => {
   const reading = report()
-  expect(gradeAppSemanticState(reading)).toMatchObject({ observation: { outcome: "unsupported" } })
+  // #33594: the stored reason names the code and both controls; the raw log alone does not explain the grade.
+  expect(gradeAppSemanticState(reading)).toMatchObject({
+    observation: { outcome: "unsupported" },
+    note: "App reported OSC 633 as unhandled (made-up OSC 7654 also reported unhandled; handled control applied)",
+  })
   if (reading.status !== "measured" || reading.reader !== "report") throw Error("report fixture")
   for (const reports of [[], ["133"], ["633", "7654"]]) {
     expect(gradeAppSemanticState({ ...reading, target: { ...reading.target, reports } })).toMatchObject({

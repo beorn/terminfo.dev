@@ -3373,6 +3373,57 @@ function assertCurrentSource(source: unknown): asserts source is RunDraft["sourc
  * the callback's negative assertion, exactly as the helpers graded it before. `switchable` is PROBE INVALID with
  * the row's reason.
  */
+/** Observed text longer than this is cut, and the cut says how many bytes it dropped (@cto d03af07e). */
+const OBSERVED_REASON_LIMIT = 160
+const UNSUPPORTED_WITHOUT_EVIDENCE =
+  "writer default: unsupported without a reason or negative assertion; callback defect"
+const warnedUnsupportedDefaults = new Set<string>()
+
+/** Shows control bytes escaped, never raw: ESC as \e, other C0 as ^X, DEL and C1 as \xNN. */
+export function escapeControlBytes(text: string): string {
+  const escaped = text.replace(/\\u00([0-1][0-9a-fA-F]|7[fF])/g, (_match, hex: string) =>
+    controlForm(Number.parseInt(hex, 16)),
+  )
+  let out = ""
+  for (const ch of escaped) {
+    const code = ch.codePointAt(0)!
+    out += code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f) ? controlForm(code) : ch
+  }
+  return out
+}
+
+function controlForm(code: number): string {
+  if (code === 0x1b) return "\\e"
+  if (code < 0x20) return `^${String.fromCharCode(code + 64)}`
+  return `\\x${code.toString(16).padStart(2, "0")}`
+}
+
+/** The observed half of a derived reason: escaped, "no reply" when empty, and cut with the dropped byte count. */
+export function observedSummary(observed: string): string {
+  if (observed === "") return "no reply"
+  const points = Array.from(escapeControlBytes(observed))
+  if (points.length <= OBSERVED_REASON_LIMIT) return points.join("")
+  const dropped = new TextEncoder().encode(points.slice(OBSERVED_REASON_LIMIT).join("")).length
+  return `${points.slice(0, OBSERVED_REASON_LIMIT).join("")}… (${dropped} more bytes)`
+}
+
+/**
+ * An unsupported result that names no other reason states what it expected and what it observed, from
+ * its first negative assertion, so a reader can check the grade (#33594; @cto 62894cc9, d03af07e).
+ * With no such assertion the writer default names the defect, and stderr names the probe once per run.
+ */
+export function unsupportedReason(featureId: string, assertions: readonly ProbeAssertion[]): string {
+  const deciding = assertions.find((entry) => entry.featureId === featureId && entry.kind === "negative")
+  if (deciding !== undefined) {
+    return `Expected: ${escapeControlBytes(deciding.expected)}. Observed: ${observedSummary(deciding.observed)}`
+  }
+  if (!warnedUnsupportedDefaults.has(featureId) && typeof process !== "undefined") {
+    warnedUnsupportedDefaults.add(featureId)
+    process.stderr.write(`${featureId}: ${UNSUPPORTED_WITHOUT_EVIDENCE}\n`)
+  }
+  return UNSUPPORTED_WITHOUT_EVIDENCE
+}
+
 export function recordExecutedProbe(input: {
   featureId: string
   attempt: Exclude<ProbeAttempt, { scope: "none" }>
@@ -3444,7 +3495,7 @@ export function recordExecutedProbe(input: {
     observation.reason === "insufficient-evidence"
   const silenceReason =
     fenced && silence !== undefined ? `${silence.reason}; ${observation?.note ?? "fenced silence"}` : undefined
-  const reason =
+  const namedReason =
     diagnosticReason ??
     silenceReason ??
     observation?.note ??
@@ -3455,6 +3506,8 @@ export function recordExecutedProbe(input: {
         ? undefined
         : observation?.reason) ??
     harnessStoppedReason
+  const reason =
+    namedReason ?? (status === "unsupported" ? unsupportedReason(featureId, input.assertions) : undefined)
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
   return finalizeProbeResult({
     featureId,
