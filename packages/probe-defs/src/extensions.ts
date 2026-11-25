@@ -1856,10 +1856,11 @@ async function wholeWindowOscAppCapture(
   beginCaptureLifecycle(ctx)
   try {
     ctx.write(`${clear}\x1b[2J\x1b[H`)
-    // macOS overlay scrollbars woken by an earlier scrollback probe can fade out between the first
-    // two whole-window captures (~600 ms apart), tripping a single-pair stability check on an
-    // otherwise static window (#38149). Allow up to 2 settling captures so a fading chrome element
-    // can finish while still requiring two consecutive byte-identical captures before continuing.
+    // macOS overlay scrollbars and Electron/VS Code chrome transitions woken by earlier probes can
+    // fade out across ~1.5 s (VS Code 1.147.0 run 3764c54d reached its static frame 413ddc4ee79 on
+    // capture #4 at +1446 ms, one capture short of retry <= 2, #38149 / #38522). Allow up to 5
+    // settling captures (~3 s) so a fading chrome element can finish while still requiring two
+    // consecutive byte-identical captures before continuing.
     const first = await shoot("stable first")
     let prev = first
     let pair = await captureStabilityPair(
@@ -1868,7 +1869,7 @@ async function wholeWindowOscAppCapture(
       () => Promise.resolve(prev),
       () => shoot("stable second"),
     )
-    for (let retry = 1; pair.refusal && retry <= 2; retry += 1) {
+    for (let retry = 1; pair.refusal && retry <= 5; retry += 1) {
       prev = pair.second
       pair = await captureStabilityPair(
         id,
@@ -6854,7 +6855,10 @@ const extensionDefinitions: ProbeDefinition[] = [
             )
           }
           if (changed > 0) {
-            return finish("supported", "Contiguous operators changed " + changed + " of ten same-cell character digests")
+            return finish(
+              "supported",
+              "Contiguous operators changed " + changed + " of ten same-cell character digests",
+            )
           }
           if (bleedColumns.length > 0) {
             return finish(
