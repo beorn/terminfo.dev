@@ -189,23 +189,31 @@ export function hasAuditedOscInterfaceAbsence(
     return (
       ctx.backendName === "ghostty-native" &&
       identity?.kind === "native" &&
-      identity.engineVersion === "1.3.1" &&
-      identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
-      identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a"
+      ((identity.engineVersion === "1.3.1" &&
+        identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
+        identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a") ||
+        (identity.engineVersion === "1.4.0" &&
+          identity.provenance.sourceCommit === "83fb95624b0439ee660c2679b43b38c8b63769cd" &&
+          identity.provenance.lockSha256 === "a3e96c782b93644d8588495f9882e73f58711d650e7eedc0738a682651c199c6"))
     )
   }
   if (cohort === "host-effect-h4") {
     if (identity?.kind !== "native") return false
     if (ctx.backendName === "ghostty-native") {
       return (
-        identity.engineVersion === "1.3.1" &&
-        identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
-        identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a" &&
-        ((identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
-          auditedAdapterSources(identity, "ghosttyNativeH4")) ||
-          (identity.loadedBinary.sha256 === "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207" &&
-            (auditedAdapterSources(identity, "ghosttyNativeR3") ||
-              auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))
+        (identity.engineVersion === "1.3.1" &&
+          identity.provenance.sourceCommit === "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28" &&
+          identity.provenance.lockSha256 === "3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a" &&
+          ((identity.loadedBinary.sha256 === "263e32f284d2399fda5e99df5bea125ed6248979516d309b15f3fd7dbbe836dd" &&
+            auditedAdapterSources(identity, "ghosttyNativeH4")) ||
+            (identity.loadedBinary.sha256 === "bb0c0c6a34997fc4850756e095d1ae978fb9fa046d87eb91847d9e0e6bdfb207" &&
+              (auditedAdapterSources(identity, "ghosttyNativeR3") ||
+                auditedAdapterSources(identity, "ghosttyNativeR372ef06ec"))))) ||
+        (identity.engineVersion === "1.4.0" &&
+          identity.provenance.sourceCommit === "83fb95624b0439ee660c2679b43b38c8b63769cd" &&
+          identity.provenance.lockSha256 === "a3e96c782b93644d8588495f9882e73f58711d650e7eedc0738a682651c199c6" &&
+          identity.loadedBinary.sha256 === "160031b6610f4ed7f2f462a3257e74301f6dd5d7f7d45f554387dbe01f8a4004" &&
+          auditedAdapterSources(identity, "ghosttyNative140"))
       )
     }
     return ctx.backendName === "kitty" && auditedKittyIdentity(identity)
@@ -10523,9 +10531,32 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         "ghostty-native-d2",
         (source, id) =>
           id === "extensions.kitty-graphics.display" || id === "extensions.kitty-graphics.transmit"
-            ? source.capabilities.kittyGraphics !== false
+            ? source.runtimeIdentity?.kind === "native" && source.runtimeIdentity.engineVersion === "1.3.1"
+              ? source.capabilities.kittyGraphics !== false
+              : false
             : (id === "extensions.osc1-icon" || id === "extensions.osc0-icon-title") &&
               typeof source.getIconLabel === "function",
+        (entry) => {
+          const ver = ctx.runtimeIdentity?.kind === "native" ? ctx.runtimeIdentity.engineVersion : "1.3.1"
+          if (ver !== "1.4.0") return entry
+          if (
+            definition.id === "extensions.kitty-graphics.display" ||
+            definition.id === "extensions.kitty-graphics.transmit"
+          ) {
+            return "Untestable (no way): Ghostty 1.4.0 libghostty-vt compiles kitty_graphics on, but the @termless/ghostty-native adapter exposes no image-store or graphics-reply reader."
+          }
+          if (
+            definition.id === "input.button-event-mouse" ||
+            definition.id === "input.pixel-mouse" ||
+            definition.id === "input.x10-mouse" ||
+            definition.id === "input.xtest-click" ||
+            definition.id === "input.xtest-wheel" ||
+            definition.id === "input.urxvt-mouse"
+          ) {
+            return "Untestable: Ghostty 1.4.0 libghostty-vt exposes encodeMouse, but @termless/ghostty-native does not wire a mouse-encoding reader yet."
+          }
+          return entry.replaceAll("Ghostty 1.3.1", "Ghostty 1.4.0")
+        },
       )
       if (ghosttyNativeDeclared) return ghosttyNativeDeclared
       const alacrittyDeclared = declaredD2InterfaceAbsence(
@@ -10653,8 +10684,10 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
           "ghostty-native",
           "host-effect-h4",
           undefined,
-          () =>
-            `Ghostty 1.3.1 native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`,
+          () => {
+            const ver = ctx.runtimeIdentity?.kind === "native" ? ctx.runtimeIdentity.engineVersion : "1.3.1"
+            return `Ghostty ${ver} native bridge exposes no public state, report or payload route for OSC ${kittyTarget.code.code} at this audited engine/bridge identity.`
+          },
         )
         if (declared) return declared
       }

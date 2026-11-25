@@ -122,6 +122,7 @@ const declarations: readonly AppSemanticCapability[] = [
   ...[
     { kind: "mux", id: "tmux", version: "3.8", os: "linux" },
     { kind: "mux", id: "screen", version: "5.0.2", os: "linux" },
+    { kind: "mux", id: "screen", version: "5.0.3", os: "linux" },
   ].flatMap((subject) =>
     [...sgrProbes.map(({ id }) => id), "extensions.osc22-pointer"].map((featureId) => ({
       ...subject,
@@ -175,35 +176,39 @@ const declarations: readonly AppSemanticCapability[] = [
           ? "cycle"
           : "grid") as AppSemanticCapability["reader"],
     })),
-  ...promptFeatures
-    .filter((featureId) => featureId.includes("633"))
-    .map((featureId) => ({
-      kind: "term",
+  ...["0.49.2", "0.51.1"].flatMap((version) =>
+    promptFeatures
+      .filter((featureId) => featureId.includes("633"))
+      .map((featureId) => ({
+        kind: "term" as const,
+        id: "kitty",
+        version,
+        os: "linux",
+        featureId,
+        reader: "report" as const,
+      })),
+  ),
+  ...["0.49.2", "0.51.1"].flatMap((version) =>
+    (
+      [
+        ["extensions.osc176-app-id", "176", "176;terminfo-test"],
+        ["extensions.osc440-audio", "440", "440;bell.wav"],
+        ["extensions.osc666-termprop", "666", "666;test-prop=value"],
+        ["extensions.osc555-flash", "555", "555"],
+        ["extensions.osc710-font-normal", "710", "710;monospace"],
+        ["extensions.osc113-reset-pointer-fg", "113", "113"],
+        ["extensions.osc114-reset-pointer-bg", "114", "114"],
+      ] as const
+    ).map(([featureId, code, body]) => ({
+      kind: "term" as const,
       id: "kitty",
-      version: "0.49.2",
+      version,
       os: "linux",
       featureId,
       reader: "report" as const,
+      command: { code, body },
     })),
-  ...(
-    [
-      ["extensions.osc176-app-id", "176", "176;terminfo-test"],
-      ["extensions.osc440-audio", "440", "440;bell.wav"],
-      ["extensions.osc666-termprop", "666", "666;test-prop=value"],
-      ["extensions.osc555-flash", "555", "555"],
-      ["extensions.osc710-font-normal", "710", "710;monospace"],
-      ["extensions.osc113-reset-pointer-fg", "113", "113"],
-      ["extensions.osc114-reset-pointer-bg", "114", "114"],
-    ] as const
-  ).map(([featureId, code, body]) => ({
-    kind: "term",
-    id: "kitty",
-    version: "0.49.2",
-    os: "linux",
-    featureId,
-    reader: "report" as const,
-    command: { code, body },
-  })),
+  ),
   // Ghostty v1.4.0 stream_handler.zig:383-390 drops unknown OSC; :1680-1690
   // handles OSC110, while :1713 logs exact reset refusals. OSC113 after the
   // target qualifies this log path and bounds the appended bytes (CTO ef675012).
@@ -273,11 +278,13 @@ const declarations: readonly AppSemanticCapability[] = [
   // CTO third-table Ask4: preserve the separately delivered bus-dependent rows.
   ...[
     { kind: "term", id: "kitty", version: "0.49.2" },
+    { kind: "term", id: "kitty", version: "0.51.1" },
     { kind: "term", id: "ghostty", version: "1.4.0" },
     ...WEZTERM_LINUX_SEMANTIC_BUILDS.map(({ version }) => ({ kind: "term" as const, id: "wezterm", version })),
     { kind: "term", id: "alacritty", version: "0.17.0" },
     { kind: "term", id: "xterm", version: "412" },
     { kind: "mux", id: "screen", version: "5.0.2" },
+    { kind: "mux", id: "screen", version: "5.0.3" },
     { kind: "mux", id: "tmux", version: "3.8" },
   ].flatMap((subject) =>
     ["extensions.notifications", "extensions.osc777-notify"].map((featureId) => ({
@@ -306,6 +313,15 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 133/633 without storing, reporting or forwarding a prompt mark. Read ansi.c:1267-1289, mark.c, comm.c, doc/screen.texinfo and doc/screen.1 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e); its character search does not read prompt marks.",
   })),
+  ...promptFeatures.map((featureId) => ({
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId,
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 133/633 without storing, reporting or forwarding a prompt mark. Read StringEnd in ansi.c:1228-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); OSC allowlist is 83 and 0, 1, 2, 11, 20, 39, 49 at :1272 and its character search does not read prompt marks.",
+  })),
   {
     kind: "term",
     id: "kitty",
@@ -314,6 +330,15 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId: "extensions.osc133-b",
     reason:
       "Untestable (no way): Kitty 0.49.2 has no OSC 133 B arm or input-mark reader. Read tag v0.49.2 kitty/screen.c:3590-3610 (A/C/D only) and docs/shell-integration.rst:434-452; no command-specific log reports this handled OSC's unknown letter.",
+  },
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.51.1",
+    os: "linux",
+    featureId: "extensions.osc133-b",
+    reason:
+      "Untestable (no way): Kitty 0.51.1 has no OSC 133 B arm or input-mark reader. Read tag v0.51.1 kitty/screen.c:3911-3944 (shell_prompt_marking switches on A/C/D only); no command-specific log reports this handled OSC's unknown letter.",
   },
   ...WEZTERM_LINUX_SEMANTIC_BUILDS.flatMap(({ version }) =>
     ["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
@@ -365,6 +390,15 @@ const declarations: readonly AppSemanticCapability[] = [
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 666 without storing, reporting or forwarding a terminal property. Read ansi.c:1267-1289 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e); the OSC allowlist and non-title exit expose no property reading.",
   },
   {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc666-termprop",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 666 without storing, reporting or forwarding a terminal property. Read ansi.c:1272-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); the OSC allowlist and non-title exit expose no property reading.",
+  },
+  {
     kind: "term",
     id: "xterm",
     version: "412",
@@ -403,6 +437,15 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "mux",
     id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc176-app-id",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 176 without an application-id state, forward or report. Read the complete StringEnd OSC dispatch in ansi.c:1242-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); the target reaches the non-title break at :1293-1294. No public target-state reading or command-specific rejection is exposed.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
     version: "5.0.2",
     os: "linux",
     featureId: "extensions.osc440-audio",
@@ -412,11 +455,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "mux",
     id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc440-audio",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 440 without an audio action, forward or report. Read the complete StringEnd OSC dispatch in ansi.c:1242-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); the target reaches the non-title break at :1293-1294. No playback reading or command-specific rejection is exposed.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
     version: "5.0.2",
     os: "linux",
     featureId: "extensions.osc3008-context",
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 3008 without storing, forwarding or reporting context tags. Read the complete StringEnd OSC dispatch in ansi.c:1236-1289 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e); the target reaches the non-title break before the status write at 1303-1305. No public context reading or command-specific rejection is exposed.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc3008-context",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 3008 without storing, forwarding or reporting context tags. Read the complete StringEnd OSC dispatch in ansi.c:1242-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); the target reaches the non-title break at :1293-1294. No public context reading or command-specific rejection is exposed.",
   },
   {
     kind: "term",
@@ -453,6 +514,15 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId: "extensions.osc3008-context",
     reason:
       "Untestable (no way): Kitty 0.49.2 recognizes OSC 3008 but its context callback stores no state and exposes no readback. Read tag v0.49.2 kitty/vt-parser.c:645-677, kitty/screen.c:3523-3524 and kitty/window.py:1582-1583: dispatch reaches the empty Window.osc_context callback. Generic OSC consumption tracing is not a command-specific rejection or context reading.",
+  },
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.51.1",
+    os: "linux",
+    featureId: "extensions.osc3008-context",
+    reason:
+      "Untestable (no way): Kitty 0.51.1 recognizes OSC 3008 but its context callback stores no state and exposes no readback. Read tag v0.51.1 kitty/vt-parser.c (unchanged from v0.49.2), kitty/screen.c:3834-3837 and kitty/window.py:1714-1715: dispatch reaches the empty Window.osc_context callback. Generic OSC consumption tracing is not a command-specific rejection or context reading.",
   },
   {
     kind: "term",
@@ -537,11 +607,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "mux",
     id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc7-cwd",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 7 without storing, forwarding or reporting a working directory. Read the complete StringEnd OSC dispatch in ansi.c:1242-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff); OSC 7 is outside the accepted title/colour list at :1272 and reaches the non-title break at :1293-1294. The outer terminal cannot supply Screen's missing own directory reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
     version: "5.0.2",
     os: "linux",
     featureId: "modes.decsclm",
     reason:
       "Untestable (no way): GNU Screen 5.0.2 exposes no smooth-scrolling state or public readback for DECSCLM. Read SetMode in ansi.c:1090-1122 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): case 4 SCLM is commented out between cases 3 and 5. A static capture cannot read scroll timing, and the outer terminal cannot supply Screen's missing own mode reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "modes.decsclm",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 exposes no smooth-scrolling state or public readback for DECSCLM. Read SetMode in ansi.c:1076-1125 in screen-5.0.3.tar.gz (SHA256 941c98ff): case 4 SCLM is commented out at :1108 between cases 3 and 5. A static capture cannot read scroll timing, and the outer terminal cannot supply Screen's missing own mode reading.",
   },
   {
     kind: "term",
@@ -582,11 +670,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "mux",
     id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "modes.color-scheme-reporting",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 has no private-mode 2031 handler. Read the complete private SetMode dispatch in ansi.c:1076-1196 in screen-5.0.3.tar.gz (SHA256 941c98ff): CSI ?2031h has no dispatch case, so this version exposes no color-scheme-reporting test path. A silent query is not an observed negative.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
     version: "5.0.2",
     os: "linux",
     featureId: "extensions.osc710-font-normal",
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at 1267, so it reaches the non-title break at 1288. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc710-font-normal",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 710 without storing, forwarding or reporting a font selection. Read the complete StringEnd OSC dispatch in ansi.c:1228-1311 in screen-5.0.3.tar.gz (SHA256 941c98ff): OSC 710 parses typ 710 and misses the accepted title/colour list (0, 1, 2, 11, 20, 39, 49, and 83 for commands) at :1272, so it reaches the non-title break at :1293-1294. Screen has no font state, log or readback, and the outer terminal cannot supply Screen's missing own font reading.",
   },
   {
     kind: "mux",
@@ -618,11 +724,29 @@ const declarations: readonly AppSemanticCapability[] = [
   {
     kind: "mux",
     id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc0-icon-title",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. GNU Screen 5.0.3. Read the StringEnd OSC dispatch in ansi.c:1228-1311 in screen-5.0.3.tar.gz (SHA256 941c98ff): OSC 0 is in the title/colour list at ansi.c:1272. That title is not an icon name.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
     version: "5.0.2",
     os: "linux",
     featureId: "extensions.osc1-icon",
     reason:
       "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. GNU Screen 5.0.2. Read the StringEnd OSC dispatch in ansi.c:1223-1312 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 1 is in the title/colour list at ansi.c:1267. That title is not an icon name.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc1-icon",
+    reason:
+      "Untestable (no way): a multiplexer has no icon name; the outer terminal's row applies. GNU Screen 5.0.3. Read the StringEnd OSC dispatch in ansi.c:1228-1311 in screen-5.0.3.tar.gz (SHA256 941c98ff): OSC 1 is in the title/colour list at ansi.c:1272. That title is not an icon name.",
   },
   // #32889 step 1: tmux 3.8 carries no handler for any of these five codes, and the drop is the
   // unknown-OSC default in its own input parser. Read in tmux-3.8.tar.gz
@@ -907,18 +1031,30 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       "Untestable (no way): Kitty 0.49.2 has no OSC 133 P arm in its prompt-mark parser and logs no command-specific refusal for an unknown letter on handled OSC 133. Read tag v0.49.2 kitty/vt-parser.c:630-638, kitty/screen.c:3589-3612 (switches on A, C, D only) and docs/shell-integration.rst:438-440 (Kitty uses 133;A;k=s for secondary prompts).",
   },
-  ...["extensions.osc133-a", "extensions.osc133-c", "extensions.osc133-d", "extensions.semantic-prompts"].map(
-    (featureId) => ({
-      kind: "term" as const,
-      id: "kitty",
-      version: "0.49.2",
-      os: "linux",
-      featureId,
-      reader: "kitty-prompt" as const,
-    }),
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.51.1",
+    os: "linux",
+    featureId: "extensions.osc133-p",
+    reason:
+      "Untestable (no way): Kitty 0.51.1 has no OSC 133 P arm in its prompt-mark parser and logs no command-specific refusal for an unknown letter on handled OSC 133. Read tag v0.51.1 kitty/vt-parser.c (unchanged from v0.49.2) and kitty/screen.c:3911-3944 (shell_prompt_marking switches on A, C, D only).",
+  },
+  ...["0.49.2", "0.51.1"].flatMap((version) =>
+    ["extensions.osc133-a", "extensions.osc133-c", "extensions.osc133-d", "extensions.semantic-prompts"].map(
+      (featureId) => ({
+        kind: "term" as const,
+        id: "kitty",
+        version,
+        os: "linux",
+        featureId,
+        reader: "kitty-prompt" as const,
+      }),
+    ),
   ),
   // 33628 (@cto 1957): Kitty's OSC 7 report, read through a background launch with --cwd=last_reported.
   { kind: "term", id: "kitty", version: "0.49.2", os: "linux", featureId: "extensions.osc7-cwd", reader: "kitty-cwd" },
+  { kind: "term", id: "kitty", version: "0.51.1", os: "linux", featureId: "extensions.osc7-cwd", reader: "kitty-cwd" },
   ...WEZTERM_LINUX_SEMANTIC_BUILDS.flatMap(({ version }) =>
     ["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
       kind: "term" as const,
@@ -947,6 +1083,15 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId: "extensions.osc8",
     reason:
       "Untestable (no way): GNU Screen 5.0.2 drops OSC 8 without storing, forwarding or reporting a hyperlink. Read StringEnd in ansi.c:1237-1289 in screen-5.0.2.tar.gz (SHA256 ca9a2c7e): OSC 8 is outside Screen's accepted OSC 83 and title/colour list (0, 1, 2, 11, 20, 39, 49) and hits the non-title break at :1288-1289 without calling SetXtermOSC.",
+  },
+  {
+    kind: "mux",
+    id: "screen",
+    version: "5.0.3",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no way): GNU Screen 5.0.3 drops OSC 8 without storing, forwarding or reporting a hyperlink. Read StringEnd in ansi.c:1242-1294 in screen-5.0.3.tar.gz (SHA256 941c98ff): OSC 8 is outside Screen's accepted OSC 83 and title/colour list (0, 1, 2, 11, 20, 39, 49) at :1272 and hits the non-title break at :1293-1294 without calling SetXtermOSC.",
   },
   {
     kind: "term",
@@ -983,6 +1128,15 @@ const declarations: readonly AppSemanticCapability[] = [
     featureId: "extensions.osc8",
     reason:
       "Untestable (no setup): Kitty 0.49.2 parses OSC 8 hyperlinks into Screen.hyperlink_pool and CPUCell.hyperlink_id, which are readable via kitten @ get-text --ansi when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 8. Read tag v0.49.2 kitty/vt-parser.c:483-510,583, kitty/screen.c:1043-1051,4514-4576, kitty/line.c:543-569,646-648 and kitty/rc/get_text.py:48-52,132-137; enabling -o allow_remote_control=socket-only --listen-on unix:<path> with before/after App qualification is tracked in #32955.",
+  },
+  {
+    kind: "term",
+    id: "kitty",
+    version: "0.51.1",
+    os: "linux",
+    featureId: "extensions.osc8",
+    reason:
+      "Untestable (no setup): Kitty 0.51.1 parses OSC 8 hyperlinks into Screen.hyperlink_pool and CPUCell.hyperlink_id, which are readable via kitten @ get-text --ansi when remote control is enabled, but default launch sets allow_remote_control=no and daemon.log emits no line for handled OSC 8. Read tag v0.51.1 kitty/vt-parser.c and kitty/rc/get_text.py (unchanged from v0.49.2) and kitty/screen.c:203,5058,5672.",
   },
   ...WEZTERM_LINUX_SEMANTIC_BUILDS.map(({ version }) => ({
     kind: "term" as const,
@@ -1482,9 +1636,9 @@ export function beginMuxSgrCommandRead(input: {
     if (
       subject.outerTerminal !== "kitty" ||
       env.TERMINFO_TARGET_ID !== "kitty" ||
-      env.TERMINFO_TARGET_VERSION !== "0.49.2"
+      (env.TERMINFO_TARGET_VERSION !== "0.49.2" && env.TERMINFO_TARGET_VERSION !== "0.51.1")
     ) {
-      throw new Error("Outer command read requires this run's qualified Kitty 0.49.2")
+      throw new Error("Outer command read requires this run's qualified Kitty 0.49.2 or 0.51.1")
     }
     if (
       !proof ||

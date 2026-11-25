@@ -64,6 +64,11 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
     "packages/ghostty-native/src/backend.ts": "72ef06ecf72f2509c097aff3260914d098ff010a",
   },
+  // Ghostty 1.4.0 (v1.4.0, 83fb9562): backend.ts moves only capabilities.version 1.3.1 -> 1.4.0.
+  ghosttyNative140: {
+    "packages/ghostty-native/src/index.ts": "35c9e35a5d60625ce1135b65ff38ae9278495a18",
+    "packages/ghostty-native/src/backend.ts": "c9956493fc132c3ef6b133544f329d51b7ded5a4",
+  },
   kittyH4: {
     "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
     "packages/kitty/src/backend.ts": "4cfc0a1707e4c92211c501cd27d8e1944ebe66db",
@@ -113,6 +118,16 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
     "packages/kitty/build/native-mode-layout.json": "37594baca0cbd3ebf847478a47db999d937506ba",
     "packages/kitty/build/native-mode-layout.receipt.json": "189dd4fdd9780f841756928e237490f75dfbb947",
+  },
+  // Kitty 0.51.1 (v0.51.1, 1dadc793): backend.ts moves only version/diagnostic guard 0.49.2 -> 0.51.1;
+  // native-mode-layout.json + receipt rebuilt from pinned v0.51.1 headers (Screen size 7688).
+  kitty0511: {
+    "packages/kitty/src/index.ts": "3f207f911646613cdc3d8b04f155f0686a96a077",
+    "packages/kitty/src/backend.ts": "e00e156284a10096634cf86a8fea3aceefdae05d",
+    "packages/kitty/build/bridge.py": "94e5f97e5933625355b5c988721027f684f9f204",
+    "packages/kitty/build/layout.c": "f58c0e943ad60daf20d54360184e039e16ff3826",
+    "packages/kitty/build/native-mode-layout.json": "fa207e9738a883bcbaa8933cfcdcd8d8417efa4c",
+    "packages/kitty/build/native-mode-layout.receipt.json": "879e8c8d67f03be52055baa9eb7204d3eaf820e8",
   },
   vt100: {
     "packages/vt100/src/index.ts": "99833d737402f9d1d8e3e257e3a255d8aa1facc3",
@@ -292,14 +307,22 @@ export function auditedAdapterSources(
  * the binary sha stays in the record and decides nothing (@cto bef7054c, the vt100-rust shape of 90d6183a).
  */
 export function auditedKittyIdentity(identity: LibProbeSource["runtimeIdentity"]): boolean {
-  return (
-    identity?.kind === "native" &&
+  if (identity?.kind !== "native") return false
+  if (
     identity.engineVersion === "0.49.2" &&
-    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd" &&
-    (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811", "kitty3da7fd0e"] as const).some((cohort) =>
+    identity.provenance.sourceCommit === "b2cb871254fbdac19a085188813c8dfb258b95cd"
+  ) {
+    return (["kittyH4", "kittyPixel", "kittyF8c227b9", "kitty1738b811", "kitty3da7fd0e"] as const).some((cohort) =>
       auditedAdapterSources(identity, cohort),
     )
-  )
+  }
+  if (
+    identity.engineVersion === "0.51.1" &&
+    identity.provenance.sourceCommit === "1dadc7931b7ccfa1b05d2fbe044e1c094e766862"
+  ) {
+    return auditedAdapterSources(identity, "kitty0511")
+  }
+  return false
 }
 
 export function unauditedAdapterSourceDiagnostic(
