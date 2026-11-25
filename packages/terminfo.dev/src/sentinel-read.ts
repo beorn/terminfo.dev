@@ -517,6 +517,7 @@ export async function readThroughSentinel<T>(input: {
           witness,
           basisText,
           basisKind,
+          settled: input.settled,
           ignoredPixels,
           noiseBound: input.noiseBound,
         })
@@ -686,6 +687,7 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
   witness: NonNullable<NamedTextOrigin["witness"]>
   basisText: string
   basisKind: string
+  settled?: NamedTextOrigin & { pixelGeometry: CapturePixelGeometry }
   ignoredPixels: number
   noiseBound?: number
 }): NamedTextOrigin {
@@ -706,6 +708,7 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
     witness,
     basisText,
     basisKind,
+    settled,
     ignoredPixels,
     noiseBound,
   } = input
@@ -760,9 +763,10 @@ function acceptOrRefuseMovedSentinelOrigin(input: {
       const withinBound = bound !== undefined && insideGrid <= bound
       if (withinBound) {
         return {
+          ...settled,
           origin: derived,
           basis: basisText,
-          basisKind,
+          basisKind: settled?.basisKind ?? basisKind,
           witness,
           changedOutside: insideGrid,
           changedOutsideGrid: outsideGrid,

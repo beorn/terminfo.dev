@@ -8,6 +8,7 @@
  * @reach none
  */
 import {
+  cropPositionRefusal,
   gridMoveExemption,
   pairMeasuredNoRowHeight,
   sentinelCellsInFrame,
@@ -16,7 +17,7 @@ import {
   type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
-import type { CapturedFrame, OriginResolver } from "./capture-core.ts"
+import type { CapturedFrame, NamedTextOrigin, OriginResolver } from "./capture-core.ts"
 import { chooserRegions } from "./serve.ts"
 import { SentinelFrameMoved, pairClearBeforePaint, readThroughSentinel } from "./sentinel-read.ts"
 
@@ -2151,6 +2152,104 @@ test("under a proven row move, changedOutside counts only pixels inside the move
     expect(accepted.acceptedRowMove, fixture.label).toEqual({ rows: 35, px: 560 })
     expect(accepted.changedOutside, fixture.label).toBe(0)
     expect(accepted.changedOutsideGrid, fixture.label).toBe(fixture.headerClockPixels)
+    expect(accepted.basisKind, fixture.label).toBe("calibration witnessed raster")
+  }
+
+  // End-to-end composition (#37701, hosted run 45659187483 / b26cbd3f7c71823ec13da78d570e5c70):
+  // when an unmoved calibrated read (onSettledOrigin at 17,46) and a moved calibrated read
+  // (acceptOrRefuseMovedSentinelOrigin at 17,606) share the same settled calibration (basisKind
+  // and surface), both cellCrop records must carry identical basis and surface so gridMoveExemption
+  // and cropPositionRefusal accept the +35-row move across all 5 SGR RIS rows.
+  {
+    const settledSurface = { x: 0, y: 0, width, height }
+    const settledCalibration = {
+      origin: calibratedOrigin,
+      basis: "collector complete witnessed raster",
+      basisKind: "calibration witnessed raster",
+      surface: settledSurface,
+      pixelGeometry: warpGeom,
+      paintClasses,
+    }
+    const sampleRegion = { top: 3, left: 5, bottom: 3, right: 6 }
+    const rectangleAt = (origin: { x: number; y: number }) => ({
+      x: origin.x + (sampleRegion.left - 1) * cell.width,
+      y: origin.y + (sampleRegion.top - 1) * cell.height,
+      width: (sampleRegion.right - sampleRegion.left + 1) * cell.width,
+      height: (sampleRegion.bottom - sampleRegion.top + 1) * cell.height,
+    })
+    const toCellCrop = (placement: NamedTextOrigin): PixelCellCrop => ({
+      origin: placement.origin,
+      ...(placement.basisKind !== undefined ? { basis: placement.basisKind } : {}),
+      basisDetail: placement.basisDetail ?? placement.basis,
+      ...(placement.surface !== undefined ? { surface: placement.surface } : {}),
+      cell,
+      grid: { columns: cols, rows },
+      image: { width, height },
+      ...(placement.witness !== undefined ? { witness: placement.witness } : {}),
+      ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
+      ...(placement.changedOutsideGrid !== undefined ? { changedOutsideGrid: placement.changedOutsideGrid } : {}),
+      ...(placement.acceptedRowMove !== undefined ? { acceptedRowMove: placement.acceptedRowMove } : {}),
+    })
+
+    const unmovedPre = blankFrame()
+    paintCell(unmovedPre, calibratedOrigin, 1, 1, fg)
+    const unmovedWrites: string[] = []
+    const unmovedSrc = { rows, cols, write: (text: string) => unmovedWrites.push(text) } as unknown as TermProbeSource
+    const unmoved = await readThroughSentinel({
+      source: unmovedSrc,
+      settled: settledCalibration,
+      prePaint: async () => ({ width, height, rgba: unmovedPre }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(unmovedWrites[0] ?? "")
+        const afterRgba = new Uint8Array(unmovedPre)
+        for (const pos of painted) paintCell(afterRgba, calibratedOrigin, pos.row, pos.col, sentinelRgb)
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: "sgr.bg.default: pre-edit seed",
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: [sampleRegion],
+      reading: calibratedOrigin,
+      cell,
+      deadline: Date.now() + 1_000,
+    })
+
+    const movedPre = blankFrame()
+    paintCell(movedPre, movedOrigin, 1, 1, fg)
+    const movedWrites: string[] = []
+    const movedSrc = { rows, cols, write: (text: string) => movedWrites.push(text) } as unknown as TermProbeSource
+    const moved = await readThroughSentinel({
+      source: movedSrc,
+      settled: settledCalibration,
+      prePaint: async () => ({ width, height, rgba: movedPre }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(movedWrites[0] ?? "")
+        const afterRgba = new Uint8Array(movedPre)
+        for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+        paintHeaderClockTick(afterRgba, 69)
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: "sgr.bg.default: expected frame",
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: [sampleRegion],
+      reading: calibratedOrigin,
+      chooseOrigin: movedOrigin,
+      cell,
+      deadline: Date.now() + 1_000,
+    })
+
+    const compared = [
+      { role: "the seed frame", rectangle: rectangleAt(unmoved.origin), crop: toCellCrop(unmoved) },
+      { role: "the expected frame", rectangle: rectangleAt(moved.origin), crop: toCellCrop(moved) },
+    ]
+    expect(gridMoveExemption(compared)).toEqual([{ rows: 35, at: "the expected frame" }])
+    expect(
+      cropPositionRefusal({
+        id: "sgr.bg.default",
+        compared,
+        response: "{}",
+        frames: [],
+      }),
+    ).toBeNull()
   }
 
   // Condition 3: a fixture with one changed pixel INSIDE the moved grid still fails with SentinelFrameMoved (changedOutside: 1).
