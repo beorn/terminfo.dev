@@ -21,7 +21,7 @@ describe("website catalog order in page computations", () => {
     const script = `
       import * as fs from "node:fs";
       import { mock } from "bun:test";
-      import { ref, computed } from "vue";
+      import { ref, computed, watch } from "vue";
       import { isEnvironmentGroup } from "./packages/probe-defs/src/environment-groups.ts";
       const read = fs.readFileSync;
       const catalog = JSON.parse(read("./content/categories.json", "utf8"));
@@ -42,9 +42,9 @@ describe("website catalog order in page computations", () => {
         const setup = source.slice(source.indexOf("<script setup>") + 14, source.indexOf("</script>"))
           .replace(/^import[^\\n]*\\n/gm, "");
         // Execute the complete page computation with its real Vue primitives, data and page imports.
-        return new Function("ref", "computed", "data", "isEnvironmentGroup", "rowFacts", ...Object.keys(presentation),
+        return new Function("ref", "computed", "watch", "data", "isEnvironmentGroup", "rowFacts", ...Object.keys(presentation),
           setup + "\\nreturn " + binding + ".value;")
-          (ref, computed, data, isEnvironmentGroup, rowFacts, ...Object.values(presentation));
+          (ref, computed, watch, data, isEnvironmentGroup, rowFacts, ...Object.values(presentation));
       }
       console.log(JSON.stringify({ expected,
         home: pageCategories("./docs/index.md", "sortedCategories"),
