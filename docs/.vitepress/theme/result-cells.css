@@ -735,7 +735,7 @@
 /* Style 5 steps + borderless Expected/Received well (#38269, card-style5-final-0010.html). */
 .rc-steps {
   display: grid;
-  grid-template-columns: 16px fit-content(15em) minmax(0, 1fr);
+  grid-template-columns: 16px fit-content(17.5em) minmax(0, 1fr);
   column-gap: 12px;
   row-gap: 2px;
 }

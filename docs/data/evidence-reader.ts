@@ -67,6 +67,10 @@ export interface TraceCellRecord {
   parserState?: unknown
   /** Allowlisted verbatim parser/app log line for report-reader probes (Style 5, #38269). */
   logLine?: string
+  /** Allowlisted probe-owned clipboard read-back nonce for OSC 52 write probes (Style 5, #38269). */
+  clipboardRead?: string
+  /** Closed reason slug explaining why an untestable cell could not be tested automatically (Style 5, #38269). */
+  untestableCause?: string
   /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
   captures?: TraceCaptures
   assertions: TraceAssertion[]
@@ -437,6 +441,8 @@ const DECIDED_STATUSES = new Set(["supported", "unsupported", "untestable"])
 
 const CAPTURE_URL = /^\/api\/v3\/captures\/[0-9a-f]{64}\.png$/
 const SHA256_HEX = /^[0-9a-f]{64}$/
+const CLIPBOARD_NONCE = /^terminfo-osc52-[0-9a-f-]{36}$/
+const UNTESTABLE_CAUSE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 function validCaptureImage(value: unknown): boolean {
   if (!isRecord(value)) return false
@@ -526,6 +532,10 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     !validCaptures(cellEntry.captures) ||
     (cellEntry.logLine !== undefined &&
       (typeof cellEntry.logLine !== "string" || cellEntry.logLine.length === 0 || cellEntry.logLine.length > 240)) ||
+    (cellEntry.clipboardRead !== undefined &&
+      (typeof cellEntry.clipboardRead !== "string" || !CLIPBOARD_NONCE.test(cellEntry.clipboardRead))) ||
+    (cellEntry.untestableCause !== undefined &&
+      (typeof cellEntry.untestableCause !== "string" || !UNTESTABLE_CAUSE_SLUG.test(cellEntry.untestableCause))) ||
     (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? typeof cellEntry.status !== "string" || !evidenceFits(cellEntry.status, cellEntry.evidence)
       : typeof cellEntry.outcome !== "string" ||

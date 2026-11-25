@@ -216,8 +216,10 @@ const cardModel = computed(() => {
     expectedSentence: expectedSentence.value,
     derived: derived.value,
     reason,
+    untestableCause: cellTrace.value?.cell.untestableCause,
     traceEvidence: cellTrace.value?.cell.evidence,
     logLine: cellTrace.value?.cell.logLine,
+    clipboardRead: cellTrace.value?.cell.clipboardRead,
     exchange: cellTrace.value?.cell,
     parserState: cellTrace.value?.cell.parserState,
     captures: captures.value,
@@ -256,6 +258,15 @@ const stepTable = computed(() => (stepSource.value ? describeStepTable(stepSourc
 const sentBytes = computed(() => (stepSource.value ? describeSentBytes(stepSource.value) : undefined))
 const replyBytes = computed(() => (stepSource.value ? describeReplyBytes(stepSource.value) : undefined))
 const parserStatePre = computed(() => tracePaneCopy.value?.tested.items.find((item) => item.label === "Observed")?.pre)
+const methodDetailsText = computed(() => {
+  const ev = cellTrace.value?.cell.evidence
+  if (!ev || ev.length === 0) return undefined
+  const first = ev[0] ?? ""
+  if (/(?:text snapshot|console host's buffer|not from its pixels|^Compared |^Checked |^Sampled )/i.test(first)) {
+    return ev.join(" ")
+  }
+  return undefined
+})
 const sentFromTrace = computed(
   () => sentBytes.value?.full ?? tracePaneCopy.value?.tested.items.find((item) => item.label === "Sent")?.code,
 )
@@ -263,6 +274,7 @@ const sentFromTrace = computed(
 const hasDetails = computed(() =>
   Boolean(
     captures.value?.full ||
+    methodDetailsText.value ||
     stepTable.value ||
     sentFromTrace.value ||
     replyBytes.value?.full ||
@@ -612,9 +624,7 @@ onBeforeUnmount(() => {
     @keydown="onInlineKeydown"
   >
     <div class="rc-top">
-      <p class="rc-title">
-        {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
-      </p>
+      <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
       <div class="rc-top-right">
         <span class="rc-pill" :class="pillClass">
           <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -735,6 +745,7 @@ onBeforeUnmount(() => {
 
       <div v-if="hasDetails && detailsOpen" class="rc-details-body">
         <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
+        <p v-if="methodDetailsText" class="rc-muted">{{ methodDetailsText }}</p>
         <div v-if="captures?.full" class="rc-detail-sec">
           <div class="rc-detail-row">
             <span class="rc-bytes-label">Full terminal screenshot</span>
@@ -770,6 +781,7 @@ onBeforeUnmount(() => {
       <summary class="rc-foot">{{ detailsSummaryLabel }}</summary>
       <div class="rc-details-body">
         <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
+        <p v-if="methodDetailsText" class="rc-muted">{{ methodDetailsText }}</p>
         <div v-if="captures?.full" class="rc-detail-sec">
           <div class="rc-detail-row">
             <span class="rc-bytes-label">Full terminal screenshot</span>
@@ -906,9 +918,7 @@ onBeforeUnmount(() => {
         @toggle.capture="repositionPreview"
       >
         <div class="rc-top">
-          <p class="rc-title">
-            {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
-          </p>
+          <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
           <div class="rc-top-right">
             <span class="rc-pill" :class="pillClass">
               <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">

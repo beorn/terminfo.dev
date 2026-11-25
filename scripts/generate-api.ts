@@ -40,7 +40,7 @@ import { publicResults, type HistoricalCellEvidence } from "../docs/data/public-
 import { storedCounts } from "../docs/data/release-scope.ts"
 import { publicFeatureIds } from "../docs/data/public-features.ts"
 import { buildCardModel } from "../docs/.vitepress/theme/card-explain.ts"
-import { validateMeasuredCard } from "./validate-style5-cards.ts"
+import { validateMeasuredCard, validateUntestableCard } from "./validate-style5-cards.ts"
 import type { CurrentTraceDocument } from "../docs/data/run-trace.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -412,10 +412,12 @@ export function generateApi(
       },
     }),
   }
-  // Style 5 build check (#38269, card-style5-rule-0010.md): fail the build loudly if ANY published
-  // measured card lacks Expected words, Received, or 3–6 word verdict, or leaks internal text.
+  // Style 5 build check (#38269, card-style5-rule-0010.md, style5-review-0200.md): fail the build loudly
+  // if ANY published measured card violates Expected/Received/verdict/column/fence/method rules, OR if ANY
+  // published Untestable card lacks a specific reason.
   const cardViolations: string[] = []
   let validatedMeasuredCards = 0
+  let validatedUntestableCards = 0
   const runMetaByTraceUrl = new Map<string, { subjectName: string; subjectKind?: string }>()
   for (const context of Object.values(published.projection.contexts)) {
     for (const source of Object.values(context.sources)) {
@@ -432,9 +434,23 @@ export function generateApi(
     const traceDoc = document as CurrentTraceDocument
     const meta = runMetaByTraceUrl.get(url)
     for (const [featureId, cell] of Object.entries(traceDoc.featureResults)) {
-      if (cell.status !== "supported" && cell.status !== "unsupported") continue
       if (!allFeatureIds.has(featureId)) continue
       const fMeta = featuresJson[featureId]
+      if (cell.status === "untestable") {
+        const model = buildCardModel({
+          status: "untestable",
+          featureId,
+          featureName: fMeta?.name ?? featureId,
+          shortSubjectName: meta?.subjectName,
+          subjectKind: meta?.subjectKind,
+          untestableCause: cell.untestableCause,
+          traceEvidence: cell.evidence,
+        })
+        validatedUntestableCards++
+        cardViolations.push(...validateUntestableCard(model, `${url}#${featureId}`))
+        continue
+      }
+      if (cell.status !== "supported" && cell.status !== "unsupported") continue
       const model = buildCardModel({
         status: cell.status,
         featureId,
@@ -446,18 +462,39 @@ export function generateApi(
         expectedSentence: fMeta?.body ?? fMeta?.probe,
         traceEvidence: cell.evidence,
         logLine: cell.logLine,
+        clipboardRead: cell.clipboardRead,
         exchange: cell,
         parserState: cell.parserState,
         captures: cell.captures,
       })
       validatedMeasuredCards++
-      cardViolations.push(...validateMeasuredCard(model, `${url}#${featureId}`))
+      cardViolations.push(
+        ...validateMeasuredCard(model, `${url}#${featureId}`, { featureId, assertionType: cell.assertionType }),
+      )
+    }
+  }
+  // Also validate review-declared untestable context cells (which carry cell.reason directly).
+  for (const [contextKey, context] of Object.entries(published.projection.contexts)) {
+    for (const [featureId, cell] of Object.entries(context.featureResults)) {
+      if (cell.status !== "untestable" || !allFeatureIds.has(featureId)) continue
+      if (!cell.declared && !cell.reason) continue
+      const fMeta = featuresJson[featureId]
+      const model = buildCardModel({
+        status: "untestable",
+        featureId,
+        featureName: fMeta?.name ?? featureId,
+        shortSubjectName: context.subject?.id,
+        subjectKind: context.subject?.kind,
+        reason: cell.reason,
+      })
+      validatedUntestableCards++
+      cardViolations.push(...validateUntestableCard(model, `${contextKey}#${featureId}`))
     }
   }
   if (cardViolations.length > 0) {
     const sample = cardViolations.slice(0, 20).join("\n  ")
     throw new Error(
-      `Style 5 measured card check failed (${cardViolations.length} violation(s) across ${validatedMeasuredCards} cards):\n  ${sample}`,
+      `Style 5 card check failed (${cardViolations.length} violation(s) across ${validatedMeasuredCards} measured + ${validatedUntestableCards} untestable cards):\n  ${sample}`,
     )
   }
 
