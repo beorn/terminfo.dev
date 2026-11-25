@@ -446,7 +446,44 @@ export function explainSentCommand(
   if (/^\x1b\[#R$/.test(raw)) return { words: "Ask palette stack status", fallback: false }
   if (/^\x1b\[#\{$/.test(raw)) return { words: "Push text attributes", fallback: false }
   if (/^\x1b\[#\}$/.test(raw)) return { words: "Pop text attributes", fallback: false }
-  if (/^\x1b\[[0-9;]*\$[rzvtx]$/.test(raw)) return { words: "Edit rectangular region", fallback: false }
+  const hpa = /^\x1b\[(\d*)`$/.exec(raw)
+  if (hpa) return { words: `Move to column ${hpa[1] || "1"}`, fallback: false }
+  const cursorShape = /^\x1b\[(\d*) q$/.exec(raw)
+  if (cursorShape) return { words: `Set cursor shape (${cursorShape[1] || "default"})`, fallback: false }
+  if (/^\x1b\[=0?c$/.test(raw)) return { words: "Ask tertiary terminal ID (DA3)", fallback: false }
+  const decsca = /^\x1b\[(\d*)"q$/.exec(raw)
+  if (decsca)
+    return { words: decsca[1] === "1" ? "Protect cells from selective erase" : "Unprotect cells", fallback: false }
+  const decsace = /^\x1b\[(\d*)\*x$/.exec(raw)
+  if (decsace) return { words: "Set rectangular edit mode (DECSACE)", fallback: false }
+  const rectOp = /^\x1b\[[0-9;]*\$([rzvtx\{])$/.exec(raw)
+  if (rectOp) {
+    const names: Record<string, string> = {
+      r: "Change attributes in rectangle (DECCARA)",
+      t: "Reverse attributes in rectangle (DECRARA)",
+      v: "Copy rectangular area (DECCRA)",
+      x: "Fill rectangular area (DECFRA)",
+      z: "Erase rectangular area (DECERA)",
+      "{": "Selectively erase rectangle (DECSERA)",
+    }
+    return { words: names[rectOp[1]!] ?? "Edit rectangular region", fallback: false }
+  }
+  const rectCksum = /^\x1b\[[0-9;]*\*y$/.exec(raw)
+  if (rectCksum) return { words: "Ask rectangle checksum (DECRQCRA)", fallback: false }
+  const decic = /^\x1b\[(\d*)'([}~])$/.exec(raw)
+  if (decic) {
+    return {
+      words: decic[2] === "}" ? `Insert columns (${decic[1] || "1"})` : `Delete columns (${decic[1] || "1"})`,
+      fallback: false,
+    }
+  }
+  const slsr = /^\x1b\[(\d*) ([ @A])$/.exec(raw)
+  if (slsr && (slsr[2] === "@" || slsr[2] === "A")) {
+    return {
+      words: slsr[2] === "@" ? `Shift left (${slsr[1] || "1"})` : `Shift right (${slsr[1] || "1"})`,
+      fallback: false,
+    }
+  }
 
   const sgr = /^\x1b\[([0-9;:]*)m$/.exec(raw)
   if (sgr) {
@@ -498,9 +535,11 @@ export function explainSentCommand(
     if (code === "0" || code === "2") return { words: "Set window title", fallback: false }
     if (code === "1") return { words: "Set icon title", fallback: false }
     if (code === "4") return { words: arg.endsWith("?") ? "Ask palette color" : "Set palette color", fallback: false }
+    if (code === "5") return { words: arg.endsWith("?") ? "Ask special color" : "Set special color", fallback: false }
     if (code === "7") return { words: "Report working folder", fallback: false }
     if (code === "8") return { words: arg.includes("://") ? "Start hyperlink" : "End hyperlink", fallback: false }
-    if (code === "9" && arg.startsWith("4;")) return { words: "Set progress bar", fallback: false }
+    if (code === "9")
+      return { words: arg.startsWith("4;") ? "Set progress bar" : "Send notification (OSC 9)", fallback: false }
     if (code === "10") return { words: arg === "?" ? "Ask text color" : "Set text color", fallback: false }
     if (code === "11") return { words: arg === "?" ? "Ask background color" : "Set background color", fallback: false }
     if (code === "12") return { words: arg === "?" ? "Ask cursor color" : "Set cursor color", fallback: false }
@@ -512,15 +551,23 @@ export function explainSentCommand(
     }
     if (code === "21") return { words: "Query/set Kitty color (OSC 21)", fallback: false }
     if (code === "22") return { words: arg === "?" ? "Ask pointer shape" : "Set pointer shape", fallback: false }
+    if (code === "50") return { words: arg === "?" ? "Ask font name" : "Set font name", fallback: false }
     if (code === "52") {
       return { words: arg.endsWith("?") ? "Read the clipboard" : "Put test text on the clipboard", fallback: false }
     }
     if (code === "99") return { words: "Send Kitty notification", fallback: false }
     if (code === "133") return { words: "Send prompt mark", fallback: false }
+    if (code === "176") return { words: "Set app ID (OSC 176)", fallback: false }
+    if (code === "440") return { words: "Play audio bell (OSC 440)", fallback: false }
+    if (code === "555") return { words: "Flash screen (OSC 555)", fallback: false }
     if (code === "633") return { words: "Send VS Code shell mark", fallback: false }
     if (code === "776") return { words: "Ask: how big is a cell?", fallback: false }
     if (code === "777") return { words: "Send notification (OSC 777)", fallback: false }
     if (code === "1337") return { words: "Send iTerm2 command", fallback: false }
+    if (code === "3008") return { words: "Send shell context (OSC 3008)", fallback: false }
+    if (code === "7654") return { words: "Send unknown OSC control (negative check)", fallback: false }
+    if (code === "30001") return { words: "Push color stack (OSC 30001)", fallback: false }
+    if (code === "30101") return { words: "Pop color stack (OSC 30101)", fallback: false }
     return { words: `OSC ${code} command`, fallback: true }
   }
 
@@ -558,16 +605,33 @@ export function explainReplyCommand(raw: string): { words: string; fallback: boo
   if (decrqss) {
     return { words: decrqss[1] === "1" ? `“Setting: ${decrqss[2] || "default"}”` : "“Not recognized”", fallback: false }
   }
-  const tcap = /^\x1bP([01])\+r([\s\S]*?)\x1b\\$/.exec(raw)
-  if (tcap) return { words: tcap[1] === "1" ? "reported capability" : "capability not recognized", fallback: false }
+  const tcap = /^\x1bP([01])\+([rR])([\s\S]*?)\x1b\\$/.exec(raw)
+  if (tcap) {
+    const what = tcap[2] === "R" ? "resource" : "capability"
+    return { words: tcap[1] === "1" ? `reported ${what}` : `${what} not recognized`, fallback: false }
+  }
+  const cksum = /^\x1bP\d+!~([0-9a-fA-F]+)\x1b\\$/.exec(raw)
+  if (cksum) return { words: `rectangle checksum ${cksum[1]}`, fallback: false }
   const xtver = /^\x1bP>\|([\s\S]*?)\x1b\\$/.exec(raw)
   if (xtver) return { words: `“${xtver[1]}”`, fallback: false }
   const xtreport = /^\x1b\[\??(\d+);(\d+)#Q$/.exec(raw)
   if (xtreport) return { words: `color stack (${xtreport[1]} saved)`, fallback: false }
   const sixelGeo = /^\x1b\[\?2;0;(\d+);(\d+)S$/.exec(raw)
   if (sixelGeo) return { words: `Sixel area ${sixelGeo[1]}×${sixelGeo[2]} px`, fallback: false }
+  if (/^\x1b\[\?2;\d+S$/.test(raw)) return { words: "Sixel geometry status", fallback: false }
+  const sgrMouse = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(raw)
+  if (sgrMouse) {
+    return {
+      words: `mouse ${sgrMouse[4] === "M" ? "press" : "release"} at ${sgrMouse[2]};${sgrMouse[3]}`,
+      fallback: false,
+    }
+  }
+  if (/^\x1b\[M[\s\S]{3}$/.test(raw)) return { words: "X10 mouse event", fallback: false }
+  if (/^\x1b\[[ABCD]$/.test(raw)) return { words: "arrow key sequence", fallback: false }
   if (/^\x1b_G[\s\S]*?;OK\x1b\\$/.test(raw)) return { words: "“OK”", fallback: false }
-  if (/^\x1b\](?:4|10|11|12|13|14|15|16|17|18|19|21);/.test(raw)) return { words: "reported color", fallback: false }
+  if (/^\x1b\](?:4|5|10|11|12|13|14|15|16|17|18|19|21);/.test(raw)) return { words: "reported color", fallback: false }
+  if (/^\x1b\]22;/.test(raw)) return { words: "reported pointer shape", fallback: false }
+  if (/^\x1b\]99;/.test(raw)) return { words: "reported notification capabilities", fallback: false }
   if (/^\x1b\]776;/.test(raw)) return { words: "reported cell size", fallback: false }
   if (/^\x1b\]1337;/.test(raw)) return { words: "reported capability", fallback: false }
   if (/^\x1b\]52;/.test(raw)) return { words: "returned clipboard text", fallback: false }
@@ -795,24 +859,36 @@ export function buildCardModel(input: {
   const hasScaffolding = rawSteps.some((s) => isCollectorScaffoldingWrite(s.sequence))
   // Risk #1 invariant: never filter out any query step when trimming capture scaffolding.
   let activeSteps = rawSteps.filter((s) => s.kind === "query" || !isCollectorScaffoldingWrite(s.sequence))
-  if (hasScaffolding && activeSteps.length > 4 && !activeSteps.some((s) => s.kind === "query")) {
-    const styledSample = activeSteps.find(
-      (s) =>
-        s.kind === "write" &&
-        /AaBb 0123456789/u.test(s.sequence) &&
-        /\x1b\[[0-9;:]+m/.test(s.sequence) &&
-        !/\x1b\[99m/.test(s.sequence) &&
-        !(!featureId.includes("inverse") && /\x1b\[7m/.test(s.sequence)) &&
-        !(!featureId.includes("underline") && /\x1b\[4m/.test(s.sequence)),
-    )
-    if (styledSample) {
-      activeSteps = [
-        {
-          kind: "write",
-          sequence: styledSample.sequence.replace(/\x1b\[0m\x1b\[2;1H\x1b\[1;1H\s*$/u, "\x1b[0m"),
-        },
-      ]
+
+  // Multi-frame 0/1/2 visual probes (pre-edit seed -> witness 0, post-sequence target -> witness 1, expected -> witness 2):
+  // keep ONLY the post-sequence target write(s) between witness 0 and witness 1, plus ALL query steps (Risk #1).
+  const w0Idx = activeSteps.findIndex((s) => s.kind === "write" && /^\x1b\[\d+;1H0$/u.test(s.sequence))
+  const w1Idx =
+    w0Idx >= 0
+      ? activeSteps.findIndex((s, i) => i > w0Idx && s.kind === "write" && /^\x1b\[\d+;1H1$/u.test(s.sequence))
+      : -1
+  if (w0Idx >= 0 && w1Idx > w0Idx) {
+    const targetWindow = activeSteps.slice(w0Idx + 1, w1Idx).filter((s) => !/^\x1b\[\d+;1H$/u.test(s.sequence))
+    if (targetWindow.length > 0) {
+      const queriesOnly = activeSteps.filter((s) => s.kind === "query")
+      activeSteps = [...targetWindow, ...queriesOnly.filter((q) => !targetWindow.includes(q))]
     }
+  } else if (hasScaffolding && activeSteps.length > 2) {
+    // SGR / single-line visual probes emit negative control (SGR 99) and positive control (SGR 7 / 4) frames alongside
+    // the feature target. Strip those control-frame writes while keeping ALL query steps intact (Risk #1).
+    const isSgrControlWrite = (seq: string): boolean =>
+      /AaBb 0123456789/u.test(seq) &&
+      (/\x1b\[99m/.test(seq) ||
+        (!featureId.includes("inverse") && /\x1b\[7m/.test(seq)) ||
+        (!featureId.includes("underline") && /\x1b\[4m/.test(seq)))
+    const filtered = activeSteps.filter((s) => s.kind === "query" || !isSgrControlWrite(s.sequence))
+    // If the probe wrote the styled sample for capture AND also wrote the bare SGR sequence before a DECRQSS query,
+    // keep the queries and deduplicate identical styled-sample writes cleanly.
+    activeSteps = filtered.map((s) =>
+      s.kind === "write" && /AaBb 0123456789/u.test(s.sequence)
+        ? { ...s, sequence: s.sequence.replace(/\x1b\[0m\x1b\[2;1H\x1b\[1;1H\s*$/u, "\x1b[0m") }
+        : s,
+    )
   }
 
   // Detect no-reply-with-DA1-end-marker pattern (v12/v15 OSC 776 card)
@@ -825,7 +901,7 @@ export function buildCardModel(input: {
 
   const writeSteps: CardStepRow[] = []
   const querySteps: CardStepRow[] = []
-  const orderedSteps: Array<CardStepRow & { isQuery: boolean }> = []
+  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean }> = []
   let pendingSaveCup: string | undefined
   const replyParts: Array<{ raw: string; code: string; words: string }> = []
   let queryReplyCount = 0
@@ -840,6 +916,9 @@ export function buildCardModel(input: {
       // Risk #1: NEVER drop a command from a query step; only strip pure setup writes.
       if (!isQuery) {
         if (!keepResets && isResetOrClearCommand(cmd.raw)) continue
+        // Strip leading charset-reset preamble (SI / ESC (B / ESC )B) and line-clear boilerplate before the test begins.
+        if (orderedSteps.length === 0 && (cmd.raw === "\x0f" || cmd.raw === "\x1b(B" || cmd.raw === "\x1b)B")) continue
+        if (!keepResets && cmd.raw === "\x1b[2K") continue
         const cupMatch = /^\x1b\[(\d+);(\d+)H$/.exec(cmd.raw)
         if (cupMatch) {
           if (!keepCursorMoves) continue
@@ -860,12 +939,24 @@ export function buildCardModel(input: {
         pendingSaveCup = undefined
       }
       const trimmed = trimCode(rawCode)
-      const row: CardStepRow & { isQuery: boolean } = {
+      // Deduplicate identical consecutive non-query write steps (e.g. hybrid DECRQSS + capture SGR writes).
+      const prev = orderedSteps[orderedSteps.length - 1]
+      if (!isQuery && prev && !prev.isQuery && prev.code === trimmed.code && prev.words === words) continue
+      if (
+        !isQuery &&
+        featureId.startsWith("sgr.") &&
+        orderedSteps.some((r) => !r.isQuery && r.code === trimmed.code && r.words === words)
+      ) {
+        continue
+      }
+      const isSeed = !isQuery && (cmd.isText || /^\x1b\[\d+;\d+H$/.test(cmd.raw))
+      const row: CardStepRow & { isQuery: boolean; isSeed: boolean } = {
         num: orderedSteps.length + 1,
         code: trimmed.code,
         ...(trimmed.fullCode ? { fullCode: trimmed.fullCode } : {}),
         words,
         isQuery,
+        isSeed,
       }
       orderedSteps.push(row)
       if (isQuery) querySteps.push(row)
@@ -889,19 +980,22 @@ export function buildCardModel(input: {
     }
   }
 
-  // Cap very long write preambles cleanly while GUARANTEEING every deciding query step stays on the card (Risk #1).
+  // Cap very long write preambles cleanly while GUARANTEEING every deciding query step stays on the card (Risk #1)
+  // and keeping the feature's actual non-seed escape commands ahead of repetitive text/CUP seed lines.
   let keptOrdered = orderedSteps
   if (orderedSteps.length > 6) {
-    const maxWrites = Math.max(0, 6 - querySteps.length)
-    let wUsed = 0
-    keptOrdered = orderedSteps.filter((row) => {
-      if (row.isQuery) return true
-      if (wUsed < maxWrites) {
-        wUsed += 1
-        return true
-      }
-      return false
+    const mustKeep = new Set<number>()
+    orderedSteps.forEach((row, idx) => {
+      if (row.isQuery) mustKeep.add(idx)
     })
+    orderedSteps.forEach((row, idx) => {
+      if (!row.isQuery && !row.isSeed && mustKeep.size < 6) mustKeep.add(idx)
+    })
+    orderedSteps.forEach((row, idx) => {
+      if (mustKeep.size < 6 && !mustKeep.has(idx)) mustKeep.add(idx)
+    })
+    keptOrdered = orderedSteps.filter((_, idx) => mustKeep.has(idx))
+    truncated = true
   }
   const shownSteps: CardStepRow[] = keptOrdered.map((r, i) => ({
     num: i + 1,

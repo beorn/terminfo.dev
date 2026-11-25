@@ -91,7 +91,7 @@ export interface TraceReceipt {
 /** Keeps a run's trace document and cropped captures for generate-api and returns the receipt its run version carries. */
 function traceReceipt(
   documents: PublicDocuments,
-  captures: Map<string, Buffer>,
+  captures: Map<string, string>,
   trace: ReturnType<typeof currentTrace>,
   schemaVersion: 3 | 4,
 ): { trace?: TraceReceipt } {
@@ -111,10 +111,10 @@ function traceReceipt(
     describeTracePanes(loaded)
   }
   documents.set(trace.url, { bytes: trace.bytes, document: trace.document })
-  for (const [url, png] of trace.captures) {
-    const priorPng = captures.get(url)
-    if (priorPng && !priorPng.equals(png)) throw new Error(`Conflicting capture image ${url}`)
-    captures.set(url, png)
+  for (const [url, blobPath] of trace.captures) {
+    const priorPath = captures.get(url)
+    if (priorPath && priorPath !== blobPath) throw new Error(`Conflicting capture image ${url}`)
+    captures.set(url, blobPath)
   }
   return { trace: { url: trace.url, sha256: trace.sha256 } }
 }
@@ -415,7 +415,7 @@ export function publicResults(
   const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
-  const captures = new Map<string, Buffer>()
+  const captures = new Map<string, string>()
   // #37341 Q4: a result's undecided tests, and the words they recorded, are never published (@cto 760e9219). A
   // decided result carries no reason of its own here: a cell's reason comes from the marker that decided it.
   const mapResult = (result: ProbeResult): PublicProbeResult => {

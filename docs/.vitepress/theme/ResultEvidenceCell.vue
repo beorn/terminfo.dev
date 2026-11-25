@@ -99,7 +99,9 @@ const derivedParentHref = computed(() => {
 
 const joined = computed(() => (props.cell && "joined" in props.cell ? props.cell.joined : undefined))
 const effectiveStatus = computed(() => joined.value?.status ?? currentResult.value?.status)
-const status = computed(() => evidenceStatus(props.featureId, effectiveStatus.value, derived.value))
+const status = computed(() =>
+  evidenceStatus(props.featureId, joined.value?.status ?? currentResult.value?.status, derived.value),
+)
 const blank = computed(() => status.value === NO_RESULT_STATUS)
 const isUntestable = computed(() => effectiveStatus.value === "untestable")
 const isDiffers = computed(() => effectiveStatus.value === DIFFERS_BY_CONTEXT)
@@ -187,6 +189,9 @@ const expectedSentence = computed(() =>
 )
 
 const cardModel = computed(() => {
+  if (blank.value) {
+    return buildCardModel({ status: undefined, featureId: props.featureId, featureName: props.featureName })
+  }
   const reason = readerSafeExplanation(currentResult.value?.reason ?? currentResult.value?.hold)
   return buildCardModel({
     status: effectiveStatus.value,
@@ -454,14 +459,11 @@ function positionPreview(): void {
 function repositionPreview(): void {
   keepPreview()
   if (!previewVisible.value || !trigger.value) return
-  const box = trigger.value.getBoundingClientRect()
   const viewportSpace = window.innerHeight - 16
-  const above = Math.max(0, Math.min(box.top - 16, viewportSpace))
-  const below = Math.max(0, Math.min(window.innerHeight - box.bottom - 16, viewportSpace))
   previewPosition.value = {
     ...previewPosition.value,
     width: `${Math.min(480, window.innerWidth - 16)}px`,
-    maxHeight: `min(88vh, 680px, ${Math.max(above, below)}px)`,
+    maxHeight: `min(88vh, 680px, ${viewportSpace}px)`,
   }
   void nextTick(positionPreview)
 }
@@ -545,9 +547,7 @@ onBeforeUnmount(() => {
 <template>
   <div v-if="inline" class="rc-card rc-card--inline" role="region" :aria-label="`${featureName} result`">
     <div class="rc-top">
-      <p class="rc-title">
-        {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
-      </p>
+      <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
       <span class="rc-pill" :class="pillClass">
         <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68" />
@@ -587,9 +587,7 @@ onBeforeUnmount(() => {
           <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
             ro.codeMuted || ro.code
           }}</code>
-          <span class="rc-w"
-            ><b>{{ ro.label }}:</b> {{ ro.text }}</span
-          >
+          <span class="rc-w"><b>{{ ro.label }}:</b> {{ ro.text }}</span>
           <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
         </div>
       </div>
@@ -735,9 +733,7 @@ onBeforeUnmount(() => {
         @toggle.capture="repositionPreview"
       >
         <div class="rc-top">
-          <p class="rc-title">
-            {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
-          </p>
+          <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
           <div class="rc-top-right">
             <span class="rc-pill" :class="pillClass">
               <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -780,9 +776,7 @@ onBeforeUnmount(() => {
               <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
                 ro.codeMuted || ro.code
               }}</code>
-              <span class="rc-w"
-                ><b>{{ ro.label }}:</b> {{ ro.text }}</span
-              >
+              <span class="rc-w"><b>{{ ro.label }}:</b> {{ ro.text }}</span>
               <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
             </div>
           </div>
@@ -833,7 +827,7 @@ onBeforeUnmount(() => {
           <p v-if="cardModel.contextNote" class="rc-ctx">{{ cardModel.contextNote }}</p>
         </template>
 
-        <details v-if="hasDetails" class="rc-details">
+        <details v-if="hasDetails" class="rc-details" @toggle="repositionPreview">
           <summary class="rc-foot">{{ detailsSummaryLabel }}</summary>
           <div class="rc-details-body">
             <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>

@@ -6,7 +6,10 @@
  * the calibrated terminal cell grid so no window title bar, chrome, or desktop can ever be emitted,
  * and encodes a compact non-interlaced RGBA PNG with its SHA-256 digest.
  */
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
+import { join } from "node:path"
 import { deflateSync, inflateSync } from "node:zlib"
 
 export interface Rect {
@@ -121,7 +124,11 @@ export function decodePngBytes(png: Uint8Array, label = "png"): DecodedPng {
   if (colorType === 3) {
     if (![1, 2, 4, 8].includes(bitDepth)) throw new Error(`${label}: unsupported indexed bit depth ${bitDepth}`)
     if (!plte) throw new Error(`${label}: indexed PNG missing PLTE`)
-  } else if (bitDepth !== 8) {
+  } else if (colorType === 0) {
+    if (![1, 2, 4, 8, 16].includes(bitDepth)) {
+      throw new Error(`${label}: unsupported PNG bit depth ${bitDepth} for color type ${colorType}`)
+    }
+  } else if (bitDepth !== 8 && bitDepth !== 16) {
     throw new Error(`${label}: unsupported PNG bit depth ${bitDepth} for color type ${colorType}`)
   }
 
@@ -135,52 +142,99 @@ export function decodePngBytes(png: Uint8Array, label = "png"): DecodedPng {
     const srcRow = y * (stride + 1)
     const filter = raw[srcRow]!
     const dstRow = y * stride
-    for (let x = 0; x < stride; x++) {
-      const val = raw[srcRow + 1 + x]!
-      const a = x >= bpp ? scanlines[dstRow + x - bpp]! : 0
-      const b = y > 0 ? scanlines[dstRow - stride + x]! : 0
-      const c = x >= bpp && y > 0 ? scanlines[dstRow - stride + x - bpp]! : 0
-      let recon: number
-      if (filter === 0) recon = val
-      else if (filter === 1) recon = (val + a) & 0xff
-      else if (filter === 2) recon = (val + b) & 0xff
-      else if (filter === 3) recon = (val + ((a + b) >> 1)) & 0xff
-      else if (filter === 4) recon = (val + paethPredictor(a, b, c)) & 0xff
-      else throw new Error(`${label}: unsupported PNG filter ${filter}`)
-      scanlines[dstRow + x] = recon
+    if (filter === 0) {
+      scanlines.set(raw.subarray(srcRow + 1, srcRow + 1 + stride), dstRow)
+    } else if (filter === 1) {
+      for (let x = 0; x < bpp; x++) scanlines[dstRow + x] = raw[srcRow + 1 + x]!
+      for (let x = bpp; x < stride; x++) {
+        scanlines[dstRow + x] = (raw[srcRow + 1 + x]! + scanlines[dstRow + x - bpp]!) & 0xff
+      }
+    } else if (filter === 2) {
+      if (y === 0) {
+        scanlines.set(raw.subarray(srcRow + 1, srcRow + 1 + stride), dstRow)
+      } else {
+        const prevRow = dstRow - stride
+        for (let x = 0; x < stride; x++) {
+          scanlines[dstRow + x] = (raw[srcRow + 1 + x]! + scanlines[prevRow + x]!) & 0xff
+        }
+      }
+    } else if (filter === 3) {
+      const prevRow = dstRow - stride
+      for (let x = 0; x < stride; x++) {
+        const a = x >= bpp ? scanlines[dstRow + x - bpp]! : 0
+        const b = y > 0 ? scanlines[prevRow + x]! : 0
+        scanlines[dstRow + x] = (raw[srcRow + 1 + x]! + ((a + b) >> 1)) & 0xff
+      }
+    } else if (filter === 4) {
+      const prevRow = dstRow - stride
+      for (let x = 0; x < stride; x++) {
+        const a = x >= bpp ? scanlines[dstRow + x - bpp]! : 0
+        const b = y > 0 ? scanlines[prevRow + x]! : 0
+        const c = x >= bpp && y > 0 ? scanlines[prevRow + x - bpp]! : 0
+        scanlines[dstRow + x] = (raw[srcRow + 1 + x]! + paethPredictor(a, b, c)) & 0xff
+      }
+    } else {
+      throw new Error(`${label}: unsupported PNG filter ${filter}`)
     }
   }
 
+  if (colorType === 6 && bitDepth === 8) {
+    return { width, height, rgba: scanlines }
+  }
+  if (colorType === 2 && bitDepth === 8) {
+    const rgba = new Uint8Array(width * height * 4)
+    const pixels = width * height
+    for (let p = 0, s = 0, d = 0; p < pixels; p++, s += 3, d += 4) {
+      rgba[d] = scanlines[s]!
+      rgba[d + 1] = scanlines[s + 1]!
+      rgba[d + 2] = scanlines[s + 2]!
+      rgba[d + 3] = 255
+    }
+    return { width, height, rgba }
+  }
+
   const rgba = new Uint8Array(width * height * 4)
+  const sampleShift = bitDepth === 16 ? 2 : 1
   for (let y = 0; y < height; y++) {
     const rowStart = y * stride
     for (let x = 0; x < width; x++) {
       const dst = (y * width + x) * 4
       if (colorType === 6) {
-        const src = rowStart + x * 4
+        const src = rowStart + x * 4 * sampleShift
         rgba[dst] = scanlines[src]!
-        rgba[dst + 1] = scanlines[src + 1]!
-        rgba[dst + 2] = scanlines[src + 2]!
-        rgba[dst + 3] = scanlines[src + 3]!
+        rgba[dst + 1] = scanlines[src + sampleShift]!
+        rgba[dst + 2] = scanlines[src + 2 * sampleShift]!
+        rgba[dst + 3] = scanlines[src + 3 * sampleShift]!
       } else if (colorType === 2) {
-        const src = rowStart + x * 3
+        const src = rowStart + x * 3 * sampleShift
         rgba[dst] = scanlines[src]!
-        rgba[dst + 1] = scanlines[src + 1]!
-        rgba[dst + 2] = scanlines[src + 2]!
+        rgba[dst + 1] = scanlines[src + sampleShift]!
+        rgba[dst + 2] = scanlines[src + 2 * sampleShift]!
         rgba[dst + 3] = 255
       } else if (colorType === 0) {
-        const g = scanlines[rowStart + x]!
+        let g: number
+        if (bitDepth === 8) {
+          g = scanlines[rowStart + x]!
+        } else if (bitDepth === 16) {
+          g = scanlines[rowStart + x * 2]!
+        } else {
+          const pixelsPerByte = 8 / bitDepth
+          const byte = scanlines[rowStart + Math.floor(x / pixelsPerByte)]!
+          const shift = 8 - bitDepth * ((x % pixelsPerByte) + 1)
+          const rawVal = (byte >>> shift) & ((1 << bitDepth) - 1)
+          g = Math.round((rawVal * 255) / ((1 << bitDepth) - 1))
+        }
         rgba[dst] = g
         rgba[dst + 1] = g
         rgba[dst + 2] = g
         rgba[dst + 3] = 255
       } else if (colorType === 4) {
-        const src = rowStart + x * 2
+        const src = rowStart + x * 2 * sampleShift
         const g = scanlines[src]!
         rgba[dst] = g
         rgba[dst + 1] = g
         rgba[dst + 2] = g
-        rgba[dst + 3] = scanlines[src + 1]!
+        rgba[dst + 3] = scanlines[src + sampleShift]!
       } else {
         // Indexed palette (colorType === 3)
         let idx: number
@@ -203,7 +257,7 @@ export function decodePngBytes(png: Uint8Array, label = "png"): DecodedPng {
   return { width, height, rgba }
 }
 
-/** Encode an 8-bit RGBA image as a non-interlaced PNG with Sub filtering. */
+/** Encode an 8-bit RGBA image as a non-interlaced PNG with None filtering and fast deflate. */
 export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Buffer {
   const ihdr = Buffer.alloc(13)
   ihdr.writeUInt32BE(width, 0)
@@ -215,23 +269,83 @@ export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): 
   ihdr[12] = 0
 
   const stride = width * 4
-  const raw = Buffer.alloc(height * (stride + 1))
+  const raw = Buffer.allocUnsafe(height * (stride + 1))
   for (let y = 0; y < height; y++) {
     const dstRow = y * (stride + 1)
     const srcRow = y * stride
-    raw[dstRow] = 1 // Sub filter
-    for (let x = 0; x < stride; x++) {
-      const left = x >= 4 ? rgba[srcRow + x - 4]! : 0
-      raw[dstRow + 1 + x] = (rgba[srcRow + x]! - left) & 0xff
-    }
+    raw[dstRow] = 0 // None filter (fast memcpy, compresses cleanly on flat terminal crops)
+    raw.set(rgba.subarray(srcRow, srcRow + stride), dstRow + 1)
   }
-  const compressed = deflateSync(raw, { level: 6 })
+  const compressed = deflateSync(raw, { level: 3 })
   return Buffer.concat([
     PNG_SIG,
     pngChunk("IHDR", ihdr),
     pngChunk("IDAT", compressed),
     pngChunk("IEND", Buffer.alloc(0)),
   ])
+}
+
+export interface CachedCroppedPng {
+  readonly sha256: string
+  readonly width: number
+  readonly height: number
+  readonly blobPath: string
+}
+
+const CROP_CACHE_VERSION = "png-rgba-f0-z3-v1"
+const CROP_CACHE_BASE = process.env.TERMINFO_CROP_CACHE_DIR ?? process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache")
+const CROP_CACHE_ROOT = join(CROP_CACHE_BASE || tmpdir(), `terminfo-crop-cache-${CROP_CACHE_VERSION}`)
+const CROP_META_DIR = join(CROP_CACHE_ROOT, "meta")
+const CROP_BLOB_DIR = join(CROP_CACHE_ROOT, "blobs")
+let cropCacheDirsReady = false
+
+function ensureCropCacheDirs(): void {
+  if (cropCacheDirsReady) return
+  mkdirSync(CROP_META_DIR, { recursive: true })
+  mkdirSync(CROP_BLOB_DIR, { recursive: true })
+  cropCacheDirsReady = true
+}
+
+function atomicWrite(targetPath: string, content: string | Buffer): void {
+  const tmpPath = `${targetPath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`
+  writeFileSync(tmpPath, content)
+  renameSync(tmpPath, targetPath)
+}
+
+/**
+ * Deterministic content-addressed disk cache for cropped terminal PNGs.
+ * Keyed by source artifact SHA-256 + crop parameters + codec version so repeated site/API/test passes
+ * never re-decode thousands of screenshots or retain raw PNG Buffers in heap memory.
+ */
+export function cachedCropPng(cacheSpec: string, compute: () => CroppedPng): CachedCroppedPng {
+  ensureCropCacheDirs()
+  const key = createHash("sha256").update(`${CROP_CACHE_VERSION}\0${cacheSpec}`).digest("hex")
+  const metaPath = join(CROP_META_DIR, `${key}.json`)
+  if (existsSync(metaPath)) {
+    const parsed = JSON.parse(readFileSync(metaPath, "utf8")) as {
+      sha256?: unknown
+      width?: unknown
+      height?: unknown
+    }
+    if (
+      typeof parsed.sha256 === "string" &&
+      /^[0-9a-f]{64}$/.test(parsed.sha256) &&
+      typeof parsed.width === "number" &&
+      typeof parsed.height === "number"
+    ) {
+      const blobPath = join(CROP_BLOB_DIR, `${parsed.sha256}.png`)
+      if (existsSync(blobPath)) {
+        return { sha256: parsed.sha256, width: parsed.width, height: parsed.height, blobPath }
+      }
+    }
+  }
+  const cropped = compute()
+  const blobPath = join(CROP_BLOB_DIR, `${cropped.sha256}.png`)
+  if (!existsSync(blobPath)) {
+    atomicWrite(blobPath, cropped.png)
+  }
+  atomicWrite(metaPath, JSON.stringify({ sha256: cropped.sha256, width: cropped.width, height: cropped.height }))
+  return { sha256: cropped.sha256, width: cropped.width, height: cropped.height, blobPath }
 }
 
 /** Compute the exact calibrated terminal cell grid rectangle, clamped strictly inside the image. */

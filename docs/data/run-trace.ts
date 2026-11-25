@@ -21,11 +21,13 @@ import type {
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
 import {
+  cachedCropPng,
   cropDecodedPng,
   cropReadCellsFromDecoded,
   cropTerminalGridFromDecoded,
   decodePngBytes,
   describeCellRegion,
+  type CachedCroppedPng,
   type DecodedPng,
 } from "./crop-png.ts"
 import type { TraceCaptureImage, TraceCaptures } from "./evidence-reader.ts"
@@ -309,14 +311,10 @@ function isPixelFrame(frame: NonNullable<ProbeResult["frames"]>[number]): frame 
   return frame.kind !== "text-cells" && typeof frame.ref === "string" && frame.ref.startsWith("sha256:")
 }
 
-function registerCapture(
-  captureImages: Map<string, Buffer>,
-  cropped: { png: Buffer; width: number; height: number },
-): TraceCaptureImage {
-  const sha256 = createHash("sha256").update(cropped.png).digest("hex")
-  const url = `/api/v3/captures/${sha256}.png`
-  if (!captureImages.has(url)) captureImages.set(url, cropped.png)
-  return { url, sha256, width: cropped.width, height: cropped.height }
+function registerCapture(captureImages: Map<string, string>, cropped: CachedCroppedPng): TraceCaptureImage {
+  const url = `/api/v3/captures/${cropped.sha256}.png`
+  if (!captureImages.has(url)) captureImages.set(url, cropped.blobPath)
+  return { url, sha256: cropped.sha256, width: cropped.width, height: cropped.height }
 }
 
 function isTextCellsFrame(frame: NonNullable<ProbeResult["frames"]>[number]): frame is TextCellsObservationFrame {
@@ -357,20 +355,22 @@ function sliceTextCells(
 function extractCellCaptures(
   version: Pick<CurrentSelectedVersion, "runId" | "subject" | "readArtifact" | "readTextArtifact">,
   result: ProbeResult,
-  captureImages: Map<string, Buffer>,
-  decodedCache: Map<string, DecodedPng>,
+  captureImages: Map<string, string>,
 ): TraceCaptures | undefined {
   if (!result.frames || result.frames.length === 0) return undefined
   const pixelFrames = version.readArtifact ? result.frames.filter(isPixelFrame) : []
+  const nonWitnessPixels = pixelFrames.filter((f) => !/paint witness|—\s*baseline/i.test(f.label))
   const target =
-    pixelFrames.find((f) => f.role === "target" && f.regionRectangle !== undefined) ??
-    pixelFrames.find((f) => f.regionRectangle !== undefined)
+    nonWitnessPixels.find((f) => f.role === "target" && f.regionRectangle !== undefined) ??
+    nonWitnessPixels.find((f) => f.regionRectangle !== undefined)
   if (target && target.regionRectangle && version.readArtifact) {
+    // Keep decoded RGBA buffers scoped to this single cell (at most target + expected frames) so heap never grows.
+    const cellDecoded = new Map<string, DecodedPng>()
     const getDecoded = (ref: string): DecodedPng => {
-      let cached = decodedCache.get(ref)
+      let cached = cellDecoded.get(ref)
       if (!cached) {
         cached = decodePngBytes(version.readArtifact!(ref))
-        decodedCache.set(ref, cached)
+        cellDecoded.set(ref, cached)
       }
       return cached
     }
@@ -378,23 +378,29 @@ function extractCellCaptures(
     const cropFrame = (frame: PixelObservationFrame): TraceCaptureImage | undefined => {
       if (!frame.regionRectangle) return undefined
       if (frame.cellCrop?.grid) {
+        const gridCrop = {
+          origin: frame.cellCrop.origin,
+          cell: frame.cellCrop.cell,
+          grid: frame.cellCrop.grid,
+        }
+        const spec = JSON.stringify(["read-cells", frame.ref, frame.regionRectangle, gridCrop])
         return registerCapture(
           captureImages,
-          cropReadCellsFromDecoded(getDecoded(frame.ref), frame.regionRectangle, {
-            origin: frame.cellCrop.origin,
-            cell: frame.cellCrop.cell,
-            grid: frame.cellCrop.grid,
-          }),
+          cachedCropPng(spec, () => cropReadCellsFromDecoded(getDecoded(frame.ref), frame.regionRectangle!, gridCrop)),
         )
       }
       if (version.subject.os === "linux" && frame.regionRectangle.width > 0 && frame.regionRectangle.height > 0) {
-        return registerCapture(captureImages, cropDecodedPng(getDecoded(frame.ref), frame.regionRectangle))
+        const spec = JSON.stringify(["linux-region", frame.ref, frame.regionRectangle])
+        return registerCapture(
+          captureImages,
+          cachedCropPng(spec, () => cropDecodedPng(getDecoded(frame.ref), frame.regionRectangle!)),
+        )
       }
       return undefined
     }
 
-    const expectedFrame = pixelFrames.find(
-      (f) => f.role === "control" && /expected frame/i.test(f.label) && f.regionRectangle !== undefined,
+    const expectedFrame = nonWitnessPixels.find(
+      (f) => f.role === "control" && /expected frame$/i.test(f.label.trim()) && f.regionRectangle !== undefined,
     )
     const expected = expectedFrame ? cropFrame(expectedFrame) : undefined
 
@@ -404,12 +410,18 @@ function extractCellCaptures(
         cell: target.cellCrop.cell,
         grid: target.cellCrop.grid,
       }
-      const decoded = getDecoded(target.ref)
+      const obsSpec = JSON.stringify(["read-cells", target.ref, target.regionRectangle, gridCrop])
+      const fullSpec = JSON.stringify(["terminal-grid", target.ref, gridCrop])
       const observed = registerCapture(
         captureImages,
-        cropReadCellsFromDecoded(decoded, target.regionRectangle, gridCrop),
+        cachedCropPng(obsSpec, () =>
+          cropReadCellsFromDecoded(getDecoded(target.ref), target.regionRectangle!, gridCrop),
+        ),
       )
-      const full = registerCapture(captureImages, cropTerminalGridFromDecoded(decoded, gridCrop))
+      const full = registerCapture(
+        captureImages,
+        cachedCropPng(fullSpec, () => cropTerminalGridFromDecoded(getDecoded(target.ref), gridCrop)),
+      )
       const regionText = describeCellRegion(target.regionRectangle, gridCrop)
       return { observed, full, ...(expected && { expected }), regionText }
     }
@@ -443,8 +455,7 @@ function traceRecord(
   raw: ReturnType<CurrentSelectedVersion["readRaw"]>,
   rawReply: string | undefined,
   where: string,
-  captureImages: Map<string, Buffer>,
-  decodedCache: Map<string, DecodedPng>,
+  captureImages: Map<string, string>,
 ): TraceRecord {
   const { featureId } = result
   const headless = version.subject.kind === "lib"
@@ -494,9 +505,7 @@ function traceRecord(
       ...(published && { observed: publishedText(assertion.observed, `${where}.assertions[${index}].observed`) }),
     }
   })
-  const captures = DECIDED.has(result.status)
-    ? extractCellCaptures(version, result, captureImages, decodedCache)
-    : undefined
+  const captures = DECIDED.has(result.status) ? extractCellCaptures(version, result, captureImages) : undefined
   return {
     ...(reasonCode !== undefined && { reason: reasonCode }),
     ...(sentences && { evidence: sentences }),
@@ -570,8 +579,7 @@ export function currentTrace(version: CurrentSelectedVersion) {
   if (version.traceMemo?.value) return version.traceMemo.value
   const raw = version.readRaw()
   const cells: Record<string, CurrentTraceCell> = {}
-  const captureImages = new Map<string, Buffer>()
-  const decodedCache = new Map<string, DecodedPng>()
+  const captureImages = new Map<string, string>()
   for (const result of version.results) {
     if (!isPublishedStatus(result.status)) continue
     const rawReply = result.rawReplyRef === undefined ? undefined : raw.rawReplies[result.rawReplyRef]
@@ -581,19 +589,11 @@ export function currentTrace(version: CurrentSelectedVersion) {
     cells[result.featureId] = {
       status: result.status,
       ...(result.assertionType && { assertionType: result.assertionType }),
-      ...traceRecord(
-        version,
-        result,
-        raw,
-        rawReply,
-        `run ${version.runId} feature ${result.featureId}`,
-        captureImages,
-        decodedCache,
-      ),
+      ...traceRecord(version, result, raw, rawReply, `run ${version.runId} feature ${result.featureId}`, captureImages),
     }
   }
   const built = traceDocument(3, { ...version, identity: raw.identity }, cells, version.results.length)
-  const trace = built ? { ...built, captures: captureImages as ReadonlyMap<string, Buffer> } : undefined
+  const trace = built ? { ...built, captures: captureImages as ReadonlyMap<string, string> } : undefined
   if (trace && version.traceMemo) {
     freezeTrace(trace.document)
     Object.freeze(trace)

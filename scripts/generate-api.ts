@@ -157,7 +157,7 @@ function writeEvidence(
   out: string,
   documents: ReturnType<typeof publicResults>["documents"],
   runDocuments: ReadonlyMap<string, Buffer>,
-  captureImages: ReadonlyMap<string, Buffer>,
+  captureImages: ReadonlyMap<string, string>,
   contentDir: string,
 ): void {
   const expected = new Map<string, Buffer>()
@@ -197,7 +197,15 @@ function writeEvidence(
     }
   }
   for (const [url, bytes] of runDocuments) expected.set(url.slice(1), bytes)
-  for (const [url, bytes] of captureImages) expected.set(url.slice(1), bytes)
+  for (const [url, blobPath] of captureImages) {
+    const relative = url.slice(1)
+    const bytes = readFileSync(blobPath)
+    const match = /^api\/v3\/captures\/([0-9a-f]{64})\.png$/.exec(relative)
+    if (!match || createHash("sha256").update(bytes).digest("hex") !== match[1]) {
+      throw new Error(`${blobPath}: cached capture digest mismatch for ${url}`)
+    }
+    expected.set(relative, bytes)
+  }
   const inventoryPath = join(out, "api", "v3", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>

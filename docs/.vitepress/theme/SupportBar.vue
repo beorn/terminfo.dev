@@ -225,6 +225,11 @@ function stay() {
   clearTimeout(hideTimer)
 }
 
+function onPopEnter() {
+  stay()
+  engaged.value = true
+}
+
 function leave() {
   clearTimeout(openTimer)
   if (pinned.value) return
@@ -319,10 +324,7 @@ onBeforeUnmount(close)
         :style="{ left: `${popCoords.left}px`, top: `${popCoords.top}px` }"
         role="dialog"
         :aria-label="label"
-        @mouseenter="
-          stay()
-          engaged = true
-        "
+        @mouseenter="onPopEnter"
         @mouseleave="leave"
         @focusout="onFocusOut"
         @keydown.esc="onEscape"

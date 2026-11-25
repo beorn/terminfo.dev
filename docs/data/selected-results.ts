@@ -68,7 +68,7 @@ interface RunTraceMemo {
     sha256: string
     bytes: string
     document: CurrentTraceDocument
-    captures: ReadonlyMap<string, Buffer>
+    captures: ReadonlyMap<string, string>
   }
 }
 

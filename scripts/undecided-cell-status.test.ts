@@ -61,7 +61,7 @@ describe("the evidence cell reads the one status rule (Q1, D3)", () => {
   it("prints no reason beside a blank, and names no action for it", () => {
     // The blank returns before any reason is read, so no undecided reason reaches the line under a blank.
     expect(cell).toMatch(
-      /const observedSummary = computed\(\(\) => \{\s*if \(blank\.value\) return evidenceSummaryLine\(\{ status: undefined \}\)\n/,
+      /const cardModel = computed\(\(\) => \{\s*if \(blank\.value\) \{\s*return buildCardModel\(\{ status: undefined,/,
     )
     expect(cell).toContain(
       "${blank.value ? `${NO_RESULT_STATUS.title}.` : `${status.value.text}. ${actionLabel.value}`}",

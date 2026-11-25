@@ -327,11 +327,32 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
     expect(trace!.captures.has(overline!.captures!.observed!.url)).toBe(true)
     expect(trace!.captures.has(overline!.captures!.full!.url)).toBe(true)
 
-    // Risk #3: real expected-frame control PNG is cropped into captures.expected when present.
+    // Risk #3: real expected-frame control PNG (NEVER the tiny paint witness!) is cropped into captures.expected.
     const deccara = trace!.document.featureResults["editing.deccara"]
     expect(deccara?.captures?.observed?.url).toMatch(/^\/api\/v3\/captures\/[0-9a-f]{64}\.png$/)
     expect(deccara?.captures?.expected?.url).toMatch(/^\/api\/v3\/captures\/[0-9a-f]{64}\.png$/)
+    expect(deccara?.captures?.expected?.width).toBe(deccara?.captures?.observed?.width)
+    expect(deccara?.captures?.expected?.height).toBe(deccara?.captures?.observed?.height)
     expect(trace!.captures.has(deccara!.captures!.expected!.url)).toBe(true)
+
+    // Visual-probe step cleanliness: keep actual tested command, strip paint-witness seed/expected & SGR control frames.
+    const deccaraCard = buildCardModel({
+      status: "supported",
+      featureId: "editing.deccara",
+      featureName: "DECCARA",
+      exchange: { writes: deccara?.writes, queries: deccara?.queries, events: deccara?.events },
+      captures: deccara?.captures,
+    })
+    expect(deccaraCard.steps.some((s) => /DECCARA/i.test(s.words))).toBe(true)
+    const overlineCard = buildCardModel({
+      status: "unsupported",
+      featureId: "sgr.overline",
+      featureName: "Overline (SGR 53)",
+      exchange: { writes: overline?.writes, queries: overline?.queries, events: overline?.events },
+      captures: overline?.captures,
+    })
+    expect(overlineCard.steps.some((s) => /SGR 99|reverse video/i.test(s.words))).toBe(false)
+    expect(overlineCard.steps.some((s) => /overline/i.test(s.words))).toBe(true)
 
     const loaded = readCellTrace(trace!.document, {
       schemaVersion: kittyRun.schemaVersion,
