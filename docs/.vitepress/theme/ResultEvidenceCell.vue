@@ -565,15 +565,61 @@ function showPreview(pin = false): void {
   void loadEvidence()
 }
 
+function previewFocusables(): HTMLElement[] {
+  if (!preview.value) return []
+  return Array.from(
+    preview.value.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => el.offsetParent !== null)
+}
+
+function onTriggerKeydown(event: KeyboardEvent): void {
+  if (props.emitSelect || !previewVisible.value) return
+  if (event.key === "Tab" && !event.shiftKey) {
+    event.preventDefault()
+    previewPinned.value = true
+    const first = previewFocusables()[0] ?? preview.value
+    first?.focus({ preventScroll: true })
+  }
+}
+
+function onPreviewKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Tab") return
+  const focusables = previewFocusables()
+  const active = document.activeElement as HTMLElement | null
+  const first = focusables[0]
+  const last = focusables[focusables.length - 1]
+  if (event.shiftKey && (active === preview.value || active === first || focusables.length === 0)) {
+    event.preventDefault()
+    closePreview()
+  } else if (!event.shiftKey && (active === last || focusables.length === 0)) {
+    event.preventDefault()
+    closePreview()
+  }
+}
+
 async function focusPreview(): Promise<void> {
   showPreview(true)
   await nextTick()
-  preview.value?.focus({ preventScroll: true })
+  const first = previewFocusables()[0] ?? preview.value
+  first?.focus({ preventScroll: true })
+}
+
+let suppressFocusOpen = false
+
+function onTriggerFocus(): void {
+  if (suppressFocusOpen) {
+    suppressFocusOpen = false
+    return
+  }
+  showPreview(false)
 }
 
 function closePreview(): void {
-  trigger.value?.focus({ preventScroll: true })
   hidePreview()
+  suppressFocusOpen = true
+  trigger.value?.focus({ preventScroll: true })
 }
 
 function outsidePreview(event: PointerEvent): void {
@@ -620,11 +666,13 @@ onBeforeUnmount(() => {
     v-if="inline"
     class="rc-card rc-card--inline"
     role="region"
-    :aria-label="`${featureName} result`"
+    :aria-label="`${featureName} result for ${subjectName}`"
     @keydown="onInlineKeydown"
   >
     <div class="rc-top">
-      <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
+      <p class="rc-title">
+        {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
+      </p>
       <div class="rc-top-right">
         <span class="rc-pill" :class="pillClass">
           <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -635,7 +683,15 @@ onBeforeUnmount(() => {
           </svg>
           <span v-else aria-hidden="true">{{ pillIcon }}</span> {{ pillLabel }}
         </span>
-        <button v-if="closable" type="button" class="rc-close-mini" aria-label="Close" @click="emit('close')">×</button>
+        <button
+          v-if="closable"
+          type="button"
+          class="rc-close-mini"
+          :aria-label="`Close ${featureName} result for ${subjectName}`"
+          @click="emit('close')"
+        >
+          ×
+        </button>
       </div>
     </div>
 
@@ -676,8 +732,21 @@ onBeforeUnmount(() => {
             <div
               class="rc-term"
               :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+              :role="captures?.expected || captures?.observed || captures?.full ? 'button' : undefined"
+              :tabindex="captures?.expected || captures?.observed || captures?.full ? 0 : undefined"
+              :aria-label="
+                captures?.expected || captures?.observed || captures?.full
+                  ? `Enlarge expected screenshot for ${featureName} in ${shortName}`
+                  : undefined
+              "
               :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
               @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
+              @keydown.enter.prevent="
+                captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined
+              "
+              @keydown.space.prevent="
+                captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined
+              "
             >
               <img
                 v-if="captures?.expected"
@@ -716,8 +785,15 @@ onBeforeUnmount(() => {
             <div
               class="rc-term"
               :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+              :role="captures?.observed || captures?.full ? 'button' : undefined"
+              :tabindex="captures?.observed || captures?.full ? 0 : undefined"
+              :aria-label="
+                captures?.observed || captures?.full ? `Enlarge ${shortName} screenshot for ${featureName}` : undefined
+              "
               :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
               @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+              @keydown.enter.prevent="captures?.observed || captures?.full ? openFullShot() : undefined"
+              @keydown.space.prevent="captures?.observed || captures?.full ? openFullShot() : undefined"
             >
               <img
                 v-if="captures?.observed"
@@ -888,12 +964,14 @@ onBeforeUnmount(() => {
       :class="[`result-evidence__trigger--${status.tone}`, { 'result-evidence__trigger--active': active }]"
       :aria-label="accessibleName"
       :aria-expanded="emitSelect ? active : previewVisible"
+      :aria-controls="!emitSelect && previewVisible ? tooltipId : undefined"
       :aria-describedby="!emitSelect && previewVisible ? tooltipId : undefined"
       @pointerenter="scheduleOpenPreview"
       @pointerleave="scheduleHidePreview()"
-      @focus="showPreview(false)"
+      @focus="onTriggerFocus"
       @blur="scheduleHidePreview"
       @keydown.esc.stop="closePreview"
+      @keydown="onTriggerKeydown"
       @click="onTriggerClick"
     >
       <span v-if="display !== 'label'" aria-hidden="true">{{ status.icon }}</span>
@@ -908,17 +986,20 @@ onBeforeUnmount(() => {
         class="result-evidence__preview rc-card"
         role="region"
         tabindex="-1"
-        aria-label="Result preview"
+        :aria-label="`${featureName} result for ${subjectName}`"
         :style="previewPosition"
         @pointerenter="keepPreview"
         @pointerleave="scheduleHidePreview()"
         @focusin="keepPreview"
         @focusout="scheduleHidePreview"
         @keydown.esc.stop="closePreview"
+        @keydown="onPreviewKeydown"
         @toggle.capture="repositionPreview"
       >
         <div class="rc-top">
-          <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
+          <p class="rc-title">
+            {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
+          </p>
           <div class="rc-top-right">
             <span class="rc-pill" :class="pillClass">
               <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -929,7 +1010,14 @@ onBeforeUnmount(() => {
               </svg>
               <span v-else aria-hidden="true">{{ pillIcon }}</span> {{ pillLabel }}
             </span>
-            <button type="button" class="rc-close-mini" aria-label="Close" @click="closePreview">×</button>
+            <button
+              type="button"
+              class="rc-close-mini"
+              :aria-label="`Close ${featureName} result for ${subjectName}`"
+              @click="closePreview"
+            >
+              ×
+            </button>
           </div>
         </div>
 
@@ -970,8 +1058,21 @@ onBeforeUnmount(() => {
                 <div
                   class="rc-term"
                   :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+                  :role="captures?.expected || captures?.observed || captures?.full ? 'button' : undefined"
+                  :tabindex="captures?.expected || captures?.observed || captures?.full ? 0 : undefined"
+                  :aria-label="
+                    captures?.expected || captures?.observed || captures?.full
+                      ? `Enlarge expected screenshot for ${featureName} in ${shortName}`
+                      : undefined
+                  "
                   :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
                   @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
+                  @keydown.enter.prevent="
+                    captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined
+                  "
+                  @keydown.space.prevent="
+                    captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined
+                  "
                 >
                   <img
                     v-if="captures?.expected"
@@ -1010,8 +1111,17 @@ onBeforeUnmount(() => {
                 <div
                   class="rc-term"
                   :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+                  :role="captures?.observed || captures?.full ? 'button' : undefined"
+                  :tabindex="captures?.observed || captures?.full ? 0 : undefined"
+                  :aria-label="
+                    captures?.observed || captures?.full
+                      ? `Enlarge ${shortName} screenshot for ${featureName}`
+                      : undefined
+                  "
                   :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
                   @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+                  @keydown.enter.prevent="captures?.observed || captures?.full ? openFullShot() : undefined"
+                  @keydown.space.prevent="captures?.observed || captures?.full ? openFullShot() : undefined"
                 >
                   <img
                     v-if="captures?.observed"

@@ -86,6 +86,7 @@
   font-weight: 650;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 /* #37341 D3: a result we haven't decided is a plain dash on compact grids, or a muted non-interactive "No result" pill on labeled lists (#38269). */

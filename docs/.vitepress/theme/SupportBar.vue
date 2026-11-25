@@ -8,7 +8,7 @@ let dismissedUntil = 0
 // Segment-anchored popover with zero pointer gap, Esc close from anywhere, visible close button for touch,
 // cascading right-side result pane (inline below the item on <600px viewports) reusing ResultEvidenceCell,
 // and click-to-scroll when the feature's row is present on the current page.
-import { computed, onBeforeUnmount, ref } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue"
 import { RESULT_CATEGORIES, type CategoryId } from "../../data/result-categories.ts"
 import type { PublicContextSummary, PublicRunMetadata } from "../../data/public-results.ts"
 import { publicResultFor } from "../../data/release-scope.ts"
@@ -57,7 +57,14 @@ const tabs = computed(() =>
 )
 const width = (count: number) => (total.value ? `${(count / total.value) * 100}%` : "0%")
 
+const barId = useId()
+const popId = `${barId}-pop`
+const panelId = `${barId}-panel`
+const detailId = `${barId}-detail`
+const tabId = (categoryId: CategoryId) => `${barId}-tab-${categoryId}`
+
 const root = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLButtonElement | null>(null)
 const pop = ref<HTMLElement | null>(null)
 const open = ref(false)
 const pinned = ref(false)
@@ -183,13 +190,41 @@ function show(id: CategoryId, from: "hover" | "focus" | "tap", anchor?: HTMLElem
   openPopover(id, from === "tap", anchor)
 }
 
+function focusablesIn(container: HTMLElement | null): HTMLElement[] {
+  if (!container) return []
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => el.offsetParent !== null)
+}
+
+function focusTriggerWithoutReopen() {
+  const button = trigger.value
+  if (!button) return
+  suppressFocusReopen = true
+  button.focus({ preventScroll: true })
+  setTimeout(() => {
+    suppressFocusReopen = false
+  }, 0)
+}
+
+function focusIntoPopover() {
+  const selectedTab = pop.value?.querySelector<HTMLElement>('.support-pop-tab[aria-selected="true"]')
+  const target = selectedTab ?? focusablesIn(pop.value)[0]
+  target?.focus({ preventScroll: true })
+}
+
 function openPopover(id: CategoryId, pin: boolean, anchor?: HTMLElement | null) {
   if (tab.value !== id) activeFeatureId.value = null
   tab.value = id
   if (pin) pinned.value = true
   const seg = anchor ?? root.value?.querySelector<HTMLElement>(`.support-bar-seg[data-category="${id}"]`)
   place(seg)
-  if (open.value) return
+  if (open.value) {
+    if (pin) void nextTick(focusIntoPopover)
+    return
+  }
   registerActivePopover(closeFromCoordinator)
   open.value = true
   document.dispatchEvent(new CustomEvent("terminfo:close-previews"))
@@ -197,6 +232,7 @@ function openPopover(id: CategoryId, pin: boolean, anchor?: HTMLElement | null) 
   document.addEventListener("keydown", onDocKeydown, true)
   window.addEventListener("scroll", onViewportChange, { passive: true, capture: true })
   window.addEventListener("resize", onViewportChange, { passive: true })
+  if (pin) void nextTick(focusIntoPopover)
 }
 
 function closeFromCoordinator() {
@@ -247,14 +283,60 @@ function onEscape() {
   const hadFocusInside = Boolean(
     root.value?.contains(document.activeElement) || pop.value?.contains(document.activeElement),
   )
-  const back = root.value?.querySelector<HTMLElement>(`.support-bar-seg[data-category="${tab.value}"]`)
   close(true)
-  if (hadFocusInside && back) {
-    suppressFocusReopen = true
-    back.focus()
-    setTimeout(() => {
-      suppressFocusReopen = false
-    }, 0)
+  if (hadFocusInside) focusTriggerWithoutReopen()
+}
+
+function onCloseClick() {
+  const hadFocusInside = Boolean(
+    root.value?.contains(document.activeElement) || pop.value?.contains(document.activeElement),
+  )
+  close(true)
+  if (hadFocusInside) focusTriggerWithoutReopen()
+}
+
+function onTriggerKeydown(event: KeyboardEvent) {
+  if (!open.value) return
+  if ((event.key === "Tab" && !event.shiftKey) || event.key === "ArrowDown") {
+    event.preventDefault()
+    pinned.value = true
+    void nextTick(focusIntoPopover)
+  }
+}
+
+function onTabKeydown(event: KeyboardEvent, index: number) {
+  const list = tabs.value
+  if (list.length === 0) return
+  let nextIndex: number | undefined
+  if (event.key === "ArrowRight") nextIndex = (index + 1) % list.length
+  else if (event.key === "ArrowLeft") nextIndex = (index - 1 + list.length) % list.length
+  else if (event.key === "Home") nextIndex = 0
+  else if (event.key === "End") nextIndex = list.length - 1
+  if (nextIndex === undefined) return
+  event.preventDefault()
+  const target = list[nextIndex]
+  if (!target) return
+  onSwitchTab(target.id)
+  void nextTick(() => {
+    pop.value?.querySelector<HTMLElement>(`#${CSS.escape(tabId(target.id))}`)?.focus({ preventScroll: true })
+  })
+}
+
+function onPopKeydown(event: KeyboardEvent) {
+  if (event.key !== "Tab") return
+  const focusables = focusablesIn(pop.value)
+  if (focusables.length === 0) return
+  const active = document.activeElement as HTMLElement | null
+  const first = focusables[0]
+  const last = focusables[focusables.length - 1]
+  if (event.shiftKey && (active === first || active === pop.value)) {
+    event.preventDefault()
+    close(true)
+    focusTriggerWithoutReopen()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    close(true)
+    focusTriggerWithoutReopen()
   }
 }
 
@@ -300,12 +382,16 @@ onBeforeUnmount(close)
   >
     <span v-if="readout" class="sr-only">{{ label }}: {{ readout }}</span>
     <button
+      ref="trigger"
       type="button"
       class="support-bar-trigger"
       :aria-label="readout ? `${label}: ${readout}` : `${label}: view support breakdown`"
+      aria-haspopup="dialog"
       :aria-expanded="open"
+      :aria-controls="open ? popId : undefined"
       @focus="show(segments[0]?.id ?? 'supported', 'focus', $event.currentTarget as HTMLElement)"
       @click="show(segments[0]?.id ?? 'supported', 'tap', $event.currentTarget as HTMLElement)"
+      @keydown="onTriggerKeydown"
     >
       <span class="support-bar-track">
         <span
@@ -324,36 +410,49 @@ onBeforeUnmount(close)
     <Teleport to="body">
       <div
         v-if="open"
+        :id="popId"
         ref="pop"
         class="support-pop"
         :class="{ 'support-pop--flipped': popCoords.flipped }"
         :style="{ left: `${popCoords.left}px`, top: `${popCoords.top}px` }"
         role="dialog"
-        :aria-label="label"
+        :aria-label="`${label} feature support breakdown`"
         @mouseenter="onPopEnter"
         @mouseleave="leave"
         @focusout="onFocusOut"
         @keydown.esc="onEscape"
+        @keydown="onPopKeydown"
       >
         <div class="support-pop-head">
           <strong class="support-pop-name">{{ label }}</strong>
-          <button type="button" class="support-pop-close" aria-label="Close" @click="close(true)">×</button>
-        </div>
-        <div class="support-pop-tabs" role="tablist">
           <button
-            v-for="category in tabs"
+            type="button"
+            class="support-pop-close"
+            :aria-label="`Close ${label} support breakdown`"
+            @click="onCloseClick"
+          >
+            ×
+          </button>
+        </div>
+        <div class="support-pop-tabs" role="tablist" :aria-label="`${label} result categories`">
+          <button
+            v-for="(category, index) in tabs"
+            :id="tabId(category.id)"
             :key="category.id"
             type="button"
             role="tab"
             class="support-pop-tab"
             :class="'support-pop-tab-' + category.style"
             :aria-selected="tab === category.id"
+            :aria-controls="panelId"
+            :tabindex="tab === category.id ? 0 : -1"
             @click="onSwitchTab(category.id)"
+            @keydown="onTabKeydown($event, index)"
           >
             {{ category.label }} <span class="support-pop-n">{{ category.count }}</span>
           </button>
         </div>
-        <div class="support-pop-panel" role="tabpanel">
+        <div :id="panelId" class="support-pop-panel" role="tabpanel" :aria-labelledby="tabId(tab)">
           <p class="support-pop-meaning">{{ current.meaning }}</p>
           <ResultList
             v-if="items.length"
@@ -384,9 +483,13 @@ onBeforeUnmount(close)
 
         <div
           v-if="version && activeItem && paneSide !== 'below'"
+          :id="detailId"
           class="support-pop-detail"
           :class="'support-pop-detail--' + paneSide"
           :style="{ top: `${detailTop}px`, '--detail-notch-top': `${detailNotchTop}px` }"
+          role="region"
+          :aria-label="`${activeItem.name} result for ${label}`"
+          aria-live="polite"
           @mouseenter="stay"
         >
           <ResultEvidenceCell
