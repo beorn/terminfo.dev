@@ -5,6 +5,8 @@
  * @consumer terminfo.dev bar rows, SupportBar hover system, and result lists
  * @testonly none
  * @reach fs-walk vendor/terminfo.dev/docs/**
+ * @source-grep The row's subject is the stylesheet text itself (a removed class or an unscoped 70px width); no
+ *   calling interface exposes CSS a page has not yet rendered, and this test runs without a browser.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
