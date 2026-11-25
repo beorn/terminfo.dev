@@ -1347,6 +1347,20 @@ export function loadArchivedExclusions(contentDir: string): SelectedExclusion[] 
   })
 }
 
+/**
+ * Build a verified artifact reader closing ONLY over primitive strings (`contentDir`, `runPath`, `kind`).
+ * Creating this inline inside `loadStoredRuns`'s callback would capture `run` (the full raw `LoadedRun`
+ * with `rawReplies` and `assertions`) and `suites` in the callback's lexical environment, defeating
+ * `compactRun` and pinning gigabytes of raw corpus JSON in `globalThis[RESULTS_CACHE]`.
+ */
+export function createArtifactReader(
+  contentDir: string,
+  runPath: string,
+  kind: "screenshot" | "text-snapshot",
+): (ref: string) => Buffer {
+  return (ref: string) => readVerifiedArtifact(contentDir, ref, runPath, kind)
+}
+
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
@@ -1373,8 +1387,8 @@ export function loadSelectedResults(
     const selectionCoversSuite = selectionCoversCohort(selection, cohort)
     return {
       ...compactRun(run, readRaw),
-      readArtifact: (ref: string) => readVerifiedArtifact(contentDir, ref, run.path, "screenshot"),
-      readTextArtifact: (ref: string) => readVerifiedArtifact(contentDir, ref, run.path, "text-snapshot"),
+      readArtifact: createArtifactReader(contentDir, run.path, "screenshot"),
+      readTextArtifact: createArtifactReader(contentDir, run.path, "text-snapshot"),
       ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
       traceMemo: {},
       ...("matched" in check && {

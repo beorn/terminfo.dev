@@ -412,4 +412,27 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
       rmSync(tmp, { recursive: true, force: true })
     }
   })
+
+  it("createArtifactReader does not retain the parent LoadedRun object", async () => {
+    const { createArtifactReader } = await import("../docs/data/selected-results.ts")
+    let weakRun: WeakRef<object>
+    let reader: (ref: string) => Buffer
+    {
+      let run: { path: string; payload: Uint8Array } | null = {
+        path: "probes-apps/example.json",
+        payload: new Uint8Array(1024 * 1024),
+      }
+      weakRun = new WeakRef(run)
+      reader = createArtifactReader(contentDir, run.path, "screenshot")
+      run = null
+    }
+    if (typeof Bun !== "undefined" && typeof Bun.gc === "function") {
+      for (let i = 0; i < 5 && weakRun.deref() !== undefined; i++) {
+        Bun.gc(true)
+        await Promise.resolve()
+      }
+      expect(weakRun.deref()).toBeUndefined()
+    }
+    expect(typeof reader).toBe("function")
+  })
 })
