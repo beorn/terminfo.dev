@@ -29,11 +29,16 @@ import {
   truncateCode,
   vendorExtensionOrigin,
 } from "../docs/.vitepress/theme/card-explain.ts"
-import { validateMeasuredCard } from "./validate-style5-cards.ts"
+import { validateMeasuredCard, validateUntestableCard } from "./validate-style5-cards.ts"
 import { readCellTrace } from "../docs/data/evidence-reader.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
-import { currentTrace, extractAppLogLine } from "../docs/data/run-trace.ts"
+import {
+  classifyUntestableCause,
+  currentTrace,
+  extractAppLogLine,
+  extractClipboardReadNonce,
+} from "../docs/data/run-trace.ts"
 import { scanDist } from "./check-private-leak.ts"
 
 const root = join(import.meta.dirname, "..")
@@ -266,7 +271,19 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(libModel.verdict).toEqual({ tone: "ok", text: "Parser stored expected state" })
     expect(validateMeasuredCard(libModel, "lib")).toEqual([])
 
-    // Process environment: NO fake bytes
+    // Headless library with CPR fence-only reply hides ESC [ 5;11 R fence on non-cursor probes
+    const libFenceModel = buildCardModel({
+      status: "unsupported",
+      featureId: "device.xtversion",
+      featureName: "XTVERSION",
+      subjectKind: "lib",
+      parserState: "\x1b[5;11R\x1b[7;13R",
+      traceEvidence: ["The library sent back ESC [ 5;11 R ESC [ 7;13 R."],
+    })
+    expect(libFenceModel.received?.words).toBe("No reply (answered only the cursor fence)")
+    expect(validateMeasuredCard(libFenceModel, "lib-fence", { featureId: "device.xtversion" })).toEqual([])
+
+    // Process environment: NO fake bytes, verdict does not repeat Received verbatim (Rule 9)
     const envModel = buildCardModel({
       status: "unsupported",
       featureId: "device.term-features",
@@ -277,18 +294,27 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(envModel.steps).toEqual([{ num: 1, code: "", codeMuted: "no bytes", words: "Read TERM_FEATURES at launch" }])
     expect(envModel.expected).toEqual({ words: "TERM_FEATURES environment variable set" })
     expect(envModel.received).toEqual({ words: "TERM_FEATURES was not set" })
-    expect(envModel.verdict).toEqual({ tone: "no", text: "TERM_FEATURES was not set" })
-    expect(validateMeasuredCard(envModel, "env")).toEqual([])
+    expect(envModel.verdict).toEqual({ tone: "no", text: "Not set" })
+    expect(
+      validateMeasuredCard(envModel, "env", {
+        featureId: "device.term-features",
+        assertionType: "process_environment",
+      }),
+    ).toEqual([])
 
-    // Clipboard write with trailing CPR sync barrier: strips ESC [ 6 n, NO fake bytes, long base64 shortened with …
+    // Clipboard write with trailing CPR sync barrier (Rule 1): strips ESC [ 6 n, shows real clipboard read-back nonce
+    const clipNonce = "terminfo-osc52-b676ab94-02be-42f1-abf2-0c7b78d082ed"
+    const clipB64 = Buffer.from(clipNonce, "utf8").toString("base64")
     const clipModel = buildCardModel({
       status: "supported",
       featureId: "extensions.osc52-write",
       featureName: "Clipboard write (OSC 52)",
       assertionType: "clipboard",
+      clipboardRead: clipNonce,
+      traceEvidence: ["The terminal sent back ESC [ 1;1 R."],
       exchange: {
         events: [
-          { kind: "write", sequence: "\x1b]52;c;dGVybWluZm8tY2xpcGJvYXJkLXBheWxvYWQ=\x07" },
+          { kind: "write", sequence: `\x1b]52;c;${clipB64}\x07` },
           { kind: "query", sequence: "\x1b[6n", match: ["\x1b[1;1R"] },
         ],
       },
@@ -296,11 +322,22 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(clipModel.truncated).toBe(true)
     expect(clipModel.steps.some((s) => s.code.includes("6 n"))).toBe(false)
     expect(clipModel.steps[0]?.fullCode).toContain("dGVybWluZm8")
-    expect(clipModel.expected?.code).toBeUndefined()
+    expect(clipModel.expected).toEqual({ words: "Clipboard holds the test text" })
     expect(clipModel.received?.code).toBeUndefined()
+    expect(clipModel.received?.words).toMatch(/^Clipboard: terminfo-osc52-/)
+    expect(clipModel.received?.words).not.toContain("1;1 R")
     expect(clipModel.verdict).toEqual({ tone: "ok", text: "Clipboard received the text" })
-    expect(validateMeasuredCard(clipModel, "clipboard")).toEqual([])
+    expect(
+      validateMeasuredCard(clipModel, "clipboard", { featureId: "extensions.osc52-write", assertionType: "clipboard" }),
+    ).toEqual([])
+    expect(extractClipboardReadNonce([{ observed: clipNonce }], [`\x1b]52;c;${clipB64}\x07`])).toBe(clipNonce)
+    expect(
+      extractClipboardReadNonce([{ observed: "user secret clipboard" }], [`\x1b]52;c;${clipB64}\x07`]),
+    ).toBeUndefined()
     expect(truncateCode("ESC ]52;c;aGVsbG8td29ybGQtdGhpcy1pcy1sb25n BEL").text).toContain("… BEL")
+    expect(truncateCode("ESC [ 200 ~ terminfo-paste-e6f64d7b-2756-44f2-82f9-f2fbabd1720d ESC [ 201 ~").text).toMatch(
+      /^ESC \[ 200 ~ terminfo-paste-.*… ESC \[ 201 ~$/,
+    )
 
     // Semicolon-less OSC 776 query still produces exact expected reply bytes
     const osc776NoSemi = buildCardModel({
@@ -318,28 +355,85 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(osc776NoSemi.expected).toEqual({ code: "ESC ]776;<w>;<h> BEL", words: "Cell width and height" })
     expect(validateMeasuredCard(osc776NoSemi, "osc776-no-semi")).toEqual([])
 
-    // input_bytes probe with preparatory DECRQM setup query keeps input_bytes Expected/Received instead of DECRQM
+    // Rule 2: Pixel mouse 1016 (FAIL) explains cells vs pixels, puts 14t/16t/18t replies on setup rows, never in Received
+    const pixelMouseFail = buildCardModel({
+      status: "unsupported",
+      featureId: "input.pixel-mouse",
+      featureName: "SGR-Pixels Mouse Mode (1016)",
+      assertionType: "input_bytes",
+      traceEvidence: [
+        "The terminal sent back 4 replies: ESC [<0;45;15M, ESC [ 4;588;792 t, ESC [ 8;28;88 t, ESC [<0;45;15M.",
+      ],
+      exchange: {
+        events: [
+          { kind: "write", sequence: "\x1b[?1000h\x1b[?1006h" },
+          { kind: "query", sequence: "", match: ["\x1b[<0;45;15M"] },
+          { kind: "query", sequence: "\x1b[16t\x1b[c", match: null },
+          { kind: "query", sequence: "\x1b[14t\x1b[c", match: ["\x1b[4;588;792t"] },
+          { kind: "query", sequence: "\x1b[18t\x1b[c", match: ["\x1b[8;28;88t"] },
+          { kind: "write", sequence: "\x1b[?1016h" },
+          { kind: "query", sequence: "", match: ["\x1b[<0;45;15M"] },
+          { kind: "write", sequence: "\x1b[?1016l" },
+        ],
+      },
+    })
+    expect(pixelMouseFail.replyFamily).toBe(true)
+    expect(pixelMouseFail.expected).toEqual({ code: "ESC [<0;360;240M", words: "Mouse position in pixels" })
+    expect(pixelMouseFail.received).toEqual({
+      code: "ESC [<0;45;15M",
+      words: "Position in cells (45,15), not pixels",
+    })
+    expect(pixelMouseFail.verdict).toEqual({ tone: "no", text: "Sent cell coords, not pixels" })
+    expect(pixelMouseFail.steps.some((s) => s.setup && s.words.includes("792×588 px"))).toBe(true)
+    expect(
+      validateMeasuredCard(pixelMouseFail, "pixel-mouse-fail", {
+        featureId: "input.pixel-mouse",
+        assertionType: "input_bytes",
+      }),
+    ).toEqual([])
+
+    // Rule 3: Bracketed paste shows ONLY the wrapped paste in bytes | words columns; setup DECRQM stays on setup row
     const pasteModel = buildCardModel({
       status: "supported",
       featureId: "extensions.clipboard-paste",
       featureName: "System clipboard paste",
       assertionType: "input_bytes",
-      traceEvidence: ["Pasted test text arrived wrapped in bracketed paste markers."],
+      traceEvidence: [
+        "The terminal sent back 6 replies: ESC [ ?2004;2 $ y, a, terminfo-paste-e6f64d7b-2756-44f2-82f9-f2fbabd1720d, ESC [ 200 ~ terminfo-paste-e6f64d7b-2756-44f2-82f9-f2fbabd1720d ESC [ 201 ~ and 2 more.",
+      ],
       exchange: {
         events: [
-          { kind: "query", sequence: "\x1b[?2004$p", match: ["\x1b[?2004;2$y"] },
+          { kind: "query", sequence: "\x1b[?2004$p\x1b[c", match: ["\x1b[?2004;2$y"] },
+          { kind: "query", sequence: "", match: ["a"] },
+          { kind: "write", sequence: "\x1b[?2004l" },
+          { kind: "query", sequence: "", match: ["terminfo-paste-e6f64d7b-2756-44f2-82f9-f2fbabd1720d"] },
           { kind: "write", sequence: "\x1b[?2004h" },
+          {
+            kind: "query",
+            sequence: "",
+            match: ["\x1b[200~terminfo-paste-e6f64d7b-2756-44f2-82f9-f2fbabd1720d\x1b[201~"],
+          },
+          { kind: "write", sequence: "\x1b[?2004l" },
+          { kind: "query", sequence: "\x1b[?2004$p\x1b[c", match: ["\x1b[?2004;2$y"] },
         ],
       },
     })
+    expect(pasteModel.replyFamily).toBe(true)
     expect(pasteModel.expected).toEqual({
       code: "ESC [ 200~ … ESC [ 201~",
-      words: "Pasted text in bracketed markers",
+      words: "Paste wrapped in the markers",
     })
-    expect(pasteModel.received?.words).toContain("bracketed paste")
-    expect(validateMeasuredCard(pasteModel, "input-paste")).toEqual([])
+    expect(pasteModel.received?.code).toMatch(/^ESC \[ 200~ terminfo.*… ESC \[ 201~$/)
+    expect(pasteModel.received?.words).toBe("Paste wrapped in the markers")
+    expect(pasteModel.steps.some((s) => s.setup && s.words.includes("off right now"))).toBe(true)
+    expect(
+      validateMeasuredCard(pasteModel, "input-paste", {
+        featureId: "extensions.clipboard-paste",
+        assertionType: "input_bytes",
+      }),
+    ).toEqual([])
 
-    // App-log report (Kitty OSC 440): strips 7654/7655/OSC 2/6n plumbing, verbatim blue log line, no fake bytes
+    // Rule 4: App-log report (Kitty OSC 440): specific Expected ("Kitty plays the sound; no log line"), verbatim log Received
     const osc440Model = buildCardModel({
       status: "unsupported",
       featureId: "extensions.osc440-audio",
@@ -360,13 +454,58 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
       },
     })
     expect(osc440Model.steps).toEqual([{ num: 1, code: "ESC ]440;bell.wav BEL", words: "Play audio bell (OSC 440)" }])
-    expect(osc440Model.expected).toEqual({ words: "Handle OSC 440 without an error" })
+    expect(osc440Model.expected).toEqual({ words: "Kitty plays the sound; no log line" })
     expect(osc440Model.received).toEqual({
       words: "[PARSE ERROR] Ignoring OSC 440 used for audio by mintty",
       isLog: true,
     })
     expect(osc440Model.verdict).toEqual({ tone: "no", text: "Kitty ignored OSC 440" })
     expect(validateMeasuredCard(osc440Model, "osc440")).toEqual([])
+
+    // Rule 5: DEC Line Drawing (Terminal.app): shows glyphs in Expected and observed text in Received, NEVER method prose
+    const decLineModel = buildCardModel({
+      status: "supported",
+      featureId: "charsets.dec-line-drawing",
+      featureName: "DEC Line Drawing",
+      assertionType: "buffer_state",
+      traceEvidence: [
+        "Read row 1, columns 1–7 as text from the terminal's own text snapshot, not from its pixels.",
+        "Those cells matched the expected result.",
+      ],
+      captures: { textCells: "┘┐┌└─│j", regionText: "row 1, columns 1–7" },
+    })
+    expect(decLineModel.expected).toEqual({ words: "Line-drawing glyphs: ┘┐┌└─│" })
+    expect(decLineModel.received).toEqual({ words: "Row 1 shows ┘┐┌└─│j" })
+    expect(expectedVisualSpecimen("charsets.dec-line-drawing")?.text).toBe("┘┐┌└─│j")
+    expect(
+      validateMeasuredCard(decLineModel, "dec-line", {
+        featureId: "charsets.dec-line-drawing",
+        assertionType: "buffer_state",
+      }),
+    ).toEqual([])
+
+    // Rule 6: Window title collapses calibration/control/negative/restore writes to one real step
+    const titleModel = buildCardModel({
+      status: "supported",
+      featureId: "extensions.osc2-title",
+      featureName: "Window Title (OSC 2)",
+      assertionType: "buffer_state",
+      traceEvidence: ["Set the window title 4 times and read it back each time: 4 of 4 readings matched."],
+      exchange: {
+        events: [
+          { kind: "write", sequence: "\x1b]2;terminfo-title-control-A\x07" },
+          { kind: "write", sequence: "\x1b]2;terminfo-title-control-B\x07" },
+          { kind: "write", sequence: "\x1b]2;terminfo-title-target-A\x07" },
+          { kind: "write", sequence: "\x1b]2;terminfo-title-target-B\x07" },
+          { kind: "write", sequence: "\x1b]7654;terminfo-title-negative\x07" },
+          { kind: "write", sequence: "\x1b]2;Alacritty\x07" },
+        ],
+      },
+    })
+    expect(titleModel.steps).toHaveLength(1)
+    expect(titleModel.steps[0]?.code).toContain("terminfo-title-target-A")
+    expect(titleModel.steps[0]?.words).toBe("Set window title")
+    expect(validateMeasuredCard(titleModel, "osc2-title")).toEqual([])
 
     // Risk #1: deciding query steps are NEVER dropped into Details even behind many writes.
     const manyWrites = buildCardModel({
@@ -389,17 +528,37 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(manyWrites.steps.some((s) => s.code.includes("$ q m"))).toBe(true)
     expect(validateMeasuredCard(manyWrites, "decrqss")).toEqual([])
 
-    // Non-measured kinds (Untestable, Derived, Differs by context, No result): measured=false, NO panel!
+    // Rule 7: Non-measured Untestable cards MUST explain why; generic or missing reason FAILS validateUntestableCard
     const untestable = buildCardModel({
       status: "untestable",
       featureId: "extensions.osc555-flash",
       featureName: "Flash",
-      reason: "Needs a human eye",
+      untestableCause: classifyUntestableCause("extensions.osc555-flash", "term"),
     })
     expect(untestable.measured).toBe(false)
     expect(untestable.expected).toBeUndefined()
     expect(untestable.verdict).toBeUndefined()
-    expect(untestable.closing).toBe("Needs a human eye. Not a no.")
+    expect(untestable.closing).toBe("A screen flash lasts ~100 ms; our screenshots can’t catch it. Not a no.")
+    expect(validateUntestableCard(untestable, "osc555-untestable")).toEqual([])
+
+    const untestableMissingReason = buildCardModel({
+      status: "untestable",
+      featureId: "unknown.custom-feature",
+      featureName: "Unknown",
+    })
+    expect(validateUntestableCard(untestableMissingReason, "untestable-empty").length).toBeGreaterThanOrEqual(1)
+    expect(
+      validateUntestableCard(
+        {
+          measured: false,
+          steps: [],
+          readouts: [],
+          closing: "Could not be tested automatically here. Not a no.",
+          truncated: false,
+        },
+        "untestable-generic",
+      ).length,
+    ).toBeGreaterThanOrEqual(1)
 
     const derived = buildCardModel({
       status: "unsupported",
@@ -425,22 +584,42 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(differsModel.closing).toContain("Setting on: supported")
     expect(differsModel.closing).toContain("Default (off): unsupported")
 
-    // Build-check validator rejects missing fields, bad verdict word count, or internal text
+    // Rule 8 build-check validator rejects: missing fields, bad verdict word count, internal text,
+    // reply-family spanning sentence, fence/setup leaks, method prose, and duplicate verdict text
     expect(
       validateMeasuredCard(
         {
           measured: true,
+          replyFamily: true,
           steps: [],
-          expected: { words: "" },
-          received: { words: "PROBE TODO leaked" },
+          expected: { words: "Read row 1 from the terminal's own text snapshot" },
+          received: { words: "The terminal sent back ESC [ 1;1 R (PROBE TODO)" },
           verdict: { tone: "no", text: "Fail" },
           readouts: [],
           closing: "Fail",
           truncated: false,
         },
         "bad-card",
+        { featureId: "extensions.osc52-write", assertionType: "input_bytes" },
       ).length,
-    ).toBeGreaterThanOrEqual(3)
+    ).toBeGreaterThanOrEqual(6)
+    expect(
+      validateMeasuredCard(
+        {
+          measured: true,
+          replyFamily: true,
+          steps: [],
+          expected: { code: "ESC [ <0;360;240 M", words: "Mouse position in pixels" },
+          received: { code: "ESC [ 4;588;792 t", words: "window size" },
+          verdict: { tone: "no", text: "window size" },
+          readouts: [],
+          closing: "window size",
+          truncated: false,
+        },
+        "bad-setup-leak",
+        { featureId: "input.pixel-mouse", assertionType: "input_bytes" },
+      ).length,
+    ).toBeGreaterThanOrEqual(2)
     expect(countVerdictWords("Overline didn’t stick")).toBe(3)
 
     expect(

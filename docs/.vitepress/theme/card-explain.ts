@@ -73,6 +73,8 @@ export interface CardVerdict {
 export interface CardModel {
   /** True for measured Supported/Unsupported cards (rendered with the Style 5 panel); false for Untestable/Derived/Differs/No result. */
   readonly measured: boolean
+  /** True for reply-family cards (query_reply & input_bytes) where Received must use bytes | words columns. */
+  readonly replyFamily?: boolean
   readonly steps: readonly CardStepRow[]
   readonly expected?: CardExpectedRow
   readonly received?: CardReceivedRow
@@ -103,7 +105,7 @@ const MAX_CODE_CHARS = 40
 /** Truncate long inline escape payloads with "…" so every ESC stays aligned in the byte column. */
 export function truncateCode(code: string, max = MAX_CODE_CHARS): { text: string; truncated: boolean } {
   if (code.length <= max) return { text: code, truncated: false }
-  const tailMatch = /\s+(BEL|ESC \\)$/.exec(code)
+  const tailMatch = /\s+(BEL|ESC \\|ESC \[ 201 ?~)$/.exec(code)
   if (tailMatch) {
     const suffix = `… ${tailMatch[1]}`
     const headLen = Math.max(8, max - suffix.length)
@@ -411,8 +413,9 @@ export function explainSentCommand(
   if (raw === "\x1b)B") return { words: "Select ASCII charset (G1)", fallback: false }
   if (raw === "\x0e") return { words: "Switch to G1 charset", fallback: false }
   if (raw === "\x0f") return { words: "Switch to G0 charset", fallback: false }
-  if (/^\x08+$/.test(raw))
+  if (/^\x08+$/.test(raw)) {
     return { words: raw.length === 1 ? "Backspace" : `${raw.length} backspaces`, fallback: false }
+  }
   if (raw === "\n") return { words: "New line", fallback: false }
   if (raw === "\r") return { words: "Carriage return", fallback: false }
   if (raw === "\t") return { words: "Tab", fallback: false }
@@ -502,8 +505,9 @@ export function explainSentCommand(
   if (cursorShape) return { words: `Set cursor shape (${cursorShape[1] || "default"})`, fallback: false }
   if (/^\x1b\[=0?c$/.test(raw)) return { words: "Ask tertiary terminal ID (DA3)", fallback: false }
   const decsca = /^\x1b\[(\d*)"q$/.exec(raw)
-  if (decsca)
+  if (decsca) {
     return { words: decsca[1] === "1" ? "Protect cells from selective erase" : "Unprotect cells", fallback: false }
+  }
   const decsace = /^\x1b\[(\d*)\*x$/.exec(raw)
   if (decsace) return { words: "Set rectangular edit mode (DECSACE)", fallback: false }
   const rectOp = /^\x1b\[([0-9;]*)\$([rzvtx\{])$/.exec(raw)
@@ -611,8 +615,9 @@ export function explainSentCommand(
     if (code === "5") return { words: arg.endsWith("?") ? "Ask special color" : "Set special color", fallback: false }
     if (code === "7") return { words: "Report working folder", fallback: false }
     if (code === "8") return { words: arg.includes("://") ? "Start hyperlink" : "End hyperlink", fallback: false }
-    if (code === "9")
+    if (code === "9") {
       return { words: arg.startsWith("4;") ? "Set progress bar" : "Send notification (OSC 9)", fallback: false }
+    }
     if (code === "10") return { words: arg === "?" ? "Ask text color" : "Set text color", fallback: false }
     if (code === "11") return { words: arg === "?" ? "Ask background color" : "Set background color", fallback: false }
     if (code === "12") return { words: arg === "?" ? "Ask cursor color" : "Set cursor color", fallback: false }
@@ -847,6 +852,227 @@ function sgrExpectedStyleName(featureId: string, sentCommands: readonly string[]
   return { label: "styled text" }
 }
 
+const METHOD_DESCRIPTION_RE =
+  /(?:\bfrom the terminal's own text snapshot\b|\bfrom the console host's buffer\b|\bnot from its pixels\b|^Read rows?\b|^Compared rows?\b|^Checked (?:rows?|the screen)\b|^Sampled rows?\b|^The terminal sent back \d+ replies:|^The terminal sent back ESC \[)/i
+
+function isMethodDescription(text: string | undefined): boolean {
+  return Boolean(text && METHOD_DESCRIPTION_RE.test(text.trim()))
+}
+
+function summarizeTextCellsReceived(captures: TraceCaptures): string {
+  const firstLine = (captures.textCells ?? "")
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .find((l) => l.length > 0)
+  const regionMatch = /^(rows?\s+\d+(?:–\d+)?)/i.exec(captures.regionText ?? "")
+  const rowLabel = regionMatch?.[1] ? capitalizeFirst(regionMatch[1]) : "Captured cells"
+  const verb = /^Rows\s/i.test(rowLabel) || rowLabel === "Captured cells" ? "show" : "shows"
+  if (!firstLine) return `${rowLabel} ${verb} blank text`
+  const multiLine = (captures.textCells ?? "").includes("\n")
+  const preview = firstLine.length > 24 ? `${firstLine.slice(0, 23)}…` : multiLine ? `${firstLine}…` : firstLine
+  return `${rowLabel} ${verb} ${preview}`
+}
+
+function decodeOsc52NonceFromWrites(writes: readonly string[]): string | undefined {
+  for (const raw of writes) {
+    const m = /^\x1b\]52;[cps0-7]*;([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)$/.exec(raw)
+    if (!m?.[1]) continue
+    try {
+      const decoded = typeof Buffer !== "undefined" ? Buffer.from(m[1], "base64").toString("utf8") : atob(m[1])
+      if (/^terminfo-osc52-[0-9a-f-]{36}$/.test(decoded)) return decoded
+    } catch {
+      // silent-fallback-allow: malformed base64 in synthetic test writes is ignored
+    }
+  }
+  return undefined
+}
+
+function formatShortNonce(nonce: string): string {
+  return nonce.length > 24 ? `${nonce.slice(0, 23)}…` : nonce
+}
+
+function untestableNoReadbackWords(featureId: string): string {
+  if (featureId === "extensions.osc8") {
+    return "OSC 8 hyperlinks have no query reply, and this terminal exposes no API to read link metadata from cells."
+  }
+  if (featureId.startsWith("extensions.osc133-") || featureId === "extensions.semantic-prompts") {
+    return "Prompt marks (OSC 133) have no query reply, and this terminal exposes no default-launch API or log to read them back."
+  }
+  if (featureId === "extensions.osc-633-vscode" || featureId.startsWith("extensions.osc633-")) {
+    return "VS Code shell marks (OSC 633) have no query reply, and this terminal exposes no API or log to read them back."
+  }
+  if (featureId === "extensions.osc176-app-id") {
+    return "App ID updates (OSC 176) have no query reply, and this terminal exposes no state or log to read them back."
+  }
+  if (featureId === "extensions.osc3008-context") {
+    return "Shell context tags (OSC 3008) have no query reply, and this terminal exposes no state or log to read them back."
+  }
+  if (featureId === "extensions.osc440-audio") {
+    return "Audio bell playback (OSC 440) has no query reply, and this terminal exposes no audio or error-log readback."
+  }
+  if (featureId === "extensions.osc666-termprop") {
+    return "Terminal properties (OSC 666) have no query reply, and this terminal exposes no property or log readback."
+  }
+  if (featureId === "extensions.osc710-font-normal") {
+    return "Font selection (OSC 710) has no query reply, and this terminal exposes no font or error-log readback."
+  }
+  if (featureId === "extensions.osc7-cwd") {
+    return "Working-folder updates (OSC 7) have no query reply, and this terminal exposes no directory readback surface."
+  }
+  if (featureId === "extensions.osc1-icon" || featureId === "extensions.osc0-icon-title") {
+    return "Icon titles have no public readback surface in this terminal’s default setup."
+  }
+  if (featureId === "modes.color-scheme-reporting") {
+    return "This terminal exposes no mode-2031 query reply or theme-change signal to verify color-scheme reporting."
+  }
+  if (featureId === "modes.decsclm") {
+    return "Smooth scrolling (DECSCLM) has no mode query reply or observable scroll-timing surface here."
+  }
+  if (featureId === "extensions.osc9-progress") {
+    return "Progress bars appear in the tab bar or taskbar outside the text grid, where our screenshots cannot observe them."
+  }
+  if (featureId === "extensions.osc555-flash") {
+    return "A screen flash lasts ~100 ms; our screenshots can’t catch it."
+  }
+  return "This sequence has no query reply, and this terminal exposes no public state or log surface to read its effect."
+}
+
+function untestableCauseExplanation(featureId: string, subjectKind: string | undefined, cause: string): string {
+  switch (cause) {
+    case "permission":
+      return "The test needed an OS permission that this run did not have."
+    case "policy-refused":
+      return "This run’s security settings did not allow the test."
+    case "brief-flash":
+      return "A screen flash lasts ~100 ms; our screenshots can’t catch it."
+    case "lib-no-window-flash":
+      return "A headless library has no window to flash and exposes no flash callback."
+    case "no-pointer-route":
+    case "no-pointer-injection":
+      return "Our hosted test runner cannot inject real mouse clicks or pointer moves into this app."
+    case "no-paste-injection":
+      return "Our hosted test runner cannot inject OS paste shortcuts into this app."
+    case "no-key-injection":
+      return "Our hosted test runner cannot inject real OS keystrokes into this app."
+    case "no-dbus-session":
+      return "No desktop notification bus (D-Bus) was available in this test environment."
+    case "mux-no-forwarding":
+      return "Under default settings, this multiplexer does not forward our control sequence to the outer terminal log."
+    case "mux-no-icon":
+      return "A terminal multiplexer tracks no separate window icon label; the outer terminal owns icon titles."
+    case "renderer-ligatures-only":
+      return "Font ligature shaping happens in the terminal’s renderer, not in a headless parser or multiplexer."
+    case "backend-api-only":
+      return "reset.method tests a library API call, not an escape sequence; running terminals are tested via RIS instead."
+    case "progress-outside-grid":
+      return "Progress bars appear in the tab bar or taskbar outside the text grid, where our screenshots cannot observe them."
+    case "no-decrqm-baseline":
+      return "This terminal answered no DECRQM mode queries, so OSC 5522 capability probing had no baseline."
+    case "prereq-deccara-absent":
+      return "DECCARA produced no visible attribute change here, so the DECSACE rectangle extent mode had nothing to act on."
+    case "prereq-kitty-transmit-absent":
+      return "Kitty graphics transmit got no reply here, so there was no stored image to display or animate."
+    case "prereq-color-setup-absent":
+      return "Setting the base color did not take effect here, so resetting or stacking it had no change to observe."
+    case "prereq-alt-screen-absent":
+      return "Entering the alternate screen did not work here, so exiting it could not be tested."
+    case "prereq-alt-screen-capture":
+      return "This capture route did not retain alternate-screen contents, so clearing on exit could not be verified."
+    case "lib-no-child-env":
+      return "A headless library does not launch a shell process, so it exports no environment variables."
+    case "lib-no-window-pixels":
+      return "A headless library has no window, so it has no pixel dimensions to report."
+    case "lib-delegates-da1":
+      return "The library delegates terminal ID (DA1) replies to the host app."
+    case "lib-no-pixel-renderer":
+      return "A headless library does not render pixels, so image output cannot be verified visually."
+    case "lib-mouse-cells-only":
+      return "This library’s mouse API accepts cell coordinates only, not pixel coordinates."
+    case "lib-no-input-encoder":
+      return "This headless library exposes no input encoder to test how it encodes key, paste, or mouse events."
+    case "lib-no-clipboard":
+      return "Clipboard access is handled by the host app; this headless library has no clipboard."
+    case "lib-no-notifications":
+      return "Desktop notifications are handled by the host app, not the headless parser."
+    case "lib-no-default-color":
+      return "This headless library starts with no default theme colors until a host app sets them."
+    case "lib-no-viewport":
+      return "This headless library has no interactive viewport to hold or scroll."
+    case "lib-no-cell-attr":
+      return "This library’s public cell API does not expose that style attribute for readback."
+    case "lib-no-icon":
+      return "This headless library keeps no separate icon label to read back."
+    case "lib-no-readback":
+      return "This headless library exposes no public state, reply, or rejection hook for this sequence."
+    case "remote-control-off-by-default":
+      return "Reading this state requires remote control, which is disabled in the terminal’s default configuration."
+    case "notify-off-by-default":
+      return "Command-finish notifications are disabled in the terminal’s default configuration, leaving no default readback."
+    case "outer-terminal-unsupported":
+      return "The outer terminal did not support this feature, so the multiplexer’s own handling could not be isolated."
+    case "no-readback-surface":
+      return subjectKind === "lib"
+        ? "This headless library exposes no public state, reply, or rejection hook for this sequence."
+        : untestableNoReadbackWords(featureId)
+    default:
+      return ""
+  }
+}
+
+function inferUntestableCauseFallback(featureId: string, subjectKind?: string): string | undefined {
+  if (featureId === "extensions.osc555-flash") return subjectKind === "lib" ? "lib-no-window-flash" : "brief-flash"
+  if (featureId === "extensions.osc9-progress") return "progress-outside-grid"
+  if (featureId === "reset.method") return "backend-api-only"
+  if (featureId === "extensions.font-ligatures") return "renderer-ligatures-only"
+  if (
+    featureId === "extensions.osc8" ||
+    featureId.startsWith("extensions.osc133-") ||
+    featureId === "extensions.semantic-prompts" ||
+    featureId === "extensions.osc-633-vscode" ||
+    featureId.startsWith("extensions.osc633-") ||
+    featureId === "extensions.osc176-app-id" ||
+    featureId === "extensions.osc3008-context" ||
+    featureId === "extensions.osc440-audio" ||
+    featureId === "extensions.osc666-termprop" ||
+    featureId === "extensions.osc710-font-normal"
+  ) {
+    return subjectKind === "lib" ? "lib-no-readback" : "no-readback-surface"
+  }
+  if (subjectKind === "lib") {
+    if (featureId === "device.term-features") return "lib-no-child-env"
+    if (featureId === "device.xtwinops-14") return "lib-no-window-pixels"
+    if (featureId === "device.primary-da" || featureId === "extensions.sixel-da1") return "lib-delegates-da1"
+    if (featureId.startsWith("sgr.")) return "lib-no-cell-attr"
+    if (featureId.includes("osc52")) return "lib-no-clipboard"
+    if (featureId.includes("notif")) return "lib-no-notifications"
+    if (featureId.startsWith("input.") || featureId === "extensions.clipboard-paste") return "lib-no-input-encoder"
+    return "lib-no-readback"
+  }
+  return undefined
+}
+
+function appLogExpectedWords(featureId: string, who: string, sentCommands: readonly string[]): string {
+  if (featureId === "extensions.osc440-audio") return `${who} plays the sound; no log line`
+  if (featureId === "extensions.osc555-flash") return `${who} flashes the screen; no log line`
+  if (featureId === "extensions.osc176-app-id") return `${who} sets the app ID; no log line`
+  if (featureId === "extensions.osc666-termprop") return `${who} records the terminal property; no log line`
+  if (featureId === "extensions.osc710-font-normal") return `${who} changes the font; no log line`
+  if (featureId === "extensions.osc3008-context") return `${who} records the shell context; no log line`
+  if (featureId === "extensions.osc-633-vscode" || featureId.startsWith("extensions.osc633-")) {
+    return `${who} records the shell mark; no log line`
+  }
+  if (featureId === "extensions.semantic-prompts" || featureId.startsWith("extensions.osc133-")) {
+    return `${who} records the prompt mark; no log line`
+  }
+  if (featureId === "extensions.osc9-progress") return `${who} updates the progress bar; no log line`
+  if (featureId.includes("reset-pointer") || featureId.includes("reset-highlight")) {
+    return `${who} resets the color; no log line`
+  }
+  if (featureId.includes("notif")) return `${who} handles the notification; no log line`
+  const osc = oscCodeForFeature(featureId, sentCommands)
+  return osc ? `${who} applies OSC ${osc}; no log line` : `${who} applies this command; no log line`
+}
+
 function expectedReplyForProbe(opts: {
   featureId: string
   featureName: string
@@ -876,12 +1102,21 @@ function expectedReplyForProbe(opts: {
   }
 
   if (assertionType === "input_bytes") {
-    if (featureId.includes("paste")) return apply("ESC [ 200~ … ESC [ 201~", "Pasted text in bracketed markers")
+    if (featureId.includes("paste")) return apply("ESC [ 200~ … ESC [ 201~", "Paste wrapped in the markers")
     if (featureId.includes("focus")) return apply("ESC [ O  ESC [ I", "Focus out / focus in events")
+    if (featureId === "input.pixel-mouse") return apply("ESC [<0;360;240M", "Mouse position in pixels")
+    if (featureId === "input.button-event-mouse") return apply("ESC [ <32;… M", "Mouse drag motion report")
+    if (featureId === "input.kitty-click-events") return apply("ESC [ <0;… M", "Prompt click report")
+    if (featureId === "input.urxvt-mouse") return apply("ESC [ 32;… M", "urxvt decimal mouse report")
+    if (featureId === "input.x10-mouse") return apply("ESC [ M <bxy>", "Legacy X10 3-byte mouse report")
+    if (featureId === "modes.utf8-mouse-1005") return apply("ESC [ M <utf8>", "UTF-8 encoded mouse coordinates")
+    if (featureId === "modes.alt-scroll-1007") return apply("ESC [ A / ESC [ B", "Arrow keys on wheel scroll")
+    if (featureId === "modes.application-keypad") return apply("ESC O …", "Application keypad sequence")
+    if (featureId === "reset.soft") return apply("ESC [ A", "Normal arrow key after soft reset")
     if (featureId.includes("mouse") || featureId.includes("click") || featureId.includes("wheel")) {
       return apply("ESC [ <… M", "Mouse coordinates escape sequence")
     }
-    if (featureId.includes("modify-other-keys")) return apply("ESC [ 27;… ~", "Modified key escape sequence")
+    if (featureId.includes("modify-other-keys")) return apply("ESC [ 27;… ~", "Modified key sequence")
     return apply("ESC [ …", "Expected key escape sequence")
   }
   if (sawDecrqm) {
@@ -972,6 +1207,7 @@ function expectedReplyForProbe(opts: {
 function expectedNonReplyWords(opts: {
   featureId: string
   featureName: string
+  shortSubjectName?: string
   assertionType?: string
   subjectKind?: string
   isScreen: boolean
@@ -979,29 +1215,44 @@ function expectedNonReplyWords(opts: {
   expectedSentence?: string
   sentCommands: readonly string[]
 }): string {
-  const { featureId, featureName, assertionType, subjectKind, isScreen, isAppLog, expectedSentence, sentCommands } =
-    opts
+  const {
+    featureId,
+    featureName,
+    shortSubjectName,
+    assertionType,
+    subjectKind,
+    isScreen,
+    isAppLog,
+    expectedSentence,
+    sentCommands,
+  } = opts
   if (isAppLog) {
-    const osc = oscCodeForFeature(featureId, sentCommands)
-    return osc ? `Handle OSC ${osc} without an error` : "Handle command without an unhandled error"
+    return appLogExpectedWords(featureId, shortWhoForVerdict(shortSubjectName), sentCommands)
   }
   if (assertionType === "process_environment") return "TERM_FEATURES environment variable set"
-  if (assertionType === "clipboard" || featureId.includes("osc52")) return "Test text placed on the clipboard"
-  if (assertionType === "notification" || featureId.includes("notif"))
+  if (assertionType === "clipboard" || featureId.includes("osc52")) return "Clipboard holds the test text"
+  if (assertionType === "notification" || featureId.includes("notif")) {
     return "Desktop notification delivered with test text"
+  }
   if (subjectKind === "lib") {
     if (featureId.startsWith("sgr.")) {
       const sgr = sgrExpectedStyleName(featureId, sentCommands)
       return `Parser cell has ${sgr.label}`
     }
     const clean = sanitizeCardText(expectedSentence)
-    return clean && clean.length <= 95 ? clean : `Parser records ${featureName}`
+    return clean && !isMethodDescription(clean) && clean.length <= 95 ? clean : `Parser records ${featureName}`
   }
   if (featureId === "extensions.osc7-cwd") return "Working folder updated to test path"
-  if (featureId === "device.xtwinops-22" || featureId === "device.xtwinops-23")
+  if (featureId === "device.xtwinops-22" || featureId === "device.xtwinops-23") {
     return "Saved window title pushed and restored"
+  }
   if (featureId.includes("title") || featureId.includes("icon")) return "Window title updated to test text"
   if (isScreen) {
+    if (featureId === "charsets.dec-line-drawing" || featureId === "charsets.dec-special") {
+      return "Line-drawing glyphs: ┘┐┌└─│"
+    }
+    if (featureId === "charsets.g0-g1-switching") return "Switched charset glyphs on screen"
+    if (featureId === "charsets.utf8") return "UTF-8 characters rendered cleanly"
     if (featureId === "sgr.overline") return "Line drawn above the text"
     if (featureId === "sgr.bold") return "Text drawn bold"
     if (featureId === "sgr.faint") return "Text drawn dimmer"
@@ -1019,10 +1270,10 @@ function expectedNonReplyWords(opts: {
       return "Test image drawn inside the cell"
     }
     const clean = sanitizeCardText(expectedSentence)
-    return clean && clean.length <= 110 ? clean : `Screen shows ${featureName}`
+    return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Screen shows ${featureName}`
   }
   const clean = sanitizeCardText(expectedSentence)
-  return clean && clean.length <= 110 ? clean : `Terminal applies ${featureName}`
+  return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Terminal applies ${featureName}`
 }
 
 function buildStyle5Verdict(opts: {
@@ -1061,7 +1312,7 @@ function buildStyle5Verdict(opts: {
 
   const make = (text: string): CardVerdict => {
     const wc = countVerdictWords(text)
-    if (wc >= 3 && wc <= 6) return { tone, text }
+    if (wc >= 2 && wc <= 6) return { tone, text }
     return { tone, text: ok ? "Feature worked as expected" : "Feature did not work" }
   }
 
@@ -1074,7 +1325,7 @@ function buildStyle5Verdict(opts: {
     return make(ok ? "Parser stored expected state" : "Parser missed expected state")
   }
   if (assertionType === "process_environment") {
-    return make(ok ? "TERM_FEATURES was set" : "TERM_FEATURES was not set")
+    return make(ok ? "Variable was set" : "Not set")
   }
   if (assertionType === "clipboard") {
     return make(ok ? "Clipboard received the text" : "Clipboard did not change")
@@ -1083,6 +1334,12 @@ function buildStyle5Verdict(opts: {
     return make(ok ? "Desktop notification was delivered" : "No notification was delivered")
   }
   if (assertionType === "input_bytes") {
+    if (featureId.includes("paste")) {
+      return make(ok ? "Paste wrapped in markers" : "Paste arrived without markers")
+    }
+    if (featureId === "input.pixel-mouse") {
+      return make(ok ? "Mouse sent pixel coordinates" : "Sent cell coords, not pixels")
+    }
     return make(ok ? "Terminal sent expected input" : "Expected input not sent")
   }
   if (sawDecrqm && !isScreen) {
@@ -1129,6 +1386,345 @@ function buildStyle5Verdict(opts: {
   return make(ok ? "Feature worked as expected" : "Feature did not work")
 }
 
+function isInputBytesTeardownWrite(seq: string): boolean {
+  return /^(?:\x1b\[\?(?:1000|1002|1003|1004|1005|1006|1007|1015|1016|2004|1)l|\x1b\[>4;0m)+$/.test(seq)
+}
+
+function primaryInputEnablePattern(featureId: string): RegExp | undefined {
+  if (featureId === "input.pixel-mouse") return /\x1b\[\?1016h/
+  if (featureId.includes("paste")) return /\x1b\[\?2004h/
+  if (featureId === "input.button-event-mouse") return /\x1b\[\?1002h/
+  if (featureId === "input.kitty-click-events") return /click_events=1/
+  if (featureId === "input.modify-other-keys") return /\x1b\[>4;2m/
+  if (featureId === "input.modify-other-keys-3") return /\x1b\[>4;3m/
+  if (featureId === "input.urxvt-mouse") return /\x1b\[\?1015h/
+  if (featureId === "modes.mouse-all") return /\x1b\[\?1003h/
+  if (featureId === "modes.mouse-sgr") return /\x1b\[\?1006h/
+  if (featureId === "modes.mouse-tracking") return /\x1b\[\?1000h/
+  if (featureId === "modes.utf8-mouse-1005") return /\x1b\[\?1005h/
+  if (featureId === "modes.alt-scroll-1007") return /\x1b\[\?1007h/
+  if (featureId === "modes.focus-tracking") return /\x1b\[\?1004h/
+  if (featureId === "modes.application-keypad") return /\x1b=/
+  if (featureId === "reset.soft") return /\x1b\[!p/
+  return undefined
+}
+
+function buildInputBytesModel(opts: {
+  status: "supported" | "unsupported"
+  featureId: string
+  featureName: string
+  shortSubjectName?: string
+  declaredSequence?: string
+  exchange?: ExchangeInput
+  trimCode: (code: string) => { code: string; fullCode?: string }
+}): {
+  steps: CardStepRow[]
+  expected: CardExpectedRow
+  received: CardReceivedRow
+  verdict: CardVerdict
+  readouts: CardReadoutRow[]
+  stepsOmitted: boolean
+} {
+  const { status, featureId, featureName, shortSubjectName, declaredSequence, exchange, trimCode } = opts
+  const ok = status === "supported"
+  const tone: "ok" | "no" = ok ? "ok" : "no"
+  const events: Array<{ kind: "write" | "query"; sequence: string; match?: string[] | null; reason?: string }> = []
+  if (exchange?.events && exchange.events.length > 0) {
+    for (const ev of exchange.events) {
+      if (ev.kind === "write" || ev.kind === "query") {
+        events.push({ kind: ev.kind, sequence: ev.sequence ?? "", match: ev.match, reason: ev.reason })
+      }
+    }
+  } else if (exchange) {
+    for (const w of exchange.writes ?? []) events.push({ kind: "write", sequence: w })
+    for (const q of exchange.queries ?? []) {
+      events.push({ kind: "query", sequence: q.sequence, match: q.match, reason: q.reason })
+    }
+  }
+
+  const enableRe = primaryInputEnablePattern(featureId)
+  let enableIdx = -1
+  if (enableRe) {
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i]
+      if (ev?.kind === "write" && enableRe.test(ev.sequence)) {
+        enableIdx = i
+        break
+      }
+    }
+  }
+
+  // Last empty-sequence input read index (everything after it is teardown/cleanup).
+  let lastInputReadIdx = -1
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i]
+    if (ev?.kind === "query" && ev.sequence === "") lastInputReadIdx = i
+  }
+
+  // Pick the decisive target input read (first empty-sequence query after enabling the tested mode).
+  let targetEvent: { kind: "query"; sequence: string; match?: string[] | null; reason?: string } | undefined
+  if (enableIdx >= 0) {
+    for (let i = enableIdx + 1; i < events.length; i++) {
+      const ev = events[i]
+      if (!ev || ev.kind !== "query" || ev.sequence !== "") continue
+      // Skip a plain-"a" delivery control right after enable if another read follows (e.g., modify-other-keys).
+      const m0 = ev.match?.[0]
+      if (m0 === "a" && events.slice(i + 1).some((later) => later.kind === "query" && later.sequence === "")) {
+        continue
+      }
+      targetEvent = ev as { kind: "query"; sequence: string; match?: string[] | null; reason?: string }
+      break
+    }
+  }
+  if (!targetEvent) {
+    const emptyQueries = events.filter((e) => e.kind === "query" && e.sequence === "")
+    const nonControl = emptyQueries.filter((e) => e.match?.[0] !== "a")
+    targetEvent = (nonControl[nonControl.length - 1] ?? emptyQueries[emptyQueries.length - 1]) as
+      | { kind: "query"; sequence: string; match?: string[] | null; reason?: string }
+      | undefined
+  }
+
+  // Build concise steps: setup queries carry their own brief reply; skip teardown/cleanup writes.
+  const builtSteps: Array<CardStepRow & { isPrimary: boolean }> = []
+  const seenSetupQuery = new Set<string>()
+  const stopIdx = lastInputReadIdx >= 0 ? lastInputReadIdx : events.length - 1
+  for (let i = 0; i <= stopIdx; i++) {
+    const ev = events[i]
+    if (!ev) continue
+    if (ev.kind === "query") {
+      if (!ev.sequence) continue
+      const cmds = splitRawCommands(ev.sequence).filter((c) => !isDa1Fence(c.raw))
+      const mainCmd = cmds[0]
+      if (!mainCmd) continue
+      if (seenSetupQuery.has(mainCmd.raw)) continue
+      seenSetupQuery.add(mainCmd.raw)
+      const trimmed = trimCode(formatControlBytes(mainCmd.raw))
+      let words = explainSentCommand(mainCmd.raw, false, false).words
+      if (typeof ev.match?.[0] === "string" && ev.match[0].length > 0) {
+        const replyPart = splitRawCommands(ev.match[0]).find((p) => !isDa1Reply(p.raw))
+        if (replyPart) {
+          const replyWords = replyPart.isText ? `“${replyPart.raw}”` : explainReplyCommand(replyPart.raw).words
+          words = `${words} → ${replyWords}`
+        }
+      }
+      builtSteps.push({
+        num: builtSteps.length + 1,
+        code: trimmed.code,
+        ...(trimmed.fullCode ? { fullCode: trimmed.fullCode } : {}),
+        setup: true,
+        words,
+        isPrimary: false,
+      })
+      continue
+    }
+    if (!ev.sequence) continue
+    if (enableIdx >= 0 && i > enableIdx && isInputBytesTeardownWrite(ev.sequence)) continue
+    if (enableIdx >= 0 && i < enableIdx && isInputBytesTeardownWrite(ev.sequence)) continue
+    const isPrimary = enableIdx === i || (enableIdx < 0 && !isInputBytesTeardownWrite(ev.sequence))
+    for (const cmd of splitRawCommands(ev.sequence)) {
+      if (isDa1Fence(cmd.raw) || isResetOrClearCommand(cmd.raw) || cmd.raw === "\x1b[2K") continue
+      if (cmd.isText && !isPrimary) continue
+      if (/^\x1b\[\d+;\d+H$/.test(cmd.raw)) continue
+      const rawCode = cmd.isText ? cmd.raw.trim() : formatControlBytes(cmd.raw)
+      if (!rawCode) continue
+      const trimmed = trimCode(rawCode)
+      const words = explainSentCommand(cmd.raw, cmd.isText, false).words
+      if (builtSteps.some((s) => s.code === trimmed.code && s.words === words)) continue
+      builtSteps.push({
+        num: builtSteps.length + 1,
+        code: trimmed.code,
+        ...(trimmed.fullCode ? { fullCode: trimmed.fullCode } : {}),
+        ...(!isPrimary ? { setup: true } : {}),
+        words,
+        isPrimary,
+      })
+    }
+  }
+
+  let stepsOmitted = false
+  let kept = builtSteps
+  if (builtSteps.length > 5) {
+    const keep = new Set<number>()
+    builtSteps.forEach((s, idx) => {
+      if (s.isPrimary) keep.add(idx)
+    })
+    builtSteps.forEach((_, idx) => {
+      if (keep.size < 5 && !keep.has(idx)) keep.add(idx)
+    })
+    kept = builtSteps.filter((_, idx) => keep.has(idx))
+    stepsOmitted = true
+  }
+  const steps: CardStepRow[] = kept.map((r, i) => ({
+    num: i + 1,
+    code: r.code,
+    ...(r.fullCode ? { fullCode: r.fullCode } : {}),
+    ...(r.setup ? { setup: true } : {}),
+    words: r.words,
+  }))
+  if (steps.length === 0 && declaredSequence) {
+    const seqTrim = trimCode(formatControlBytes(declaredSequence))
+    steps.push({
+      num: 1,
+      code: seqTrim.code,
+      ...(seqTrim.fullCode ? { fullCode: seqTrim.fullCode } : {}),
+      words: `Send ${featureName} sequence`,
+    })
+  }
+  steps.push({
+    num: steps.length + 1,
+    code: "",
+    codeMuted: "no bytes",
+    words: inputProbeActionWords(featureId),
+  })
+
+  const expected = expectedReplyForProbe({
+    featureId,
+    featureName,
+    sawDecrqm: false,
+    saveRestore: false,
+    sentCommands: [],
+    queryCommands: [],
+    assertionType: "input_bytes",
+    trimCode,
+  })
+
+  // Clean trailing plain-"a" delivery control from combined escape replies (e.g. "\x1b[<0;31;11M\x1b[<0;31;11ma").
+  let rawReply =
+    typeof targetEvent?.match?.[0] === "string" && targetEvent.match[0].length > 0 ? targetEvent.match[0] : undefined
+  if (rawReply && rawReply.startsWith("\x1b") && rawReply.endsWith("a") && !rawReply.endsWith("\x1b[a")) {
+    rawReply = rawReply.slice(0, -1)
+  }
+
+  let received: CardReceivedRow
+  let customVerdict: string | undefined
+
+  if (!rawReply) {
+    received = {
+      codeMuted: "nothing",
+      words: featureId.includes("paste")
+        ? "No pasted text received"
+        : featureId.includes("mouse") || featureId.includes("click")
+          ? "No mouse report sent"
+          : "No input sequence received",
+    }
+    customVerdict = featureId.includes("mouse") || featureId.includes("click") ? "No report received" : "No input sent"
+  } else if (featureId === "input.pixel-mouse") {
+    const m = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/.exec(rawReply)
+    if (m && m[2] !== undefined && m[3] !== undefined) {
+      const t = trimCode(formatControlBytes(m[0]))
+      const x = m[2]
+      const y = m[3]
+      received = {
+        code: t.code,
+        ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+        words: ok ? `Position in pixels (${x},${y})` : `Position in cells (${x},${y}), not pixels`,
+      }
+      customVerdict = ok ? "Mouse sent pixel coordinates" : "Sent cell coords, not pixels"
+    } else {
+      const t = trimCode(formatControlBytes(rawReply))
+      received = {
+        code: t.code,
+        ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+        words: explainReplyCommand(rawReply).words,
+      }
+    }
+  } else if (featureId.includes("paste")) {
+    const wrapped = rawReply.includes("\x1b[200~") && rawReply.includes("\x1b[201~")
+    const formatted = formatControlBytes(rawReply).replace(/ESC \[ (20[01]) ~/g, "ESC [ $1~")
+    const t = truncateCode(formatted, 31)
+    received = {
+      code: t.text,
+      ...(t.truncated ? { fullCode: formatted } : {}),
+      words: wrapped ? "Paste wrapped in the markers" : "Paste arrived without markers",
+    }
+    customVerdict = wrapped ? "Paste wrapped in markers" : "Paste arrived without markers"
+  } else if (featureId === "input.button-event-mouse") {
+    const m = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/.exec(rawReply)
+    if (m) {
+      const t = trimCode(formatControlBytes(m[0]))
+      const btn = Number(m[1])
+      const isDrag = (btn & 32) !== 0
+      received = {
+        code: t.code,
+        ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+        words: isDrag ? `Drag motion at ${m[2]};${m[3]}` : `Click at ${m[2]};${m[3]}, no drag motion`,
+      }
+      customVerdict = ok ? "Drag motion was reported" : "No drag motion reported"
+    } else {
+      const t = trimCode(formatControlBytes(rawReply))
+      received = {
+        code: t.code,
+        ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+        words: explainReplyCommand(rawReply).words,
+      }
+    }
+  } else if (featureId.includes("modify-other-keys")) {
+    const t = trimCode(formatControlBytes(rawReply))
+    const isMod = /^\x1b\[27;\d+;\d+~$/.test(rawReply)
+    received = {
+      code: t.code,
+      ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+      words: isMod ? "Modified key sequence" : "Plain key, not modified sequence",
+    }
+    customVerdict = ok ? "Sent modified key sequence" : "Sent plain key instead"
+  } else {
+    // Pick the first control reply token if multiple events concatenated (e.g. press + release).
+    const parts = splitRawCommands(rawReply).filter((p) => !isDa1Reply(p.raw))
+    const primaryPart = parts[0]
+    const displayRaw = primaryPart ? primaryPart.raw : rawReply
+    const t = trimCode(formatControlBytes(displayRaw))
+    let words: string
+    if (primaryPart?.isText) {
+      words = `Plain text “${primaryPart.raw}”`
+    } else if (/^\x1b\[M/.test(displayRaw) && featureId === "modes.utf8-mouse-1005") {
+      words = ok ? "UTF-8 encoded mouse report" : "Byte-clamped mouse report"
+    } else if (featureId === "reset.soft" && displayRaw === "\x1bOA") {
+      words = "Still in application cursor mode"
+      customVerdict = "Soft reset left mode on"
+    } else if (featureId === "reset.soft" && displayRaw === "\x1b[A") {
+      words = "Normal cursor arrow key"
+      customVerdict = "Soft reset restored cursor mode"
+    } else {
+      words = capitalizeFirst(explainReplyCommand(displayRaw).words)
+    }
+    received = {
+      code: t.code,
+      ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+      words,
+    }
+  }
+
+  let verdict: CardVerdict = customVerdict
+    ? { tone, text: customVerdict }
+    : buildStyle5Verdict({
+        status,
+        featureId,
+        shortSubjectName,
+        assertionType: "input_bytes",
+        sawDecrqm: false,
+        saveRestore: false,
+        isScreen: false,
+        isAppLog: false,
+        hasEndMarkerProof: false,
+        hadNullQuery: !rawReply,
+        replyCount: rawReply ? 1 : 0,
+        sentCommands: [],
+      })
+  if (verdict.text.trim().toLowerCase() === received.words.trim().toLowerCase()) {
+    verdict = { tone: verdict.tone, text: ok ? "Matched expected" : "Did not match" }
+  }
+
+  const readout: CardReadoutRow = {
+    label: "Terminal sent",
+    text: received.words,
+    code: received.code ?? "",
+    ...(received.fullCode ? { fullCode: received.fullCode } : {}),
+    ...(received.codeMuted ? { codeMuted: received.codeMuted } : {}),
+    mark: tone,
+  }
+  return { steps, expected, received, verdict, readouts: [readout], stepsOmitted }
+}
+
 /**
  * Build the complete Style 5 card model for any decided or undecided cell (#38269, card-style5-rule-0010.md).
  */
@@ -1143,8 +1739,10 @@ export function buildCardModel(input: {
   readonly expectedSentence?: string
   readonly derived?: boolean
   readonly reason?: string
+  readonly untestableCause?: string
   readonly traceEvidence?: readonly string[]
   readonly logLine?: string
+  readonly clipboardRead?: string
   readonly exchange?: ExchangeInput
   readonly parserState?: unknown
   readonly captures?: TraceCaptures
@@ -1163,12 +1761,13 @@ export function buildCardModel(input: {
     expectedSentence,
     derived,
     reason,
+    untestableCause,
     traceEvidence,
     logLine,
+    clipboardRead,
     exchange,
     parserState,
     captures,
-    hasExpectedPicture,
     joinedFrom,
   } = input
 
@@ -1183,11 +1782,25 @@ export function buildCardModel(input: {
     }
   }
 
-  // Non-measured: Untestable
+  // Non-measured: Untestable (Rule 7: every Untestable card MUST give a specific reason)
   if (status === "untestable") {
-    const clean = reason?.replace(/^Untestable(?:\s*\([^)]+\))?:\s*/i, "").trim()
-    const ended = clean ? (/[.!?]$/.test(clean) ? clean : `${clean}.`) : "Could not be tested automatically here."
-    return { measured: false, steps: [], readouts: [], closing: `${ended} Not a no.`, truncated: false }
+    const cleanReview = reason
+      ?.replace(/^untestable by review \d{4}-\d{2}-\d{2}:\s*/i, "")
+      .replace(/^Untestable(?:\s*\([^)]+\))?:\s*/i, "")
+      .trim()
+    const causeSlug = untestableCause ?? inferUntestableCauseFallback(featureId, subjectKind)
+    const specific = cleanReview
+      ? capitalizeFirst(/[.!?]$/.test(cleanReview) ? cleanReview : `${cleanReview}.`)
+      : causeSlug
+        ? untestableCauseExplanation(featureId, subjectKind, causeSlug)
+        : ""
+    return {
+      measured: false,
+      steps: [],
+      readouts: [],
+      closing: specific ? `${specific} Not a no.` : "",
+      truncated: false,
+    }
   }
 
   // Non-measured: Derived unsupported (no panel; component renders parent link sentence)
@@ -1247,12 +1860,22 @@ export function buildCardModel(input: {
           },
         ]
       : [{ num: 1, code: "", codeMuted: "no bytes", words: "Feed test input to library parser" }]
-    const libSummary =
+    const rawLibSummary =
       sanitizeCardText(summarizeLibraryState(parserState, traceEvidence)) ?? "State recorded in parser buffer"
+    const isLibCprFenceOnly =
+      !featureTestsCursorPosition(featureId) &&
+      (/^(?:The library sent back\s+)?(?:ESC \[ \d+;\d+ R\s*)+$/i.test(rawLibSummary) ||
+        (typeof parserState === "string" && /^(?:\x1b\[\d+;\d+R)+$/.test(parserState)))
+    const libSummary = isLibCprFenceOnly
+      ? status === "unsupported"
+        ? "No reply (answered only the cursor fence)"
+        : "State recorded in parser buffer"
+      : rawLibSummary
     const expected: CardExpectedRow = {
       words: expectedNonReplyWords({
         featureId,
         featureName,
+        shortSubjectName,
         assertionType,
         subjectKind,
         isScreen: false,
@@ -1344,6 +1967,38 @@ export function buildCardModel(input: {
     }
   }
 
+  // Measured: Input-bytes probes (pixel mouse 1016, bracketed paste, modifyOtherKeys, mouse modes, etc.)
+  if (assertionType === "input_bytes") {
+    const built = buildInputBytesModel({
+      status,
+      featureId,
+      featureName,
+      shortSubjectName,
+      declaredSequence,
+      exchange,
+      trimCode,
+    })
+    const readout = built.readouts[0]
+    const contextNote = codeTruncated
+      ? "Long data is shortened with …; Details shows all of it."
+      : built.stepsOmitted
+        ? "Extra setup steps are omitted; Details shows all of them."
+        : undefined
+    return {
+      measured: true,
+      replyFamily: true,
+      steps: built.steps,
+      expected: built.expected,
+      received: built.received,
+      verdict: built.verdict,
+      readouts: built.readouts,
+      ...(readout ? { readout } : {}),
+      closing: built.verdict.text,
+      ...(contextNote ? { contextNote } : {}),
+      truncated: codeTruncated,
+    }
+  }
+
   // Flatten ordered writes & queries from trace exchange
   const rawSteps: Array<{ kind: "write" | "query"; sequence: string; match?: string[] | null }> = []
   if (exchange?.events && exchange.events.length > 0) {
@@ -1365,16 +2020,24 @@ export function buildCardModel(input: {
   const hasAppLogPlumbing = isAppLog || rawSteps.some((s) => /\x1b\](?:7654|7655);/.test(s.sequence))
   const isNonReplyStateProbe =
     assertionType === "clipboard" || assertionType === "notification" || assertionType === "buffer_state"
+  const isNonCursorOscProbe =
+    featureId.includes("osc52") ||
+    (featureId.startsWith("extensions.osc") && featureId !== "extensions.osc66-text-sizing")
+  const isTitleOrCwdCalibrationProbe =
+    featureId === "extensions.osc2-title" ||
+    featureId === "extensions.osc0-icon-title" ||
+    featureId === "extensions.osc1-icon" ||
+    featureId === "extensions.osc7-cwd"
   const da1Feature = isDa1Feature(featureId)
   const keepResets = featureTestsReset(featureId)
   const keepCursorMoves = featureTestsCursorPosition(featureId)
   const saveRestore = isSaveRestoreFeature(featureId)
 
   const hasScaffolding = rawSteps.some((s) => isCollectorScaffoldingWrite(s.sequence))
-  // Risk #1 invariant: never filter out any query step when trimming capture scaffolding (except CPR sync barriers on app-log/clipboard/state probes).
+  // Risk #1 invariant: never filter out any query step when trimming capture scaffolding (except CPR sync barriers on app-log/clipboard/non-cursor OSC/screen/state probes).
   let activeSteps = rawSteps.filter((s) => {
     if (
-      (hasAppLogPlumbing || isNonReplyStateProbe) &&
+      (hasAppLogPlumbing || isNonReplyStateProbe || isNonCursorOscProbe || isScreen) &&
       s.kind === "query" &&
       s.sequence === "\x1b[6n" &&
       !keepCursorMoves
@@ -1383,6 +2046,18 @@ export function buildCardModel(input: {
     }
     return s.kind === "query" || !isCollectorScaffoldingWrite(s.sequence)
   })
+
+  // Collapse calibration/control/negative/restore writes on window-title/icon/cwd probes (Rule 6)
+  if (isTitleOrCwdCalibrationProbe && activeSteps.length > 1) {
+    const negIdx = activeSteps.findIndex((s) => /\x1b\]7654;/.test(s.sequence))
+    const preNeg = negIdx >= 0 ? activeSteps.slice(0, negIdx) : activeSteps
+    const targetWrites = preNeg.filter(
+      (s) => s.kind === "write" && !/terminfo-(?:title|cwd)-control-/i.test(s.sequence),
+    )
+    const queriesOnly = activeSteps.filter((s) => s.kind === "query")
+    const chosen = targetWrites[0] ?? preNeg.find((s) => s.kind === "write")
+    activeSteps = [...(chosen ? [chosen] : []), ...queriesOnly]
+  }
 
   // Multi-frame 0/1/2 visual probes
   const w0Idx = activeSteps.findIndex((s) => s.kind === "write" && /^\x1b\[\d+;1H0$/u.test(s.sequence))
@@ -1412,9 +2087,9 @@ export function buildCardModel(input: {
 
   // Detect no-reply-with-DA1-end-marker pattern
   const hadNullQuery = activeSteps.some((s) => s.kind === "query" && s.match === null)
-  const da1FenceReply = activeSteps
-    .filter((s) => s.kind === "query" && typeof s.match?.[0] === "string" && isDa1Reply(s.match[0]))
-    .map((s) => s.match![0]!)[0]
+  const da1FenceReply = activeSteps.flatMap((s) =>
+    s.kind === "query" && typeof s.match?.[0] === "string" && isDa1Reply(s.match[0]) ? [s.match[0]] : [],
+  )[0]
   const hasEndMarkerProof =
     !da1Feature && hadNullQuery && (Boolean(da1FenceReply) || /device check/i.test(traceEvidence?.join(" ") ?? ""))
 
@@ -1498,8 +2173,8 @@ export function buildCardModel(input: {
       if (!isQuery && prev && !prev.isQuery && prev.code === trimmed.code && prev.words === words) continue
       if (
         !isQuery &&
-        (featureId.startsWith("sgr.") || isAppLog) &&
-        orderedSteps.some((r) => !r.isQuery && r.code === trimmed.code && r.words === words)
+        (featureId.startsWith("sgr.") || isAppLog || isTitleOrCwdCalibrationProbe) &&
+        orderedSteps.some((r) => !r.isQuery && r.words === words)
       ) {
         continue
       }
@@ -1564,14 +2239,7 @@ export function buildCardModel(input: {
   }))
 
   // Add non-byte action step with explicit muted "no bytes"
-  if (assertionType === "input_bytes") {
-    shownSteps.push({
-      num: shownSteps.length + 1,
-      code: "",
-      codeMuted: "no bytes",
-      words: inputProbeActionWords(featureId),
-    })
-  } else if (assertionType === "clipboard" && shownSteps.length > 0) {
+  if (assertionType === "clipboard" && shownSteps.length > 0) {
     shownSteps.push({
       num: shownSteps.length + 1,
       code: "",
@@ -1609,7 +2277,6 @@ export function buildCardModel(input: {
   const isReplyFamily =
     !isAppLog &&
     !isNonReplyStateProbe &&
-    assertionType !== "input_bytes" &&
     (querySteps.length > 0 ||
       replyParts.length > 0 ||
       hadNullQuery ||
@@ -1617,35 +2284,41 @@ export function buildCardModel(input: {
       assertionType === "query_reply")
 
   // Build Style 5 EXPECTED row
-  const expected: CardExpectedRow =
-    isReplyFamily || assertionType === "input_bytes"
-      ? expectedReplyForProbe({
+  const expected: CardExpectedRow = isReplyFamily
+    ? expectedReplyForProbe({
+        featureId,
+        featureName,
+        sawDecrqm,
+        decrqmMode,
+        saveRestore,
+        savedCupPos,
+        sentCommands,
+        queryCommands,
+        assertionType,
+        trimCode,
+      })
+    : {
+        words: expectedNonReplyWords({
           featureId,
           featureName,
-          sawDecrqm,
-          decrqmMode,
-          saveRestore,
-          savedCupPos,
-          sentCommands,
-          queryCommands,
+          shortSubjectName,
           assertionType,
-          trimCode,
-        })
-      : {
-          words: expectedNonReplyWords({
-            featureId,
-            featureName,
-            assertionType,
-            subjectKind,
-            isScreen,
-            isAppLog,
-            expectedSentence,
-            sentCommands,
-          }),
-        }
+          subjectKind,
+          isScreen,
+          isAppLog,
+          expectedSentence,
+          sentCommands,
+        }),
+      }
 
   // Build Style 5 RECEIVED row (and legacy readouts array for any helper callers)
-  const cleanEv = sanitizeCardText(traceEvidence?.[0])
+  const cleanEv0 = sanitizeCardText(traceEvidence?.[0])
+  const cleanEv1 = sanitizeCardText(traceEvidence?.[1])
+  const cleanEv = !isMethodDescription(cleanEv0)
+    ? cleanEv0
+    : cleanEv1 && !isMethodDescription(cleanEv1)
+      ? cleanEv1
+      : undefined
   const readouts: CardReadoutRow[] = []
   let received: CardReceivedRow
 
@@ -1682,7 +2355,7 @@ export function buildCardModel(input: {
         ...(fenceTrim.fullCode ? { fullCode: fenceTrim.fullCode } : {}),
         ...(!hasCaptures ? { mark: singleMark } : {}),
       })
-    } else if (hadNullQuery) {
+    } else if (hadNullQuery || status === "unsupported") {
       received = { codeMuted: "nothing", words: "No reply" }
       readouts.push({
         label: "Reply",
@@ -1692,19 +2365,19 @@ export function buildCardModel(input: {
         ...(!hasCaptures ? { mark: singleMark } : {}),
       })
     } else {
+      const fallbackCode = expected.code ? trimCode(expected.code) : { code: "ESC …" }
       received = {
-        ...(status === "unsupported" ? { codeMuted: "nothing" as const } : {}),
-        words: cleanEv
-          ? capitalizeFirst(cleanEv)
-          : status === "supported"
-            ? "Matched expected reply"
-            : "No matching reply",
+        code: fallbackCode.code,
+        ...(fallbackCode.fullCode ? { fullCode: fallbackCode.fullCode } : {}),
+        words: cleanEv ? capitalizeFirst(cleanEv) : "Matched expected reply",
       }
     }
   } else if (isScreen) {
     let words: string
-    if (cleanEv && !/shown below/i.test(cleanEv)) {
-      words = capitalizeFirst(cleanEv)
+    if (captures?.textCells) {
+      words = summarizeTextCellsReceived(captures)
+    } else if (cleanEv && !/shown below/i.test(cleanEv)) {
+      words = capitalizeFirst(cleanEv.replace(/^Those cells\b/i, "Screen cells").replace(/^It\b/i, "Screen"))
     } else if (
       status === "unsupported" &&
       (featureId === "extensions.iterm2-images" ||
@@ -1719,13 +2392,17 @@ export function buildCardModel(input: {
     }
     received = { words }
   } else if (assertionType === "clipboard") {
-    const clipEv = cleanEv && !/sent back ESC \[ \d+;\d+ R/i.test(cleanEv) ? cleanEv : undefined
+    const nonce =
+      status === "supported"
+        ? (clipboardRead ??
+          decodeOsc52NonceFromWrites(rawSteps.filter((s) => s.kind === "write").map((s) => s.sequence)))
+        : undefined
     received = {
-      words: clipEv
-        ? capitalizeFirst(clipEv)
+      words: nonce
+        ? `Clipboard: ${formatShortNonce(nonce)}`
         : status === "supported"
-          ? "Test text read back from clipboard"
-          : "Clipboard did not change",
+          ? "Clipboard held the test text"
+          : "Clipboard did not hold the test text",
     }
   } else if (assertionType === "notification") {
     received = {
@@ -1734,14 +2411,6 @@ export function buildCardModel(input: {
         : status === "supported"
           ? "Notification arrived at desktop service"
           : "No notification arrived",
-    }
-  } else if (assertionType === "input_bytes") {
-    received = {
-      words: cleanEv
-        ? capitalizeFirst(cleanEv)
-        : status === "supported"
-          ? "Expected escape sequence received"
-          : "No matching escape sequence sent",
     }
   } else {
     received = {
@@ -1753,7 +2422,7 @@ export function buildCardModel(input: {
     }
   }
 
-  const verdict = buildStyle5Verdict({
+  let verdict = buildStyle5Verdict({
     status,
     featureId,
     shortSubjectName,
@@ -1768,6 +2437,10 @@ export function buildCardModel(input: {
     replyCount: replyParts.length,
     sentCommands,
   })
+  // Rule 9: never repeat Received word-for-word in Verdict
+  if (verdict.text.trim().toLowerCase() === received.words.trim().toLowerCase()) {
+    verdict = { tone: verdict.tone, text: status === "supported" ? "Matched expected" : "Did not match" }
+  }
 
   const readout = readouts[0]
   const contextNote = codeTruncated
@@ -1777,6 +2450,7 @@ export function buildCardModel(input: {
       : undefined
   return {
     measured: true,
+    ...(isReplyFamily ? { replyFamily: true } : {}),
     steps: shownSteps,
     expected,
     received,
@@ -1849,6 +2523,9 @@ export function expectedVisualSpecimen(featureId: string): ExpectedVisual | unde
         text: sample,
         style: { background: "#2563eb", color: "#ffffff", padding: "1px 4px", borderRadius: "2px" },
       }
+    case "charsets.dec-line-drawing":
+    case "charsets.dec-special":
+      return { text: "┘┐┌└─│j", style: { letterSpacing: "0.02em" } }
     default:
       return undefined
   }

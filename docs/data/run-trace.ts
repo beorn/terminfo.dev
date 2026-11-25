@@ -79,6 +79,10 @@ interface TraceRecord {
   parserState?: unknown
   /** Allowlisted verbatim parser/app log line for report-reader probes (Style 5, #38269). */
   logLine?: string
+  /** Allowlisted probe-owned clipboard read-back nonce for OSC 52 write probes (Style 5, #38269). */
+  clipboardRead?: string
+  /** Closed reason slug explaining why an untestable cell could not be tested automatically (Style 5, #38269). */
+  untestableCause?: string
   /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
   captures?: TraceCaptures
   assertions: TraceAssertion[]
@@ -523,6 +527,117 @@ export function extractAppLogLine(
   return undefined
 }
 
+const CLIPBOARD_NONCE_RE = /^terminfo-osc52-[0-9a-f-]{36}$/
+
+/**
+ * Extract the probe's own verified OSC 52 write nonce from clipboard assertions (Style 5, #38269).
+ * Only emits when the read-back string matches our own UUID nonce grammar AND its base64 encoding was
+ * written by this probe, guaranteeing zero user clipboard data can ever leak.
+ */
+export function extractClipboardReadNonce(
+  assertions: ReadonlyArray<Pick<ProbeAssertion, "observed">>,
+  writes: readonly string[],
+): string | undefined {
+  for (const assertion of assertions) {
+    if (typeof assertion.observed !== "string") continue
+    const trimmed = assertion.observed.trim()
+    if (!CLIPBOARD_NONCE_RE.test(trimmed)) continue
+    const b64 = Buffer.from(trimmed, "utf8").toString("base64")
+    if (writes.some((w) => w.includes(b64))) return trimmed
+  }
+  return undefined
+}
+
+/**
+ * Classify a stored Untestable result's private free-text reason into a closed, privacy-safe slug
+ * so every Untestable card explains why it could not be tested automatically (Style 5, #38269).
+ */
+export function classifyUntestableCause(featureId: string, subjectKind: string, rawReason?: string): string {
+  const r = (rawReason ?? "").toLowerCase()
+  if (r.includes("permission")) return "permission"
+  if (r.includes("policy-refused")) return "policy-refused"
+  if (featureId === "extensions.osc555-flash") {
+    return subjectKind === "lib" ? "lib-no-window-flash" : "brief-flash"
+  }
+  if (r.includes("no permitted pointer route")) return "no-pointer-route"
+  if (r.includes("real-surface input injection")) {
+    if (featureId.includes("paste")) return "no-paste-injection"
+    if (featureId.includes("mouse") || featureId.includes("click") || featureId.includes("wheel")) {
+      return "no-pointer-injection"
+    }
+    return "no-key-injection"
+  }
+  if (r.includes("dbus_session_bus_address") || r.includes("session bus")) return "no-dbus-session"
+  if (r.includes("no forwarding control reaches the outer record")) return "mux-no-forwarding"
+  if (r.includes("multiplexer has no icon name")) return "mux-no-icon"
+  if (r.includes("ligature shaping is done by the host terminal") || r.includes("shapes no glyphs")) {
+    return "renderer-ligatures-only"
+  }
+  if (r.includes("reset.method") || r.includes("no reset() method")) return "backend-api-only"
+  if (r.includes("outside the text area") || r.includes("no progress display was observable")) {
+    return "progress-outside-grid"
+  }
+  if (r.includes("no mode query in this run got a decrpm reply")) return "no-decrqm-baseline"
+  if (r.includes("deccara produces no attribute change")) return "prereq-deccara-absent"
+  if (r.includes("kitty graphics transmit")) return "prereq-kitty-transmit-absent"
+  if (
+    r.includes("osc 4") &&
+    (r.includes("did not change") || r.includes("did not take") || r.includes("does not apply"))
+  ) {
+    return "prereq-color-setup-absent"
+  }
+  if (
+    r.includes("colour setup does not work") ||
+    r.includes("color setup does not work") ||
+    r.includes("osc 10 set did not change") ||
+    (r.includes("osc 12") && r.includes("unchanged"))
+  ) {
+    return "prereq-color-setup-absent"
+  }
+  if (r.includes("modes.alt-screen.enter")) return "prereq-alt-screen-absent"
+  if (r.includes("decset47") || r.includes("alternate content")) return "prereq-alt-screen-capture"
+  if (subjectKind === "lib") {
+    if (featureId === "device.term-features" || r.includes("spawns no application child")) return "lib-no-child-env"
+    if (featureId === "device.xtwinops-14" || r.includes("no pixel dimensions")) return "lib-no-window-pixels"
+    if (featureId === "device.primary-da" || featureId === "extensions.sixel-da1") return "lib-delegates-da1"
+    if (
+      r.includes("rendered image pixels") ||
+      r.includes("rendered pixels") ||
+      r.includes("timed animation") ||
+      r.includes("placeholder rendering")
+    ) {
+      return "lib-no-pixel-renderer"
+    }
+    if (r.includes("cell positions only") && featureId.includes("pixel-mouse")) return "lib-mouse-cells-only"
+    if (
+      r.includes("mouse encoder") ||
+      r.includes("key-event") ||
+      r.includes("paste encoder") ||
+      r.includes("keypad input")
+    ) {
+      return "lib-no-input-encoder"
+    }
+    if (featureId.includes("osc52") || r.includes("clipboard")) return "lib-no-clipboard"
+    if (featureId.includes("notif")) return "lib-no-notifications"
+    if (
+      r.includes("starting colour") ||
+      r.includes("initial foreground") ||
+      r.includes("initial background") ||
+      r.includes("initial cursor")
+    ) {
+      return "lib-no-default-color"
+    }
+    if (r.includes("application viewport")) return "lib-no-viewport"
+    if (featureId.startsWith("sgr.")) return "lib-no-cell-attr"
+    if (featureId.includes("icon")) return "lib-no-icon"
+    return "lib-no-readback"
+  }
+  if (r.includes("allow_remote_control=no")) return "remote-control-off-by-default"
+  if (r.includes("notify-on-command-finish")) return "notify-off-by-default"
+  if (r.includes("outer ") && r.includes("reads unsupported")) return "outer-terminal-unsupported"
+  return "no-readback-surface"
+}
+
 function traceRecord(
   version: Pick<CurrentSelectedVersion, "runId" | "subject" | "readArtifact" | "readTextArtifact">,
   result: ProbeResult,
@@ -581,6 +696,12 @@ function traceRecord(
   })
   const captures = DECIDED.has(result.status) ? extractCellCaptures(version, result, captureImages) : undefined
   const logLine = DECIDED.has(result.status) ? extractAppLogLine(assertions, featureId) : undefined
+  const clipboardRead =
+    result.status === "supported" && result.assertionType === "clipboard"
+      ? extractClipboardReadNonce(assertions, evidence.writes)
+      : undefined
+  const untestableCause =
+    result.status === "untestable" ? classifyUntestableCause(featureId, version.subject.kind, result.reason) : undefined
   return {
     ...(reasonCode !== undefined && { reason: reasonCode }),
     ...(sentences && { evidence: sentences }),
@@ -594,6 +715,8 @@ function traceRecord(
       )),
     ...(parserState !== undefined && { parserState }),
     ...(logLine !== undefined && { logLine }),
+    ...(clipboardRead !== undefined && { clipboardRead }),
+    ...(untestableCause !== undefined && { untestableCause }),
     ...(captures && { captures }),
     assertions: traced,
   }
