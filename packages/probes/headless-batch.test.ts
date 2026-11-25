@@ -6251,7 +6251,8 @@ test("records qualified SGR readback when the cell attribute is unreported", asy
       },
     },
   ])
-  expect(batch.results[0]?.reason).toBeUndefined()
+  // #33594: an Unsupported row states what it expected and what it observed.
+  expect(batch.results[0]?.reason).toMatch(/^Expected: .+\. Observed: /)
   expect(batch.results).toMatchObject([{ featureId: "sgr.faint", status: "unsupported" }])
   expect(batch.observations).toMatchObject([
     { featureId: "sgr.faint", outcome: "unsupported", assertionType: "query_reply" },

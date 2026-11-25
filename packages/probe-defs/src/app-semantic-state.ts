@@ -151,7 +151,14 @@ export function gradeAppSemanticState(reading: AppSemanticReading): ProbeCallbac
       return pending("App exact-command log controls failed in this row", true)
     }
     if (reading.target.reports.length > 0 && reading.target.reports.every((code) => code === reading.target.code)) {
-      return parserStateResult(false, "App reported this exact command as unhandled", reading)
+      // The raw report log does not explain the grade to a reader; this note does (#33594, @cto d03af07e).
+      return parserStateResult(
+        false,
+        "App reported this exact command as unhandled",
+        reading,
+        `App reported OSC ${reading.target.code} as unhandled ` +
+          `(made-up OSC ${reading.unknown.code} also reported unhandled; handled control applied)`,
+      )
     }
     return pending("App log has no qualified exact-command refusal; silence does not decide support")
   }
