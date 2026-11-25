@@ -18,6 +18,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { siteDistDir } from "./site-out.ts"
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -35,7 +36,7 @@ const RESET = "\x1b[0m"
 // ---------------------------------------------------------------------------
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const defaultDist = resolve(__dirname, "..", "docs", ".vitepress", "dist")
+const defaultDist = siteDistDir(resolve(__dirname, ".."))
 const distDir = resolve(process.argv[2] ?? defaultDist)
 
 if (!existsSync(distDir)) {

@@ -119,7 +119,7 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       mark: "ok",
     })
     expect(model.closing).toBe(
-      "Alacritty knows mode 1003 (reply 2 = known, currently off). We asked; we did not move the mouse.",
+      "Alacritty knows mode 1003, so an app can turn it on (it is off until one does). We did not move the mouse.",
     )
   })
 
@@ -138,7 +138,7 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     })
     expect(model.steps).toEqual([
       { num: 1, code: "ESC ]776; BEL", words: "Ask: how big is a cell?" },
-      { num: 2, code: "ESC [ c", words: "End marker" },
+      { num: 2, code: "ESC [ c", words: "End marker (always answered)" },
     ])
     expect(model.readout).toEqual({
       label: "Reply",
@@ -146,10 +146,12 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       code: "ESC [ ?62;4 c",
       mark: "no",
     })
-    expect(model.closing).toBe("It ignored the question and answered only the end marker.")
+    expect(model.closing).toBe(
+      "ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored. A supporting terminal answers ESC ] 776 ; <width> ; <height> BEL first.",
+    )
   })
 
-  it("formats Kitty overline screen+DECRQSS card, iTerm2 cursor note, and Cut (a) single-screen non-SGR card", () => {
+  it("formats Kitty overline screen+DECRQSS card, iTerm2 light-theme cell note, and Cut (a) single-screen non-SGR card", () => {
     const fakeCap = {
       observed: { url: `/api/v3/captures/${"a".repeat(64)}.png`, sha256: "a".repeat(64), width: 100, height: 24 },
     }
@@ -179,7 +181,7 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     ])
     expect(overline.readout).toEqual({
       label: "Reply",
-      text: "“Setting: plain (default)”",
+      text: "“Setting: plain (default)” (overline did not stick)",
       code: "ESC P 1 $ r m ESC \\",
     })
     expect(overline.closing).toBe("No line above the text.")
@@ -194,7 +196,8 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       captures: fakeCap,
       hasExpectedPicture: true,
     })
-    expect(iterm2.closing).toContain("cursor")
+    expect(iterm2.closing).toContain("stayed blank and did not change")
+    expect(iterm2.closing).toContain("xterm")
 
     const deccara = buildCardModel({
       status: "unsupported",

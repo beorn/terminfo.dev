@@ -364,15 +364,38 @@ function isDirectory(path: string): boolean {
   return stat !== undefined && stat.isDirectory()
 }
 
+const COMPRESSIBLE_EXT = /\.(?:html|js|mjs|css|json|svg|xml|txt)$/i
+
+function serveStaticFile(filePath: string, status: number, request: Request): Response {
+  const file = Bun.file(filePath)
+  const acceptEncoding = request.headers.get("accept-encoding") ?? ""
+  if (COMPRESSIBLE_EXT.test(filePath) && acceptEncoding.includes("gzip")) {
+    const raw = readFileSync(filePath)
+    if (raw.byteLength >= 1024) {
+      const headers = new Headers({
+        "content-type": file.type || "application/octet-stream",
+        "content-encoding": "gzip",
+        vary: "Accept-Encoding",
+        ...(filePath.includes("/assets/") ? { "cache-control": "public, max-age=31536000, immutable" } : {}),
+      })
+      if (request.method === "HEAD") return new Response(null, { status, headers })
+      const compressed = Bun.gzipSync(raw)
+      headers.set("content-length", String(compressed.byteLength))
+      return new Response(compressed, { status, headers })
+    }
+  }
+  const headers = new Headers()
+  if (filePath.includes("/assets/")) headers.set("cache-control", "public, max-age=31536000, immutable")
+  return new Response(request.method === "HEAD" ? null : file, { status, headers })
+}
+
 /** The read-only GET/HEAD handler over one dist directory; exported so the tests drive the real routing. */
 export function createPreviewHandler(distDir: string): (request: Request) => Response {
   const notFound = join(distDir, "404.html")
   return (request) => {
     if (request.method !== "GET" && request.method !== "HEAD") return new Response("read-only", { status: 405 })
     const resolved = resolveServedPath(distDir, new URL(request.url).pathname)
-    return resolved === null
-      ? new Response(Bun.file(notFound), { status: 404 })
-      : new Response(Bun.file(resolved), { status: 200 })
+    return resolved === null ? serveStaticFile(notFound, 404, request) : serveStaticFile(resolved, 200, request)
   }
 }
 

@@ -50,6 +50,11 @@ export function siteProbesPath(repoRoot: string, env: NodeJS.ProcessEnv = proces
   return resolve(dirname(siteAnalysisPath(repoRoot, env)), "probes.json")
 }
 
+/** Prepared lazy working-run history payload (preview-only), beside probes.json (#38451). */
+export function siteWorkingHistoryPath(repoRoot: string, env: NodeJS.ProcessEnv = process.env): string {
+  return resolve(dirname(siteAnalysisPath(repoRoot, env)), "working-history.json")
+}
+
 /**
  * The build marker's path: `<TERMINFO_SITE_OUT_DIR>/rebuild.json`, or `undefined` with no state root. It sits at the
  * root of the write tree, clear of `dist/`, `cache/`, `temp/` and `content/`, so no build step can clobber it.

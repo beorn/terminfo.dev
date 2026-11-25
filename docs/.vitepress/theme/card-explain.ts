@@ -66,7 +66,7 @@ export interface ExchangeInput {
   readonly events?: readonly TraceEvent[]
 }
 
-const MAX_CODE_CHARS = 22
+const MAX_CODE_CHARS = 40
 
 /** Truncate long inline escape payloads with "…" so every ESC stays aligned in the byte column. */
 export function truncateCode(code: string, max = MAX_CODE_CHARS): { text: string; truncated: boolean } {
@@ -1111,7 +1111,7 @@ export function buildCardModel(input: {
   }
 
   if (hasEndMarkerProof && replyParts.length === 0) {
-    shownSteps.push({ num: shownSteps.length + 1, code: "ESC [ c", words: "End marker" })
+    shownSteps.push({ num: shownSteps.length + 1, code: "ESC [ c", words: "End marker (always answered)" })
   }
 
   // Build blue ← readout row(s) — never an empty bytes cell (v16: bytes | "read directly" | "nothing")
@@ -1133,7 +1133,14 @@ export function buildCardModel(input: {
     const label = readbackSourceLabel(featureId, assertionType)
     if (replyParts.length > 0) {
       const combined = trimCode(replyParts.map((r) => r.code).join("  "))
-      const combinedWords = replyParts.map((r) => r.words).join(", ")
+      let combinedWords = replyParts.map((r) => r.words).join(", ")
+      if (
+        featureId === "sgr.overline" &&
+        status === "unsupported" &&
+        /Setting: plain \(default\)/i.test(combinedWords)
+      ) {
+        combinedWords = `${combinedWords} (overline did not stick)`
+      }
       // Risk #2: if multiple separate queries replied and we cannot tell which one caused an unsupported verdict,
       // omit the per-reply mark rather than guessing; on hybrid screen+query probes, keep the mark on the screen crop.
       const markAllowed = !hasCaptures && singleMark !== undefined && (queryReplyCount <= 1 || status === "supported")
@@ -1191,23 +1198,24 @@ export function buildCardModel(input: {
       const modeText = decrqmMode ? `mode ${decrqmMode}` : "this mode"
       const replyDetail =
         decrpmCode === "1"
-          ? " (reply 1 = known, currently on)"
+          ? ", so an app can use it (currently on)"
           : decrpmCode === "2"
-            ? " (reply 2 = known, currently off)"
+            ? ", so an app can turn it on (it is off until one does)"
             : decrpmCode === "3"
-              ? " (reply 3 = permanently on)"
-              : ""
+              ? " (permanently on)"
+              : ", so an app can turn it on"
       if (/mouse|1000|1002|1003|1005|1006|1015|1016/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not move the mouse.`
+        closing = `${who} knows ${modeText}${replyDetail}. We did not move the mouse.`
       } else if (/focus|1004/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not move focus.`
+        closing = `${who} knows ${modeText}${replyDetail}. We did not move focus.`
       } else if (/paste|2004/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not paste.`
+        closing = `${who} knows ${modeText}${replyDetail}. We did not paste.`
       } else {
-        closing = `${who} knows ${modeText}${replyDetail}. We asked; live behavior was not checked.`
+        closing = `${who} knows ${modeText}${replyDetail}. Live behavior was not checked.`
       }
     } else if (hasEndMarkerProof) {
-      closing = "It ignored the question and answered only the end marker."
+      closing =
+        "ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored."
     } else if (hadNullQuery) {
       closing = "No reply when asked about this mode."
     } else {
@@ -1245,7 +1253,7 @@ export function buildCardModel(input: {
       closing =
         status === "supported"
           ? "The expected image appeared on screen."
-          : "No image was drawn (a solid block at the left edge is the terminal's cursor)."
+          : "No image was drawn — the test cell stayed blank and did not change (a solid white block is a blank cell in a light-themed terminal like xterm)."
     } else if (!hasExpectedPicture && expectedSentence) {
       const outcome = status === "supported" ? "Screen matched." : "Screen did not match."
       closing = `${outcome} Expected: ${expectedSentence}`
@@ -1254,7 +1262,11 @@ export function buildCardModel(input: {
         status === "supported" ? "Matched the expected screen output." : "Did not match the expected screen output."
     }
   } else if (hasEndMarkerProof && replyParts.length === 0) {
-    closing = "It ignored the question and answered only the end marker."
+    const rightAnswerHint =
+      featureId === "extensions.osc776-cell-size"
+        ? " A supporting terminal answers ESC ] 776 ; <width> ; <height> BEL first."
+        : ""
+    closing = `ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored.${rightAnswerHint}`
   } else if (hadNullQuery && replyParts.length === 0 && status === "unsupported") {
     closing = "No reply came back."
   } else if (assertionType === "clipboard") {

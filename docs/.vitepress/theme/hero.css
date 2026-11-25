@@ -1,3 +1,10 @@
+/* #38451: Ensure VitePress primary brand button meets WCAG AA 4.5:1 contrast in light mode. */
+:root {
+  --vp-button-brand-bg: #2651c4;
+  --vp-button-brand-hover-bg: #1e40af;
+  --vp-button-brand-active-bg: #1e3a8a;
+}
+
 /* Keep scrolling home content behind the fixed navigation during VitePress's scroll transition. */
 .VPNav .VPNavBar.home {
   background-color: var(--vp-c-bg);

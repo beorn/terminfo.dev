@@ -13,7 +13,7 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilitySubjects, joinedAppCells, loadCurrentResults } from "./current-results.ts"
-import { DIFFERS_BY_CONTEXT, type AppCellStatus } from "./app-cells.ts"
+import { DIFFERS_BY_CONTEXT, isPublishedStatus, type AppCellStatus } from "./app-cells.ts"
 import {
   publicResults,
   type PublicProjection,
@@ -27,6 +27,7 @@ import { siteProbesPath } from "../../scripts/site-out.ts"
 import { publicFeatures } from "./public-features.ts"
 import { loadRunObservers, type RunObservers } from "./run-observers.ts"
 import { displayVersions } from "../.vitepress/theme/display-version.ts"
+import { contextLabel } from "../.vitepress/theme/context-label.ts"
 import { collectGarbage } from "../../packages/admin/corpus-placement.ts"
 import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@terminfo/probe-defs"
 import {
@@ -261,15 +262,22 @@ function loadBackendMeta(): Record<string, BackendMeta> {
 }
 
 /**
- * #30759: the client payload is exactly what `load()` returns — the full projection stays behind at
- * build time. One alias names it for both the loader and the `data` a page imports, so a field
- * `load()` drops can never stay advertised in the client-side type.
+ * #30759 + #38451: the client payload is exactly what `load()` returns — the full projection, dead
+ * `releaseTable`, and preview-only working-run history stay out of `theme.*.js`. Working-run history
+ * is emitted to `/api/v3/working-history.json` and fetched lazily by `RunHistory.vue` on expand.
  */
-export type ClientProbeData = Omit<ProbeData, "selected"> & {
+export type ClientProbeData = Omit<ProbeData, "selected" | "releaseTable"> & {
+  hasWorkingHistory?: boolean
   workingHistory?: ClientWorkingView[]
   /** #33037: each distinct historical status map once; a history context names its map by `statesRef`. */
   workingStates?: Array<Readonly<Record<string, FeatureResultStatus>>>
   workingOriginals?: Record<string, Array<PublicRunMetadata & { states: Record<string, ProbeStatus> }>>
+}
+
+export interface WorkingHistoryPayload {
+  workingHistory: ClientWorkingView[]
+  workingStates: Array<Readonly<Record<string, FeatureResultStatus>>>
+  workingOriginals: Record<string, Array<PublicRunMetadata & { states: Record<string, ProbeStatus> }>>
 }
 
 export type ClientWorkingContext = Omit<WorkingContext, "states"> & { statesRef?: number }
@@ -441,22 +449,103 @@ export function loadFullProbes(): ProbeData {
   return result
 }
 
-/** #30759: the full projection stays behind at build time; the client payload omits it. */
-export function loadClientProbes(): ClientProbeData {
-  const { selected, ...client } = loadFullProbes()
+function compactClientSelection(selectedByBackend: ProbeData["selectedByBackend"]): ProbeData["selectedByBackend"] {
+  return Object.fromEntries(
+    Object.entries(selectedByBackend).map(([key, entry]) => {
+      const sel = entry.selected
+      const contextCount = sel.contexts?.length ?? 0
+      const featureResults = Object.fromEntries(
+        Object.entries(sel.featureResults).map(([fid, cell]) => {
+          const joined = cell.joined
+          let compactJoined = joined
+          if (joined) {
+            const uniform = new Set(joined.from.map((g) => g.status)).size === 1
+            if (
+              joined.status !== DIFFERS_BY_CONTEXT &&
+              uniform &&
+              contextCount > 0 &&
+              joined.from.length === contextCount
+            ) {
+              compactJoined = undefined
+            } else {
+              compactJoined = {
+                status: joined.status,
+                from: joined.from.map((g) => ({ context: contextLabel(g.context), status: g.status })),
+              }
+            }
+          }
+          // Keep only fields consumed by client components (ResultEvidenceCell, release-scope, row-facts).
+          const compact = {
+            featureId: cell.featureId,
+            status: cell.status,
+            origin: cell.origin,
+            ...(cell.reason !== undefined ? { reason: cell.reason } : {}),
+            ...(cell.assertionType !== undefined ? { assertionType: cell.assertionType } : {}),
+            ...(cell.measuredAt !== undefined ? { measuredAt: cell.measuredAt } : {}),
+            ...(cell.suiteId !== undefined ? { suiteId: cell.suiteId } : {}),
+            ...(cell.derived !== undefined ? { derived: cell.derived } : {}),
+            ...(cell.declared !== undefined ? { declared: cell.declared } : {}),
+            ...(compactJoined !== undefined ? { joined: compactJoined } : {}),
+          }
+          return [fid, compact]
+        }),
+      )
+      return [
+        key,
+        {
+          ...entry,
+          selected: {
+            ...sel,
+            featureResults,
+          },
+        },
+      ]
+    }),
+  ) as ProbeData["selectedByBackend"]
+}
+
+/** #30759 + #38451: build the compact client payload and optional lazy working-history sidecar in one pass. */
+export function loadClientProbesWithHistory(): {
+  client: ClientProbeData
+  workingHistoryPayload: WorkingHistoryPayload | null
+} {
+  const { selected, releaseTable: _unusedReleaseTable, ...rawClient } = loadFullProbes()
+  const compactClient: ClientProbeData = {
+    ...rawClient,
+    selectedByBackend: compactClientSelection(rawClient.selectedByBackend),
+  }
   const workingHistory = siteWorkingHistory(contentDir)
-  if (!workingHistory) return client
-  // Reuse the projection already built once; never reread the corpus or carry full evidence per feature.
+  if (!workingHistory) return { client: compactClient, workingHistoryPayload: null }
+  // Reuse the projection already built once; emit to /assets/working-history.json instead of theme.*.js.
+  // Normalize undecided internal statuses ("probe-todo", "probe-invalid", "probe-conflict") to "no-result"
+  // so no public JSON file carries internal undecided statuses (@cpo/term f16a5a52 Q4, check-private-leak).
+  const sanitizeStatus = <T extends string>(status: T): T => (isPublishedStatus(status) ? status : "no-result") as T
   const workingOriginals = Object.fromEntries(
     Object.entries(selected.history).map(([key, originals]) => [
       key,
       originals.map(({ results, ...original }) => ({
         ...original,
-        states: Object.fromEntries(results.map((result) => [result.featureId, result.status])),
+        states: Object.fromEntries(results.map((result) => [result.featureId, sanitizeStatus(result.status)])),
       })),
     ]),
   )
-  return { ...client, ...shareStates(workingHistory), workingOriginals }
+  const shared = shareStates(workingHistory)
+  const sanitizedWorkingStates = (shared.workingStates ?? []).map((states) =>
+    Object.fromEntries(Object.entries(states).map(([fid, st]) => [fid, sanitizeStatus(st)])),
+  )
+  return {
+    client: { ...compactClient, hasWorkingHistory: true },
+    workingHistoryPayload: {
+      workingHistory: shared.workingHistory ?? [],
+      workingStates: sanitizedWorkingStates,
+      workingOriginals,
+    },
+  }
+}
+
+/** #30759: the full projection stays behind at build time; the client payload omits it. */
+export function loadClientProbes(): ClientProbeData {
+  return loadClientProbesWithHistory().client
 }
 
 export default {

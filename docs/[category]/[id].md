@@ -44,17 +44,26 @@ const headlessResults = backendResults.filter(r => r.type === 'lib')
 // the evidence cell stays at the row's end.
 const facts = rowFacts(data)
 function resultRows(rows) {
+  const baseNameCounts = new Map()
+  for (const r of rows) {
+    const base = facts.name(r.name)
+    baseNameCounts.set(base, (baseNameCounts.get(base) ?? 0) + 1)
+  }
   return rows.map(r => {
     const category = facts.categoryOf(r.name, p.featureId)
+    const base = facts.name(r.name)
+    const platform = facts.platform(r.name)
+    const shortOs = platform === 'macOS' ? 'Mac' : platform
+    const displayName = shortOs && (baseNameCounts.get(base) ?? 0) > 1 ? `${base} (${shortOs})` : base
     return {
       id: r.name,
       anchor: termAnchorId(r.slug),
-      name: facts.name(r.name),
+      name: displayName,
       href: '/terminals/' + r.slug,
       mark: category.mark,
       tone: category.style,
       icon: facts.icon(r.name),
-      iconTitle: facts.platform(r.name),
+      iconTitle: platform,
       note: r.note || undefined,
     }
   })
@@ -120,9 +129,8 @@ function termTooltip(r) {
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </div>
-
-<p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> terminals tested<span v-if="Number(p.noResultCount) > 0" class="feature-score-pending"> ({{ p.noResultCount }} without a result yet)</span>
+<p v-else-if="Number(p.totalCount) > 0" class="feature-score">
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> with a result<span v-if="Number(p.noResultCount) > 0" class="feature-score-pending">; {{ p.noResultCount }} not run yet</span>
 </p>
 <p v-else class="feature-score">No results yet for this feature.</p>
 
@@ -195,7 +203,7 @@ function termTooltip(r) {
 
 </div>
 
-<RunHistory v-if="data.workingHistory" :history="data.workingHistory" :states="data.workingStates" :originals="data.workingOriginals" :feature-id="p.featureId" />
+<RunHistory v-if="data.hasWorkingHistory || data.workingHistory" :available="data.hasWorkingHistory" :history="data.workingHistory" :states="data.workingStates" :originals="data.workingOriginals" :feature-id="p.featureId" />
 
 <style>
 .feature-page {

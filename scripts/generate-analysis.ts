@@ -12,7 +12,7 @@
  *   bun scripts/generate-analysis.ts --dry-run    # Print what would be generated
  *   bun scripts/generate-analysis.ts --validate   # Validate existing against data
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
@@ -39,7 +39,7 @@ import {
   loadTerminals as loadTerminalCatalog,
   subjectLabel,
 } from "@terminfo/catalog"
-import { siteAnalysisPath, siteProbesPath } from "./site-out.ts"
+import { siteAnalysisPath, siteProbesPath, siteWorkingHistoryPath } from "./site-out.ts"
 import { createBuildMetadata } from "./build-metadata.ts"
 import { selectedSiteWorkingRun } from "../docs/data/working-runs.ts"
 import { publicFeatures } from "../docs/data/public-features.ts"
@@ -735,7 +735,10 @@ function generateFeatureAnalysis(
   let unsupported = 0
   let total = 0
   let noResult = 0
+  let appSupported = 0
+  let appTotal = 0
   const unsupportedNames: string[] = []
+  const supportedNonAppNames: string[] = []
 
   for (const stats of allStats.values()) {
     if (!(featureId in stats.results)) continue
@@ -745,7 +748,12 @@ function generateFeatureAnalysis(
       continue
     }
     total++
-    if (status === "supported") supported++
+    if (stats.type === "term") appTotal++
+    if (status === "supported") {
+      supported++
+      if (stats.type === "term") appSupported++
+      else supportedNonAppNames.push(stats.name)
+    }
     if (status === "unsupported") {
       unsupported++
       unsupportedNames.push(stats.name)
@@ -759,16 +767,19 @@ function generateFeatureAnalysis(
     }
   }
 
-  // Support summary (#37341 D2 + #37631: plain wording, counts never a percentage)
-  const pendingSuffix = noResult > 0 ? ` (${noResult} without a result yet)` : ""
+  // Support summary (#37341 D2 + #37631 + #38269 Round 2: plain wording, no "21 of 21 (2 without a result)" contradiction)
+  const pendingSuffix = noResult > 0 ? `; ${noResult} not run yet` : ""
   if (supported === total) {
-    parts.push(`Supported by <strong>all ${total}</strong> terminals tested${pendingSuffix}`)
+    parts.push(`Supported by <strong>all ${total}</strong> with a result${pendingSuffix}`)
   } else if (supported === 0) {
-    parts.push(`Not supported by any of the <strong>${total}</strong> terminals tested${pendingSuffix}`)
-  } else {
+    parts.push(`Not supported by any of the <strong>${total}</strong> with a result${pendingSuffix}`)
+  } else if (appTotal > 0 && appSupported === 0 && supportedNonAppNames.length > 0) {
+    const label = supportedNonAppNames.length === 1 ? "headless backend" : "headless backends"
     parts.push(
-      `Supported by <strong>${supported}</strong> of <strong>${total}</strong> terminals tested${pendingSuffix}`,
+      `Not supported by any of the <strong>${appTotal}</strong> terminal apps (supported by <strong>${supported}</strong> ${label}: ${supportedNonAppNames.join(", ")})${pendingSuffix}`,
     )
+  } else {
+    parts.push(`Supported by <strong>${supported}</strong> of <strong>${total}</strong> with a result${pendingSuffix}`)
   }
 
   // Who doesn't support it
@@ -1457,15 +1468,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
     // Write output
     mkdirSync(dirname(outputPath), { recursive: true })
-    const { loadClientProbes } = await import("../docs/data/probes.data.ts")
+    const { loadClientProbesWithHistory } = await import("../docs/data/probes.data.ts")
+    const { client, workingHistoryPayload } = loadClientProbesWithHistory()
     const probesPath = siteProbesPath(root)
     const probes = {
       sourceCommit: createBuildMetadata(root).sourceCommit,
       workingRunId: selectedSiteWorkingRun()?.id ?? null,
-      data: loadClientProbes(),
+      data: client,
     }
     writeFileSync(probesPath, JSON.stringify(probes) + "\n")
     console.log(`Generated ${probesPath}`)
+    const whPath = siteWorkingHistoryPath(root)
+    if (workingHistoryPayload !== null) {
+      writeFileSync(whPath, JSON.stringify(workingHistoryPayload) + "\n")
+      console.log(`Generated lazy ${whPath}`)
+    } else if (existsSync(whPath)) {
+      rmSync(whPath, { force: true })
+    }
     writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
     console.log(`Generated ${outputPath}`)
     console.log(

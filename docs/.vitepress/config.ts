@@ -1,11 +1,11 @@
 import { defineConfig, type HeadConfig } from "vitepress"
-import { readFileSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteWorkingRun, workingRunStamp } from "../data/working-runs"
-import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
+import { siteCacheDir, siteDistDir, siteWorkingHistoryPath } from "../../scripts/site-out"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
@@ -333,14 +333,18 @@ export default defineConfig({
           "Can your terminal do that? Look up 270+ features (colors, links, images, mouse, keys) and see which terminals support each, tested in the terminal itself.",
       }),
     ],
-    [
-      "script",
-      {
-        defer: "",
-        src: "https://static.cloudflareinsights.com/beacon.min.js",
-        "data-cf-beacon": '{"token": "f0f336a13fd042c992dbd2c182759cdb"}',
-      },
-    ],
+    ...(buildMetadata.context === "local"
+      ? []
+      : [
+          [
+            "script",
+            {
+              defer: "",
+              src: "https://static.cloudflareinsights.com/beacon.min.js",
+              "data-cf-beacon": '{"token": "f0f336a13fd042c992dbd2c182759cdb"}',
+            },
+          ] as HeadConfig,
+        ]),
   ],
 
   markdown: {
@@ -696,6 +700,13 @@ export default defineConfig({
     // snapshots; VitePress build owns the ignored deploy artifact.
     const { dataPath } = generateApi(siteConfig.outDir)
     console.log(`[API] Generated ${dataPath}`)
+    const whSrc = siteWorkingHistoryPath(join(docsDir, ".."))
+    if (existsSync(whSrc)) {
+      const whDest = join(siteConfig.outDir, "assets", "working-history.json")
+      mkdirSync(dirname(whDest), { recursive: true })
+      copyFileSync(whSrc, whDest)
+      console.log(`[Assets] Emitted lazy ${whDest}`)
+    }
     const metadataJson =
       JSON.stringify({ ...buildMetadata, ...(workingRun && { workingRun: workingRunStamp(workingRun) }) }, null, 2) +
       "\n"

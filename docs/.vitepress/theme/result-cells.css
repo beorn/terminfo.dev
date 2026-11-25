@@ -858,7 +858,8 @@
   border-radius: 6px;
   padding: 11px 13px;
   font-family: var(--vp-font-family-mono);
-  font-size: 0.85rem;
+  font-size: 1rem;
+  line-height: 1.35;
   color: var(--rc-cell-fg);
   min-height: 60px;
   display: flex;

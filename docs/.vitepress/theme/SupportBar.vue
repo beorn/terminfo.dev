@@ -299,22 +299,28 @@ onBeforeUnmount(close)
     @keydown.esc="onEscape"
   >
     <span v-if="readout" class="sr-only">{{ label }}: {{ readout }}</span>
-    <div class="support-bar-track">
-      <button
-        v-for="segment in segments"
-        :key="segment.id"
-        type="button"
-        class="support-bar-seg"
-        :class="'bar-' + segment.style"
-        :data-category="segment.id"
-        :style="{ width: width(segment.count), ...(fill && segment.id === 'supported' ? { background: fill } : {}) }"
-        :aria-label="`${label}: ${segment.label} ${segment.count}`"
-        :aria-expanded="open && tab === segment.id"
-        @mouseenter="show(segment.id, 'hover', $event.currentTarget as HTMLElement)"
-        @focus="show(segment.id, 'focus', $event.currentTarget as HTMLElement)"
-        @click="show(segment.id, 'tap', $event.currentTarget as HTMLElement)"
-      />
-    </div>
+    <button
+      type="button"
+      class="support-bar-trigger"
+      :aria-label="readout ? `${label}: ${readout}` : `${label}: view support breakdown`"
+      :aria-expanded="open"
+      @focus="show(segments[0]?.id ?? 'supported', 'focus', $event.currentTarget as HTMLElement)"
+      @click="show(segments[0]?.id ?? 'supported', 'tap', $event.currentTarget as HTMLElement)"
+    >
+      <span class="support-bar-track">
+        <span
+          v-for="segment in segments"
+          :key="segment.id"
+          class="support-bar-seg"
+          :class="'bar-' + segment.style"
+          :data-category="segment.id"
+          :style="{ width: width(segment.count), ...(fill && segment.id === 'supported' ? { background: fill } : {}) }"
+          :title="`${segment.label}: ${segment.count}`"
+          @mouseenter="show(segment.id, 'hover', $event.currentTarget as HTMLElement)"
+          @click.stop="show(segment.id, 'tap', $event.currentTarget as HTMLElement)"
+        />
+      </span>
+    </button>
     <Teleport to="body">
       <div
         v-if="open"

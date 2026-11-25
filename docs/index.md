@@ -223,11 +223,11 @@ function backendTooltip(name) {
 }
 </script>
 
-<div v-if="sortedBackends.length === 0" class="no-data">
+<main v-if="sortedBackends.length === 0" class="no-data">
   <p>No current or historical measurements are available yet.</p>
-</div>
+</main>
 
-<div v-else>
+<main v-else>
 
 ## Terminal Applications {#terminal-applications}
 
@@ -474,7 +474,7 @@ measure pass-through fidelity. A multiplexer pass means the escape sequence was 
 relayed to the underlying terminal. Failures indicate sequences that the multiplexer intercepts,
 strips, or mishandles.
 
-</div>
+</main>
 
 <style>
 /* Explore card grid */

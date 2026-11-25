@@ -116,14 +116,29 @@
   position: relative;
   min-width: 0;
 }
+.support-bar-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 24px;
+  margin: 0;
+  padding: 7px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  appearance: none;
+}
 .support-bar-track {
   display: flex;
+  width: 100%;
   height: 10px;
   overflow: hidden;
   border-radius: 3px;
   background: var(--vp-c-bg-soft);
 }
 .support-bar-seg {
+  display: block;
   flex: none;
   min-width: 0;
   height: 100%;
@@ -133,8 +148,6 @@
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-  touch-action: manipulation;
-  appearance: none;
 }
 /* Unified verdict palette (#37631): Supported green, Unsupported red, Untestable amber,
    No result yet hollow/hatched empty track, Differs indigo. */
