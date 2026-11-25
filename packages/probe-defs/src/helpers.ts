@@ -1515,6 +1515,8 @@ const SGR_ATTRIBUTE_READER_ABSENCE: Readonly<Record<string, string>> = {
   "alacritty:0.26.0:overline": "alacritty_terminal 0.26.0 public term::cell::Flags has no overline flag",
   "kitty:0.49.2:overline": "Kitty 0.49.2 public cursor has no overline field or SGR 53 reader",
   "kitty:0.49.2:hidden": "Kitty 0.49.2 public cursor has no hidden field or SGR 8 reader",
+  "kitty:0.51.1:overline": "Kitty 0.51.1 public cursor has no overline field or SGR 53 reader",
+  "kitty:0.51.1:hidden": "Kitty 0.51.1 public cursor has no hidden field or SGR 8 reader",
   "libvterm:0.3.3:overline":
     "libvterm 0.3.3 public VTermScreenCellAttrs has no overline attribute; SGR 53 has only a debug log, not a public rejection report",
   "ghostty:0.4.0:overline":

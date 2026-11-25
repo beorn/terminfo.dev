@@ -870,6 +870,13 @@ export const CLIPBOARD_READ_DEFAULTS: Readonly<
         "kitty v0.49.2 kitty/options/definition.py:3121: clipboard_control defaults to " +
         "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
     },
+    {
+      posture: "ask",
+      version: "0.51.1",
+      source:
+        "kitty v0.51.1 kitty/options/definition.py:3243-3251: clipboard_control defaults to " +
+        "'write-clipboard write-primary read-clipboard-ask read-primary-ask' (\"ask for permission when a program tries to read\")",
+    },
   ],
   ghostty: [
     {

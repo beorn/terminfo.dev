@@ -1575,7 +1575,7 @@ test("reader capability rows do not become declarations or lend their identity t
   expect(screenDeclared["extensions.osc0-icon-title"]).toMatch(/multiplexer has no icon name/)
   expect(screenDeclared["extensions.osc1-icon"]).toMatch(/multiplexer has no icon name/)
   for (const subject of [
-    { ...screen, version: "5.0.3" },
+    { ...screen, version: "5.0.99" },
     { ...screen, os: "darwin" },
     { ...screen, kind: "term" as const },
   ]) {
