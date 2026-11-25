@@ -18,13 +18,14 @@ import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
-/** Bundle substrings measured in the reviewed Cursor 3.30.14 darwin-arm64 build (commit 5f54c817,
- * zip SHA-256 09080904…45af, pinned in .github/workflows/macos-measurement.yml), and re-measured on
- * the installed app on 2026-11-18: six of the nine pins are unchanged from the 3.25.9 review, the
- * main-process storage reader renamed its join helper from L to fe, and the two workbench storage pins
- * now name the application key
- * as one literal (the bis/zfe pair is gone) and pass it by its new binding at the four-argument loadPersistentStorage call, so the pair still chains the key to the application-scope load. Paths are
- * relative to the app bundle; `because` names what the launch relies on. */
+/** Bundle substrings measured in the reviewed Cursor 3.32.4 darwin-arm64 build (commit 0925c4b8,
+ * zip SHA-256 2d15a199…64ae, pinned in .github/workflows/macos-measurement.yml), measured directly
+ * from the downloaded darwin-arm64 zip on 2026-11-24: the first four pins are unchanged from
+ * 3.30.14, the main-process storage reader renamed its join helper from fe to he, and the four
+ * workbench storage pins renamed the application-user key binding from Che to VF and the
+ * cmdLineHookState local from v to g while keeping the exact same storage path, scope (-1),
+ * key literal, and toast guard. Paths are relative to the app bundle; `because` names what the
+ * launch relies on. */
 export const CURSOR_BUNDLE_PINS = [
   // The main process argv schema accepts the flag, so it reaches the window's environment.
   {
@@ -55,32 +56,32 @@ export const CURSOR_BUNDLE_PINS = [
   {
     file: "Contents/Resources/app/out/main.js",
     substring:
-      'getGlobalStoragePath(){return fe(this.environmentMainService.userDataPath,"User","globalStorage","state.vscdb")}',
+      'getGlobalStoragePath(){return he(this.environmentMainService.userDataPath,"User","globalStorage","state.vscdb")}',
     because: "the seeded application storage may not reach the command-line toast",
   },
   // The application-user record is stored under this key...
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
     substring:
-      'Che="src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"',
+      'VF="src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"',
     because: "the seeded application storage may not reach the command-line toast",
   },
   // ...in application scope (-1)...
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
     substring:
-      "[this.applicationUserPersistentStorage,this._setApplicationUserPersistentStorage]=this.loadPersistentStorage(-1,0,Che,",
+      "[this.applicationUserPersistentStorage,this._setApplicationUserPersistentStorage]=this.loadPersistentStorage(-1,0,VF,",
     because: "the seeded application storage may not reach the command-line toast",
   },
   // ...and the command-line prompt reads cmdLineHookState from it and is skipped when it is ignored.
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
-    substring: "v=this.reactiveStorageService.applicationUserPersistentStorage.cmdLineHookState",
+    substring: "g=this.reactiveStorageService.applicationUserPersistentStorage.cmdLineHookState",
     because: "the seeded cmdLineHookState may not stop the command-line toast",
   },
   {
     file: "Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js",
-    substring: "!this.nativeWorkbenchEnvironmentService.isGlass&&!v.ignored&&v.timesShown<2",
+    substring: "!this.nativeWorkbenchEnvironmentService.isGlass&&!g.ignored&&g.timesShown<2",
     because: "the seeded cmdLineHookState may not stop the command-line toast",
   },
 ] as const
