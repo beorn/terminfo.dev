@@ -710,8 +710,8 @@ it("34753 a streaming daemon's keepalive never reaches the parsed record", async
   }
 }, 30_000)
 
-// A failed response is evidence, not a collected run record: invalid UTF-8 must not discard its original bytes.
-it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
+// A failed response is evidence, not a collected run record: invalid UTF-8 or malformed JSON must not discard its original bytes.
+it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from("{malformed-json}\r\n"), Buffer.from([255, 0, 10])])(
   "retains failed daemon HTTP originals before rejecting collection (30412): %j",
   async (bytes) => {
     root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
@@ -949,4 +949,58 @@ it("retains pending results without review snapshots", () => {
     ),
   ).toBe(false)
   expect(() => saveDaemonProbeRun(run, root!)).toThrow()
+})
+
+// #34527: capture preflight missing executable must surface as a named refusal carrying the executable,
+// the searched PATH, and "nothing measured" (plus captureCommand), never an opaque HTTP 500 envelope.
+it("34527 surfaces a named preflight missing-executable refusal with searched PATH and nothing measured", async () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const runId = "f".repeat(32)
+  const refusalPayload = {
+    name: "CapturePreflightMissingExecutable",
+    error: 'Capture preflight missing executable "magick" in PATH "/usr/bin:/bin"; nothing measured',
+    captureCommand: {
+      file: "magick",
+      args: ["-version"],
+      searchedPath: "/usr/bin:/bin",
+      nothingMeasured: true,
+      stdoutBase64: "",
+      stderrBase64: "",
+      code: "ENOENT",
+      signal: null,
+      killed: false,
+    },
+  }
+  server = createServer((req, res) => {
+    if (req.url === "/info") {
+      res.end(JSON.stringify({ runId, pid: 222, terminal: "terminal-app", terminalVersion: "2.15" }))
+      return
+    }
+    res.statusCode = 500
+    res.end(JSON.stringify(refusalPayload))
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("fixture did not bind")
+  const failure = await requestDaemonProbe({
+    runId,
+    pid: 222,
+    port: address.port,
+    token: "fixture-token",
+    terminal: "terminal-app",
+    terminalVersion: "2.15",
+  }).then(
+    () => {
+      throw new Error("Expected requestDaemonProbe to reject")
+    },
+    (error: unknown) => error as Error & { captureCommand?: unknown },
+  )
+  expect(failure).toBeInstanceOf(Error)
+  expect(failure.name).toBe("CapturePreflightMissingExecutable")
+  expect(failure.message).toContain('"magick"')
+  expect(failure.message).toContain('"/usr/bin:/bin"')
+  expect(failure.message).toContain("nothing measured")
+  expect(failure.message).not.toContain("HTTP 500")
+  expect(failure.captureCommand).toEqual(refusalPayload.captureCommand)
 })

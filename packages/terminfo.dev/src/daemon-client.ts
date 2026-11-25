@@ -1,6 +1,7 @@
 /** Shared request boundary for the CLI and admin daemon collectors. */
 import { createHash, randomBytes } from "node:crypto"
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -304,9 +305,11 @@ export async function requestDaemonProbe(
   if (!response.ok) {
     const failure = `Daemon on port ${daemon.port}: HTTP ${response.status}`
     let retained: { path: string; sha256: string }
+    let bytes: Buffer
     try {
       // A failure body is evidence even when it is not valid UTF-8 or a valid collected run record.
-      retained = retainDaemonResponseBytes(Buffer.from(await response.arrayBuffer()))
+      bytes = Buffer.from(await response.arrayBuffer())
+      retained = retainDaemonResponseBytes(bytes)
     } catch (cause) {
       throw Object.assign(
         new Error(
@@ -318,6 +321,20 @@ export async function requestDaemonProbe(
         { status: response.status },
       )
     }
+    const refusal = parseStructuredDaemonRefusal(bytes)
+    if (refusal !== undefined) {
+      throw Object.assign(
+        new Error(
+          `${refusal.error} (daemon on port ${daemon.port}; retained original response ${retained.path}; SHA256 ${retained.sha256})`,
+        ),
+        {
+          name: refusal.name,
+          ...(refusal.captureCommand !== undefined && { captureCommand: refusal.captureCommand }),
+          status: response.status,
+          ...retained,
+        },
+      )
+    }
     throw Object.assign(
       new Error(`${failure}; retained original response ${retained.path}; SHA256 ${retained.sha256}`),
       {
@@ -326,8 +343,58 @@ export async function requestDaemonProbe(
       },
     )
   }
-  probeDaemonRequests.set(response, { port: daemon.port, started })
+  probeDaemonRequests.set(response, { port: daemon.port, started, runId: daemon.runId })
   return response
+}
+
+function parseStructuredDaemonRefusal(
+  bytes: Buffer,
+): { name: string; error: string; captureCommand?: unknown } | undefined {
+  const text = bytes.toString("utf8").trim()
+  if (!text.startsWith("{") || !text.endsWith("}")) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    // silent-fallback-allow: a non-JSON or truncated failure body falls through to the retained raw-bytes HTTP error below
+    return undefined
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined
+  const record = parsed as Record<string, unknown>
+  if (typeof record.error !== "string" || record.error.trim().length === 0) return undefined
+  const name = typeof record.name === "string" && record.name.trim().length > 0 ? record.name : "Error"
+  if (name === "Error" && record.captureCommand === undefined) return undefined
+  return {
+    name,
+    error: record.error,
+    ...(record.captureCommand !== undefined && { captureCommand: record.captureCommand }),
+  }
+}
+
+/**
+ * Reconstruct a structured pre-collection refusal that the collector wrote to its draft before
+ * ending an admitted /probe stream (#34527).
+ */
+export function readRecordedDraftFailure(draftPath: string): (Error & { captureCommand?: unknown }) | undefined {
+  if (!existsSync(draftPath)) return undefined
+  let draft: unknown
+  try {
+    draft = JSON.parse(readFileSync(draftPath, "utf8"))
+  } catch {
+    // silent-fallback-allow: a truncated or unreadable draft file falls through to DaemonStreamEnded below
+    return undefined
+  }
+  if (typeof draft !== "object" || draft === null || Array.isArray(draft)) return undefined
+  const rawReplies = (draft as { rawReplies?: unknown }).rawReplies
+  if (typeof rawReplies !== "object" || rawReplies === null || Array.isArray(rawReplies)) return undefined
+  const failureRaw = (rawReplies as Record<string, unknown>)["collector.failure"]
+  if (typeof failureRaw !== "string") return undefined
+  const refusal = parseStructuredDaemonRefusal(Buffer.from(failureRaw, "utf8"))
+  if (refusal === undefined) return undefined
+  return Object.assign(new Error(refusal.error), {
+    name: refusal.name,
+    ...(refusal.captureCommand !== undefined && { captureCommand: refusal.captureCommand }),
+  })
 }
 
 /**
@@ -352,7 +419,7 @@ export function stripProbeKeepalivePrefix(bytes: Buffer): Buffer {
  * Which daemon and start time each live /probe response came from, so a body that ends after admission
  * can distinguish our own AbortSignal timeout from a daemon-ended stream (#37678, @cto 43a537ee).
  */
-const probeDaemonRequests = new WeakMap<Response, { port: number; started: number }>()
+const probeDaemonRequests = new WeakMap<Response, { port: number; started: number; runId?: string }>()
 
 /**
  * 34753 -> 34799: after admission the daemon streams, so a collection that fails afterwards ends the
@@ -379,6 +446,11 @@ async function readProbeBody(response: Response): Promise<Buffer> {
     const meta = probeDaemonRequests.get(response)
     if (meta === undefined) throw error
     if (isProbeTimeoutError(error)) throw daemonProbeTimeoutError(meta.port, meta.started, error)
+    if (meta.runId !== undefined) {
+      const directory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
+      const recorded = readRecordedDraftFailure(join(directory, `${meta.runId}.draft.json`))
+      if (recorded !== undefined) throw recorded
+    }
     throw daemonStreamEndedError(meta.port, error)
   }
 }

@@ -24,6 +24,7 @@ import {
 } from "@terminfo/probe-defs"
 import { recordExecutedProbe } from "../../probe-defs/src/helpers.ts"
 import { createHeldViewportReader, type HeldViewportGeometry } from "./held-viewport.ts"
+import { runProbeBatch } from "./probes/unified.ts"
 import type { TTYTraceMark } from "./tty.ts"
 
 const COLS = 12
@@ -539,5 +540,43 @@ describe("extensions.osc720-scroll-up", () => {
 
   it("stays TODO when OSC 720 moved nothing", async () => {
     expect(status(await grade("extensions.osc720-scroll-up", { osc720: 0 }))).toBe("probe-todo")
+  })
+})
+
+describe("scrollback.viewport-hold-output PROBE TODO evidence (#33575)", () => {
+  it("retains the missing-binding evidence object in both callbackResponse and rawReplies[rawReplyRef]", async () => {
+    const model = terminal({ route: XTERM_411_VIEWPORT_ROUTE, holdOutput: "preserve" })
+    delete model.ctx.readHeldViewport
+    model.ctx.capture = async () => {
+      throw new Error("unused")
+    }
+    const viewportProbe = ALL_PROBES.find((entry) => entry.id === "scrollback.viewport-hold-output")!
+    const directResult = await viewportProbe.term!(model.ctx)
+    expect(directResult.notTested?.noObservable).toBe("viewport output hold has no qualified owned viewport reader")
+    const expectedEvidence = {
+      readHeldViewport: false,
+      readViewportReference: true,
+      viewportScroll: XTERM_411_VIEWPORT_ROUTE,
+      capture: true,
+      input: false,
+      readInput: false,
+    }
+    expect(JSON.parse(directResult.response!)).toEqual(expectedEvidence)
+
+    const carrier = ALL_PROBES.find((entry) => entry.id === "device.decrpm")!
+    const originalTerm = carrier.term
+    try {
+      carrier.term = async () => directResult
+      const batch = await runProbeBatch({ ids: [carrier.id] })
+      const row = batch.results.find((entry) => entry.featureId === carrier.id)
+      expect(row?.status).toBe("probe-todo")
+      expect(row?.reason).toBe("viewport output hold has no qualified owned viewport reader")
+      expect(row?.rawReplyRef).toBe(carrier.id)
+      const trace = JSON.parse(batch.rawReplies[row!.rawReplyRef!]!) as { evidence?: Record<string, unknown> }
+      expect(trace.evidence).toEqual(expectedEvidence)
+      expect(JSON.parse(batch.rawReplies[`${carrier.id}.callbackResponse`]!)).toEqual(expectedEvidence)
+    } finally {
+      carrier.term = originalTerm
+    }
   })
 })

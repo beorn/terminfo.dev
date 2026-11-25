@@ -2308,6 +2308,28 @@ async function runProbeBatchInRun(
       if (probe.termNeedsDisposable && !disposable && processOwnerBasis && observation) {
         observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis.basis}`
       }
+      const rawCallbackResponse = batch.rawReplies[`${probe.id}.callbackResponse`]
+      const callbackEvidence =
+        rawCallbackResponse !== undefined &&
+        observation === undefined &&
+        rawCallbackResponse.trim().startsWith("{") &&
+        rawCallbackResponse.trim().endsWith("}")
+          ? (() => {
+              let parsed: unknown
+              try {
+                parsed = JSON.parse(rawCallbackResponse)
+              } catch {
+                // silent-fallback-allow: a non-JSON callbackResponse string remains in rawReplies[<id>.callbackResponse] without trace.evidence
+                return undefined
+              }
+              return typeof parsed === "object" &&
+                parsed !== null &&
+                !Array.isArray(parsed) &&
+                Object.keys(parsed).length > 0
+                ? (parsed as Record<string, unknown>)
+                : undefined
+            })()
+          : undefined
       const trace = JSON.stringify({
         writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
         queries,
@@ -2315,6 +2337,7 @@ async function runProbeBatchInRun(
         ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),
         ...(titleReads.length ? { titleReads } : {}),
         ...(captureAttempted ? { captures } : {}),
+        ...(callbackEvidence !== undefined ? { evidence: callbackEvidence } : {}),
       })
       if (probe.id === "device.primary-da" || probe.id === "device.secondary-da" || probe.id === "device.xtversion") {
         const queriedRaw = queries.map((item) => item.raw).join("")

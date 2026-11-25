@@ -20,6 +20,7 @@ import { dirname, isAbsolute, join } from "node:path"
 import {
   createProbeRun,
   findOwnedDaemon,
+  readRecordedDraftFailure,
   readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
@@ -959,7 +960,18 @@ async function probeDaemon(
         },
     ids,
   )
-  const retained = await readRetainedDaemonProbeResponse(res)
+  let retained: Awaited<ReturnType<typeof readRetainedDaemonProbeResponse>>
+  try {
+    retained = await readRetainedDaemonProbeResponse(res)
+  } catch (error) {
+    if (error instanceof Error && error.name === "DaemonStreamEnded" && options.captureBundleRoot !== undefined) {
+      const recorded = readRecordedDraftFailure(
+        join(options.captureBundleRoot, "artifacts", `${daemon.runId}.draft.json`),
+      )
+      if (recorded !== undefined) throw recorded
+    }
+    throw error
+  }
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
   if (retained.kind === "empty-selection") throw new Error("Empty selection where a capture was required")
   const data = retained.run
@@ -1514,7 +1526,7 @@ async function runApp(
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
     if (hand) hand.primaryFailure = outcome.error ?? null
-    if (app.id === "terminal-app") {
+    if (app.id === "terminal-app" || (err instanceof Error && "captureCommand" in err)) {
       writeFileSync(
         join(run.directory, "collection-error.json"),
         JSON.stringify({

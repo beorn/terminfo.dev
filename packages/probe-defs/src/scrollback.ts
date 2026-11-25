@@ -401,7 +401,16 @@ async function viewportHoldApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     return notTestedResult("multiplexer viewport hold retains the manual recipe", { mux: ctx.mux })
   }
   const reader = heldViewportReader(ctx)
-  if (!reader) return notTestedResult("viewport output hold has no qualified owned viewport reader", {})
+  if (!reader) {
+    return notTestedResult("viewport output hold has no qualified owned viewport reader", {
+      readHeldViewport: Boolean(ctx.readHeldViewport),
+      readViewportReference: Boolean(ctx.readViewportReference),
+      viewportScroll: ctx.viewportScroll?.route ?? null,
+      capture: Boolean(ctx.capture),
+      input: Boolean(ctx.input),
+      readInput: Boolean(ctx.readInput),
+    })
+  }
   return heldViewportHoldOutput(ctx, reader)
 }
 

@@ -133,28 +133,31 @@ export function command(
         return
       }
       if (failure !== undefined || code !== 0 || signal !== null || killed) {
-        const failureCode = failure && "code" in failure ? failure.code : code
+        const missingExecutable = isMissingExecutableError(failure)
+        const searchedPath = (environment ?? process.env).PATH ?? ""
+        const failureCode = missingExecutable ? "ENOENT" : failure && "code" in failure ? failure.code : code
+        const primaryError = missingExecutable
+          ? missingExecutableFailure(file, searchedPath, step, failure)
+          : (failure ??
+            (killedByDeadline ? commandDeadlineError : (message: string) => new Error(message))(
+              captureCommandFailure(file, signal, code, killedByDeadline, timeout, step, stderr),
+            ))
         reject(
-          Object.assign(
-            failure ??
-              (killedByDeadline ? commandDeadlineError : (message: string) => new Error(message))(
-                captureCommandFailure(file, signal, code, killedByDeadline, timeout, step, stderr),
-              ),
-            {
+          Object.assign(primaryError, {
+            code: failureCode,
+            signal,
+            killed,
+            captureCommand: {
+              file,
+              args: [...args],
+              ...(missingExecutable && { searchedPath, nothingMeasured: true }),
+              stdoutBase64: stdout.toString("base64"),
+              stderrBase64: stderr.toString("base64"),
               code: failureCode,
               signal,
               killed,
-              captureCommand: {
-                file,
-                args: [...args],
-                stdoutBase64: stdout.toString("base64"),
-                stderrBase64: stderr.toString("base64"),
-                code: failureCode,
-                signal,
-                killed,
-              },
             },
-          ),
+          }),
         )
       } else if (stdinError) reject(stdinError)
       else resolve(stdout)
@@ -164,6 +167,26 @@ export function command(
     })
     child.stdin.end(input)
   })
+}
+
+function isMissingExecutableError(error: Error | undefined): boolean {
+  if (error === undefined) return false
+  return (error as NodeJS.ErrnoException).code === "ENOENT" || /^Executable not found in \$PATH:/i.test(error.message)
+}
+
+function missingExecutableFailure(
+  file: string,
+  searchedPath: string,
+  step: CaptureCommandStep | undefined,
+  cause: Error | undefined,
+): Error {
+  const named = step === undefined ? "" : ` (${step.step})`
+  const error = new Error(
+    `Capture preflight missing executable ${JSON.stringify(file)}${named} in PATH ${JSON.stringify(searchedPath)}; nothing measured`,
+    cause === undefined ? undefined : { cause },
+  )
+  error.name = "CapturePreflightMissingExecutable"
+  return error
 }
 
 /**

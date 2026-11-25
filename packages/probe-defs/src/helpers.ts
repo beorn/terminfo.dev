@@ -2902,7 +2902,11 @@ export function heldViewportReadTodo(ctx: TermProbeSource): NotTestedCoverageRes
   return notTestedResult(
     `held-viewport read not available: viewport route "${route.route}" applies, but no capture read returns a ` +
       "qualified scrolled-back frame (CaptureHoldUnresolved)",
-    { viewportRoute: route.route },
+    {
+      viewportRoute: route.route,
+      readHeldViewport: Boolean(ctx.readHeldViewport),
+      readViewportReference: Boolean(ctx.readViewportReference),
+    },
   )
 }
 

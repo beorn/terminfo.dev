@@ -108,6 +108,13 @@ export const COMPLETE_DA2 = new RegExp(String.raw`^\x1b\[>[0-9]+;[0-9]+;[0-9]+c(
 // payload and the trailing DA1 keep their captures, and the leading reply is deliberately dropped.
 export const COMPLETE_XTVERSION = new RegExp(String.raw`^(?:${DA1_GRAMMAR})?\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
 
+/** True when the terminal's identity rule requires a DA2 reply (e.g. Screen and Terminal.app, #34528). */
+export function terminalIdentityRequiresDa2(terminal: string): boolean {
+  const normTerminal = terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+  const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
+  return Boolean(rule?.da2Pattern)
+}
+
 /** Owned identity is independent of the selected feature and never falls back on failure. */
 export function deriveIdentity(responses: Record<string, string> | undefined): {
   source: "collector" | "feature"
