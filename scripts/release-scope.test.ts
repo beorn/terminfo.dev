@@ -616,8 +616,12 @@ describe("probe method classification", () => {
   // Pre-refactor baseline: component 2ee594d33, after source-answer retirement and the retained VTerm run.
   // Old test-todo/test-failure words normalize 1:1 to probe-todo/probe-invalid; no corpus verdict may move.
   // Synthetic same-suite cases miss a historical probe leaking across suite boundaries.
-  it("preserves the 17 stored run bytes and all 13 published corpus feature statuses and origins", () =>
-    withHistoricalCorpus((historicalContentDir) => {
+  // Hang protection only, never a speed budget (@cto 2436c804): 5.5 s under host load against the 5 s default.
+  it(
+    "preserves the 17 stored run bytes and all 13 published corpus feature statuses and origins",
+    { timeout: 30_000 },
+    () =>
+      withHistoricalCorpus((historicalContentDir) => {
       const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
       const runs = loadStoredRuns(historicalContentDir, Object.keys(catalog).sort())
       expect(runs).toHaveLength(17)
@@ -658,7 +662,8 @@ describe("probe method classification", () => {
           )
           .sort()
         expect(derived).toHaveLength(30)
-        expect(digest(derived)).toBe("9298b48bcf4ccb9fba557e0a54b7b0c72d968282b89079f1b2b741c1d5bb9c32")
+        // #38544 maskStoreHashes replaced /nix/store/<32-hex>- in Linux context keys with /nix/store/<hash>-; same 30 cells.
+        expect(digest(derived)).toBe("5e279cb29d1d00f7a01e507abc2632f2feaad2ca542f517eded05a27895559ad")
         // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
         const outerAbsent = Object.entries(api.contexts)
           .flatMap(([key, context]) =>
@@ -703,7 +708,8 @@ describe("probe method classification", () => {
                 ]),
             ),
           ])
-        expect(digest(pins)).toBe("c228b11dab50616727f15958420173202746b715543cdf668be15cb5f4ae2daf")
+        // #38544 maskStoreHashes masked /nix/store/<hash>- in the 4 Linux context keys; cell verdicts/origins unchanged.
+        expect(digest(pins)).toBe("08aa7a4de9fe60d02cd03fa970370ea509e8477404220292619f9c24fed07c9c")
         const decided = new Set(["supported", "unsupported", "untestable", "differs-by-context"])
         for (const [key, context] of Object.entries(projection.contexts)) {
           const published = Object.fromEntries(
@@ -742,10 +748,11 @@ describe("probe method classification", () => {
       expect(counts).toEqual({ internal: 1067, output: 1712, visual: 477, "end-to-end": 100, source: 0 })
     }))
 
-  // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133).
+  // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133) and
+  // crossed 30 s under load after the Nov 25 placements. Hang protection only, never a speed budget (@cto 2436c804).
   // The projection form holds one run at a time: loading the whole corpus as an array peaked at 3.3 GB RSS,
   // past the 3 GiB vitest worker cap (34678).
-  it("maps the growing live corpus without promoting a source answer", { timeout: 30_000 }, () => {
+  it("maps the growing live corpus without promoting a source answer", { timeout: 120_000 }, () => {
     let sourceMethods = 0
     const walked = loadStoredRuns(contentDir, Object.keys(catalog).sort(), (run) => {
       for (const result of run.results ?? []) {
