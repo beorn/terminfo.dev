@@ -17,7 +17,7 @@ import {
   countContexts,
   projectResults,
   statesFor,
-  maskRunnerStorePath,
+  maskStoreHashes,
   originalRunFor,
   projectedContextKey,
 } from "../docs/data/selected-results.ts"
@@ -901,13 +901,13 @@ describe("current execution projection", () => {
 
 // An unchanged reviewed default key must still identify its canonical subject after the rename.
 it("normalizes historical reviewed context keys without rewriting arbitrary configuration text", () => {
-  expect(maskRunnerStorePath('app:kitty@["app","kitty","macos",null,null,null,null,null]')).toBe(
+  expect(maskStoreHashes('app:kitty@["app","kitty","macos",null,null,null,null,null]')).toBe(
     'term:kitty@["term","kitty","macos",null,null,null,null,null]',
   )
-  expect(maskRunnerStorePath('headless:xtermjs@["headless","xtermjs","linux",null,null,null,null,null]')).toBe(
+  expect(maskStoreHashes('headless:xtermjs@["headless","xtermjs","linux",null,null,null,null,null]')).toBe(
     'lib:xtermjs@["lib","xtermjs","linux",null,null,null,null,null]',
   )
-  expect(maskRunnerStorePath("app:keep-this-config")).toBe("app:keep-this-config")
+  expect(maskStoreHashes("app:keep-this-config")).toBe("app:keep-this-config")
 })
 
 // #33543 (@cto 22819c2f): the container runner names Kitty's remote-control socket after the run id, so each run
@@ -963,7 +963,124 @@ describe("a --listen-on unix socket address is apparatus, never part of a captur
     ["--listen-on unix:@kitty-abstract", "--listen-on unix:<socket>"],
     ["--listen-on tcp:localhost:12345", "--listen-on tcp:localhost:12345"],
   ])("masks %s as %s", (config, masked) => {
-    expect(maskRunnerStorePath(`kitty ${config} bun`)).toBe(`kitty ${masked} bun`)
+    expect(maskStoreHashes(`kitty ${config} bun`)).toBe(`kitty ${masked} bun`)
+  })
+})
+
+// #38544 (@cto d394f157): nixpkgs rebuilds of the same terminal version change the 32-character Nix store hash
+// on /nix/store/<hash>-<drv>/bin/<exe> without changing app version, OS or flags. Mask only the 32-char hash in
+// context keys while keeping package name, version, /bin/<exe> and all flags; if two rebuilds of the same version
+// disagree on a cell within the same suite, surface probe-conflict rather than silently picking one.
+describe("Nix binary store hashes are build provenance, never a separate context (#38544)", () => {
+  const alacrittyRun = (binHash: string, runnerHash: string) =>
+    `nice -n 10 /nix/store/${binHash}-alacritty-0.17.0/bin/alacritty --option font.normal.family=\\"JetBrains\\ Mono\\" -e bun --no-env-file /nix/store/${runnerHash}-terminfo-linux-runner/index.js test --serve `
+  const ghosttyDefault =
+    "nice -n 10 /nix/store/jp06ad1735p1fmf19298a93kw05qhh7s-ghostty-1.4.0/bin/ghostty --font-family=JetBrains\\ Mono --font-size=16 --window-decoration=none -e bun --no-env-file /nix/store/mp6i8lffn8mk6xm9x9zji034qkmm1mgg-terminfo-linux-runner/index.js test --serve "
+  const ghosttyMonochrome =
+    "nice -n 10 /nix/store/jp06ad1735p1fmf19298a93kw05qhh7s-ghostty-1.4.0/bin/ghostty --font-family=JetBrains\\ Mono --font-size=16 --window-decoration=none --freetype-load-flags=monochrome --window-padding-x=2 --window-padding-y=2 --window-padding-balance=false -e bun --no-env-file /nix/store/d0j2dq9gk7lqd32wzkrrlq52n7s62k8m-terminfo-linux-runner/index.js test --serve "
+  const kitty049 =
+    "nice -n 10 /nix/store/6dp446p5b6zpkar9v3jx4zjb1zbnfzkm-kitty-official-binary-0.49.2/bin/kitty --config NONE bun --no-env-file /nix/store/mp6i8lffn8mk6xm9x9zji034qkmm1mgg-terminfo-linux-runner/index.js test --serve "
+  const kitty051 =
+    "nice -n 10 /nix/store/ybimpnvia82fdkdnryrw7924m6x4fkzi-kitty-official-binary-0.51.1/bin/kitty --config NONE bun --no-env-file /nix/store/d0j2dq9gk7lqd32wzkrrlq52n7s62k8m-terminfo-linux-runner/index.js test --serve "
+
+  const linuxSubject = (id: string, version: string, config: string) => ({
+    kind: "term" as const,
+    id,
+    version,
+    os: "linux" as const,
+    osVersion: "7.0.0-43-generic",
+    outerTerminal: null,
+    mux: null,
+    config,
+    permissions: null,
+  })
+
+  it("merges Alacritty 0.17.0 rebuild hashes while keeping Ghostty flag variants and Kitty versions separate", () => {
+    const a1 = alacrittyRun("n0lsxfjkd2csn6pk3rlavfp31n65i74b", "mp6i8lffn8mk6xm9x9zji034qkmm1mgg")
+    const a2 = alacrittyRun("kbymlfpjl5n9jryh0vbbk9cjr7sbd4q3", "d0j2dq9gk7lqd32wzkrrlq52n7s62k8m")
+    expect(maskStoreHashes(a1)).toBe(maskStoreHashes(a2))
+    expect(maskStoreHashes(a1)).toContain("/nix/store/<hash>-alacritty-0.17.0/bin/alacritty")
+    expect(maskStoreHashes(a1)).toContain("<terminfo-linux-runner>")
+
+    expect(
+      countContexts([
+        { subject: linuxSubject("alacritty", "0.17.0", a1) } as never,
+        { subject: linuxSubject("alacritty", "0.17.0", a2) } as never,
+      ]).get("term:alacritty")?.size,
+    ).toBe(1)
+
+    expect(
+      countContexts([
+        { subject: linuxSubject("ghostty", "1.4.0", ghosttyDefault) } as never,
+        { subject: linuxSubject("ghostty", "1.4.0", ghosttyMonochrome) } as never,
+      ]).get("term:ghostty")?.size,
+    ).toBe(2)
+
+    expect(
+      countContexts([
+        { subject: linuxSubject("kitty", "0.49.2", kitty049) } as never,
+        { subject: linuxSubject("kitty", "0.51.1", kitty051) } as never,
+      ]).get("term:kitty")?.size,
+    ).toBe(2)
+  })
+
+  it("surfaces probe-conflict when two same-version Nix rebuilds disagree on a cell", () => {
+    const featureId = ids[0]!
+    const buildRun = (runId: string, binHash: string, status: "supported" | "unsupported", measuredAt: string) => {
+      const results = todos()
+      const runAttempt = { scope: "probe" as const, startedAt: measuredAt }
+      results[0] = {
+        featureId,
+        status,
+        assertionType: "query_reply",
+        rawReplyRef: featureId,
+        attempt: runAttempt,
+        tests: [{ id: "criterion", status, attempt: runAttempt, assertionRefs: [0] }],
+      }
+      const value = raw(results)
+      return parseRun(
+        `${runId}.json`,
+        JSON.stringify({
+          ...value,
+          runId,
+          measuredAt,
+          subject: linuxSubject("alacritty", "0.17.0", alacrittyRun(binHash, "mp6i8lffn8mk6xm9x9zji034qkmm1mgg")),
+          assertions: [
+            {
+              featureId,
+              kind: status === "supported" ? "positive" : "negative",
+              assertionType: "query_reply",
+              rawReplyRef: featureId,
+              expected: "ACK",
+              observed: status === "supported" ? "ACK" : "NAK",
+            },
+          ],
+          rawReplies: { ...value.rawReplies, [featureId]: status === "supported" ? "ACK" : "NAK" },
+        }),
+        ids,
+        new Map([[suite.probeHash, suite]]),
+      )
+    }
+    const runA = buildRun(
+      "alacritty-rebuild-a",
+      "n0lsxfjkd2csn6pk3rlavfp31n65i74b",
+      "supported",
+      "2026-11-24T01:00:00.000Z",
+    )
+    const runB = buildRun(
+      "alacritty-rebuild-b",
+      "kbymlfpjl5n9jryh0vbbk9cjr7sbd4q3",
+      "unsupported",
+      "2026-11-25T01:00:00.000Z",
+    )
+    const projection = projectResults([runA, runB], ids, { currentProbeHash: suite.probeHash }, [])
+    expect(Object.keys(projection.contexts)).toEqual(["term:alacritty"])
+    const cell = projection.contexts["term:alacritty"]?.cells[featureId]
+    expect(cell?.featureResult?.status).toBe("probe-conflict")
+    expect(cell?.featureResult?.conflictingProbes).toEqual([
+      `${featureId}:output@n0lsxfjk`,
+      `${featureId}:output@kbymlfpj`,
+    ])
   })
 })
 
