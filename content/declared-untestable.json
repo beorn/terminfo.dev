@@ -21,18 +21,14 @@
       "featureId": "sgr.bg.default",
       "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
       "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
+      "declaredBy": "@dev/15",
+      "declaredOn": "2026-11-24",
       "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
+      "reviewedOn": "2026-11-24",
+      "ruling": "@cto 2026-11-24 (a7a5a28e) GO applying 2026-11-21 rulings (1b4464fd, b8b75cbc, 8cde2b32); #37701/#38274. Hosted macos-measurement run 45526885127 (runId a975f203999d956a66e1cd54eaaf0ecd, Warp v0.2026.11.18.08.17.stable_05): same fixed 0,560 px block-layout paint-witness offset on the 5 SGR rows (the 3 alternate-screen rows measured supported on stable_05 and are no longer declared). Scoped to this version and run; re-tested when the 2.7.5 fix (re-find the frame after paint) lands. Prior stable_01 rows removed because selected-results.ts renders only stable_05 once placed.",
       "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
+        "runs": ["a975f203999d956a66e1cd54eaaf0ecd"],
+        "version": "v0.2026.11.18.08.17.stable_05"
       }
     },
     {
@@ -42,18 +38,14 @@
       "featureId": "sgr.fg.default",
       "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
       "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
+      "declaredBy": "@dev/15",
+      "declaredOn": "2026-11-24",
       "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
+      "reviewedOn": "2026-11-24",
+      "ruling": "@cto 2026-11-24 (a7a5a28e) GO applying 2026-11-21 rulings (1b4464fd, b8b75cbc, 8cde2b32); #37701/#38274. Hosted macos-measurement run 45526885127 (runId a975f203999d956a66e1cd54eaaf0ecd, Warp v0.2026.11.18.08.17.stable_05): same fixed 0,560 px block-layout paint-witness offset on the 5 SGR rows (the 3 alternate-screen rows measured supported on stable_05 and are no longer declared). Scoped to this version and run; re-tested when the 2.7.5 fix (re-find the frame after paint) lands. Prior stable_01 rows removed because selected-results.ts renders only stable_05 once placed.",
       "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
+        "runs": ["a975f203999d956a66e1cd54eaaf0ecd"],
+        "version": "v0.2026.11.18.08.17.stable_05"
       }
     },
     {
@@ -63,18 +55,14 @@
       "featureId": "sgr.selective-reset.inverse",
       "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
       "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
+      "declaredBy": "@dev/15",
+      "declaredOn": "2026-11-24",
       "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
+      "reviewedOn": "2026-11-24",
+      "ruling": "@cto 2026-11-24 (a7a5a28e) GO applying 2026-11-21 rulings (1b4464fd, b8b75cbc, 8cde2b32); #37701/#38274. Hosted macos-measurement run 45526885127 (runId a975f203999d956a66e1cd54eaaf0ecd, Warp v0.2026.11.18.08.17.stable_05): same fixed 0,560 px block-layout paint-witness offset on the 5 SGR rows (the 3 alternate-screen rows measured supported on stable_05 and are no longer declared). Scoped to this version and run; re-tested when the 2.7.5 fix (re-find the frame after paint) lands. Prior stable_01 rows removed because selected-results.ts renders only stable_05 once placed.",
       "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
+        "runs": ["a975f203999d956a66e1cd54eaaf0ecd"],
+        "version": "v0.2026.11.18.08.17.stable_05"
       }
     },
     {
@@ -84,18 +72,14 @@
       "featureId": "sgr.selective-reset.italic",
       "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
       "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
+      "declaredBy": "@dev/15",
+      "declaredOn": "2026-11-24",
       "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
+      "reviewedOn": "2026-11-24",
+      "ruling": "@cto 2026-11-24 (a7a5a28e) GO applying 2026-11-21 rulings (1b4464fd, b8b75cbc, 8cde2b32); #37701/#38274. Hosted macos-measurement run 45526885127 (runId a975f203999d956a66e1cd54eaaf0ecd, Warp v0.2026.11.18.08.17.stable_05): same fixed 0,560 px block-layout paint-witness offset on the 5 SGR rows (the 3 alternate-screen rows measured supported on stable_05 and are no longer declared). Scoped to this version and run; re-tested when the 2.7.5 fix (re-find the frame after paint) lands. Prior stable_01 rows removed because selected-results.ts renders only stable_05 once placed.",
       "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
+        "runs": ["a975f203999d956a66e1cd54eaaf0ecd"],
+        "version": "v0.2026.11.18.08.17.stable_05"
       }
     },
     {
@@ -105,81 +89,14 @@
       "featureId": "sgr.selective-reset.underline",
       "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
       "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
+      "declaredBy": "@dev/15",
+      "declaredOn": "2026-11-24",
       "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
+      "reviewedOn": "2026-11-24",
+      "ruling": "@cto 2026-11-24 (a7a5a28e) GO applying 2026-11-21 rulings (1b4464fd, b8b75cbc, 8cde2b32); #37701/#38274. Hosted macos-measurement run 45526885127 (runId a975f203999d956a66e1cd54eaaf0ecd, Warp v0.2026.11.18.08.17.stable_05): same fixed 0,560 px block-layout paint-witness offset on the 5 SGR rows (the 3 alternate-screen rows measured supported on stable_05 and are no longer declared). Scoped to this version and run; re-tested when the 2.7.5 fix (re-find the frame after paint) lands. Prior stable_01 rows removed because selected-results.ts renders only stable_05 once placed.",
       "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
-      }
-    },
-    {
-      "kind": "term",
-      "id": "warp",
-      "os": "macos",
-      "featureId": "modes.alt-screen.enter",
-      "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
-      "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
-      "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
-      "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
-      }
-    },
-    {
-      "kind": "term",
-      "id": "warp",
-      "os": "macos",
-      "featureId": "modes.alt-screen.exit",
-      "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
-      "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
-      "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
-      "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
-      }
-    },
-    {
-      "kind": "term",
-      "id": "warp",
-      "os": "macos",
-      "featureId": "modes.altscreen-47",
-      "reason": "Warp's block layout moves the frame after the probe picks its cells, so the painted result cannot be located",
-      "testableIf": "the probe finds the frame again after painting, and re-calibrates when the alternate screen opens",
-      "declaredBy": "@dev/2",
-      "declaredOn": "2026-11-21",
-      "reviewedBy": "@cto",
-      "reviewedOn": "2026-11-21",
-      "ruling": "@cto 2026-11-21 17:48 PST (1b4464fd) GO (a), 17:49 (b8b75cbc) replacesInvalid, 17:54 (8cde2b32) scoped to named-run cells; #33774. Hosted macos-measurement runs 44687076948 (runId 99506048ee8cfe6b2b1dfec8a148ebb4), 44816330592 (7ce61de3afc5c4b3cb07bdfacd31941a), 44960086682 (e7aee4ffac1c955b40efd2dd84b34f25, terminfo 87de2b48f, settle >= 90 s per ruling C); Warp v0.2026.10.14.08.27.stable_01; fixed offsets 0,560 px (paint witness, the SGR rows) and -16,-10 px (baseline, the alternate-screen rows). Scoped to this version and these runs; re-tested when the 2.7.5 fix (re-find the frame after paint, re-calibrate on alternate-screen entry) lands.",
-      "replacesInvalid": {
-        "runs": [
-          "99506048ee8cfe6b2b1dfec8a148ebb4",
-          "7ce61de3afc5c4b3cb07bdfacd31941a",
-          "e7aee4ffac1c955b40efd2dd84b34f25"
-        ],
-        "version": "v0.2026.10.14.08.27.stable_01"
+        "runs": ["a975f203999d956a66e1cd54eaaf0ecd"],
+        "version": "v0.2026.11.18.08.17.stable_05"
       }
     }
   ]
