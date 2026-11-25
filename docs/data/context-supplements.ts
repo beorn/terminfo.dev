@@ -178,6 +178,7 @@ export function isDefaultOf(candidate: ProbeSubject, supplement: ProbeSubject): 
     (candidate.kind !== "mux" || candidate.config === defaultConfig) &&
     candidate.kind === supplement.kind &&
     candidate.id === supplement.id &&
+    candidate.version === supplement.version &&
     candidate.os === supplement.os &&
     candidate.osVersion === supplement.osVersion &&
     candidate.outerTerminal === supplement.outerTerminal &&
