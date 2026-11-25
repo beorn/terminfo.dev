@@ -640,22 +640,28 @@ resolve_container_identity() {
     container_user="0:0"
     container_name=root
     rootless_host_uid=$uid
+    # #38538 (@cto 08154baf): xterm calls initgroups when getpwuid(0) resolves (from the /etc/passwd
+    # mount required by alacritty/ghostty), and that needs CAP_SETGID in the userns. Strictly SETGID
+    # alone — never SETUID, and never added on the rootful path.
+    container_cap_args=(--cap-add SETGID)
   else
     container_uid=$uid
     container_gid=$gid
     container_user="$uid:$gid"
     container_name=runner
     rootless_host_uid=""
+    container_cap_args=()
   fi
 }
 
-# #38538 (@cto d32ebff7): container-side identity proof executed before any probe starts.
+# #38538 (@cto d32ebff7, 08154baf): container-side identity proof executed before any probe starts.
 # - When TERMINFO_ROOTLESS_HOST_UID is set, the first line of /proc/self/uid_map MUST be exact
-#   `0 <TERMINFO_ROOTLESS_HOST_UID> 1`; any mismatch (including `0 0 ...`) refuses loudly with
-#   ROOTLESS_PROOF_FAILED naming both expected and observed values.
+#   `0 <TERMINFO_ROOTLESS_HOST_UID> 1`, and CapEff in /proc/self/status MUST be exact `0x40`
+#   (CAP_SETGID alone); prints CapEff and refuses any mismatch loudly with ROOTLESS_PROOF_FAILED.
 # - When TERMINFO_ROOTLESS_HOST_UID is unset (rootful path), container uid 0 is refused.
 verify_container_identity() {
   local uid_map_path=${1:-/proc/self/uid_map}
+  local status_path=${2:-/proc/self/status}
   if [[ -n "${TERMINFO_ROOTLESS_HOST_UID:-}" ]]; then
     local expected_uid=$TERMINFO_ROOTLESS_HOST_UID
     if [[ ! "$expected_uid" =~ ^[1-9][0-9]*$ ]]; then
@@ -674,6 +680,25 @@ verify_container_identity() {
     [[ -n "$observed" ]] || observed="<empty>"
     if [[ "$map_in" != "0" || "$map_out" != "$expected_uid" || "$map_len" != "1" || -n "$map_extra" ]]; then
       echo "ROOTLESS_PROOF_FAILED: uid_map first line mismatch (expected '$expected_line', observed '$observed')" >&2
+      return 2
+    fi
+    if [[ ! -r "$status_path" ]]; then
+      echo "ROOTLESS_PROOF_FAILED: unreadable $status_path (expected CapEff '0x40', observed '<unreadable>')" >&2
+      return 2
+    fi
+    local cap_eff="" status_line=""
+    while IFS= read -r status_line; do
+      if [[ "$status_line" == CapEff:* ]]; then
+        cap_eff=${status_line#CapEff:}
+        cap_eff=${cap_eff#"${cap_eff%%[![:space:]]*}"}
+        cap_eff=${cap_eff%"${cap_eff##*[![:space:]]}"}
+        break
+      fi
+    done < "$status_path"
+    [[ -n "$cap_eff" ]] || cap_eff="<missing>"
+    echo "CapEff=$cap_eff" >&2
+    if [[ ! "$cap_eff" =~ ^[0-9a-fA-F]+$ ]] || (( 16#$cap_eff != 0x40 )); then
+      echo "ROOTLESS_PROOF_FAILED: CapEff mismatch (expected '0x40' / '0000000000000040' (SETGID alone), observed '$cap_eff')" >&2
       return 2
     fi
     return 0
@@ -1887,8 +1912,10 @@ rootless_env=()
 # The declared locale every collector-owned terminal launch runs under (28752): the container's
 # shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
 # rather than whatever the launching shell happened to carry. Recorded in observed.json below.
+# #38538 (@cto 08154baf): container_cap_args is empty on rootful and (--cap-add SETGID) only on verified
+# rootless, because xterm calls initgroups when getpwuid(0) resolves and that needs CAP_SETGID in the userns.
 container_id=$(docker create --user "$container_user" --network none --read-only \
-  --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
+  --cap-drop ALL "${container_cap_args[@]}" --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
   --tmpfs "/home/runner:rw,nosuid,nodev,uid=$container_uid,gid=$container_gid,mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \

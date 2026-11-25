@@ -2713,14 +2713,21 @@ exit 2
     expect(rootHost.stderr).toContain("Refusing root run user")
   })
 
-  it("accepts matching rootless /proc/self/uid_map and refuses mismatched uid_map with ROOTLESS_PROOF_FAILED before any probe starts", () => {
+  it("accepts matching rootless /proc/self/uid_map + CapEff 0x40 and refuses mismatched uid_map or CapEff drift with ROOTLESS_PROOF_FAILED", () => {
     const validMap = join(dir, "uid_map.valid")
+    const validStatus = join(dir, "status.valid")
     writeFileSync(validMap, "         0       3001          1\n         1     165536      65536\n")
-    const pass = spawnSync("bash", ["-c", 'source "$1"; verify_container_identity "$2"', "_", launcher, validMap], {
-      encoding: "utf8",
-      env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: "3001" },
-    })
+    writeFileSync(validStatus, "Uid:\t0\t0\t0\t0\nCapEff:\t0000000000000040\nNoNewPrivs:\t1\n")
+    const pass = spawnSync(
+      "bash",
+      ["-c", 'source "$1"; verify_container_identity "$2" "$3"', "_", launcher, validMap, validStatus],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: "3001" },
+      },
+    )
     expect(pass.status, pass.stderr).toBe(0)
+    expect(pass.stderr).toContain("CapEff=0000000000000040")
 
     const cases: Array<{ name: string; content: string; expectedUid: string; observedSnippet: string }> = [
       {
@@ -2752,15 +2759,133 @@ exit 2
     for (const tc of cases) {
       const mapPath = join(dir, `uid_map.${tc.name.replaceAll(/[^a-z0-9]+/gi, "_")}`)
       writeFileSync(mapPath, tc.content)
-      const fail = spawnSync("bash", ["-c", 'source "$1"; verify_container_identity "$2"', "_", launcher, mapPath], {
-        encoding: "utf8",
-        env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: tc.expectedUid },
-      })
+      const fail = spawnSync(
+        "bash",
+        ["-c", 'source "$1"; verify_container_identity "$2" "$3"', "_", launcher, mapPath, validStatus],
+        {
+          encoding: "utf8",
+          env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: tc.expectedUid },
+        },
+      )
       expect(fail.status, tc.name).toBe(2)
       expect(fail.stderr, tc.name).toContain("ROOTLESS_PROOF_FAILED")
       expect(fail.stderr, tc.name).toContain(`0 ${tc.expectedUid} 1`)
       expect(fail.stderr, tc.name).toContain(tc.observedSnippet)
     }
+
+    const capCases: Array<{ name: string; statusContent: string; observedCap: string }> = [
+      {
+        name: "zero caps (0x0)",
+        statusContent: "CapEff:\t0000000000000000\n",
+        observedCap: "0000000000000000",
+      },
+      {
+        name: "SETGID + SETUID drift (0xc0)",
+        statusContent: "CapEff:\t00000000000000c0\n",
+        observedCap: "00000000000000c0",
+      },
+      {
+        name: "missing CapEff line",
+        statusContent: "Uid:\t0\t0\t0\t0\n",
+        observedCap: "<missing>",
+      },
+    ]
+
+    for (const tc of capCases) {
+      const statusPath = join(dir, `status.${tc.name.replaceAll(/[^a-z0-9]+/gi, "_")}`)
+      writeFileSync(statusPath, tc.statusContent)
+      const fail = spawnSync(
+        "bash",
+        ["-c", 'source "$1"; verify_container_identity "$2" "$3"', "_", launcher, validMap, statusPath],
+        {
+          encoding: "utf8",
+          env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: "3001" },
+        },
+      )
+      expect(fail.status, tc.name).toBe(2)
+      expect(fail.stderr, tc.name).toContain(`CapEff=${tc.observedCap}`)
+      expect(fail.stderr, tc.name).toContain("ROOTLESS_PROOF_FAILED")
+      expect(fail.stderr, tc.name).toContain("0x40")
+    }
+  })
+
+  it("passes no --cap-add in rootful docker create argv and only --cap-add SETGID in verified rootless docker create argv", async () => {
+    const source = readFileSync(launcher, "utf8")
+    const createStart = source.indexOf("\ncontainer_id=$(docker create ")
+    const createEnd = source.indexOf('\necho "$container_id" > "$prep/container-id.txt"', createStart)
+    if (createStart < 0 || createEnd < 0)
+      throw new Error("docker create block not found in scripts/linux-container-run.sh")
+    const createBlock = source.slice(createStart, createEnd)
+
+    const uid = String(process.getuid!())
+    const gid = String(process.getgid!())
+    const runtimeRoot = join(dir, "run-user-argv")
+    const userRuntime = join(runtimeRoot, uid)
+    mkdirSync(userRuntime, { recursive: true })
+    const sockPath = join(userRuntime, "docker.sock")
+
+    function captureDockerCreateArgv(securityOptions: string, dockerHost?: string): string[] {
+      const bin = join(dir, `bin-${securityOptions.includes("rootless") ? "rootless" : "rootful"}`)
+      mkdirSync(bin, { recursive: true })
+      const argvLog = join(dir, `argv-${securityOptions.includes("rootless") ? "rootless" : "rootful"}.txt`)
+      writeFileSync(
+        join(bin, "docker"),
+        `#!/usr/bin/env bash
+if [[ "$1" == "info" ]]; then
+  printf '%s\\n' ${JSON.stringify(securityOptions)}
+  exit 0
+fi
+if [[ "$1" == "create" ]]; then
+  shift
+  printf '%s\\0' "$@" > ${JSON.stringify(argvLog)}
+  echo "fixture-container-id"
+  exit 0
+fi
+echo "unexpected docker args: $*" >&2
+exit 2
+`,
+        { mode: 0o755 },
+      )
+      const script = [
+        "set -euo pipefail",
+        `source ${JSON.stringify(launcher)}`,
+        `resolve_container_identity ${JSON.stringify(uid)} ${JSON.stringify(gid)} ${JSON.stringify(runtimeRoot)}`,
+        "selection_env=(); grace_env=(); rootless_env=()",
+        '[[ -z "$rootless_host_uid" ]] || rootless_env=(--env "TERMINFO_ROOTLESS_HOST_UID=$rootless_host_uid")',
+        'raw=/tmp/raw prep=/tmp/prep run_id=aaa image_id=sha256:img clipboard_profile=default mux_kind="" mux_profile=default',
+        'target_id=screen preset=current target_binary=/bin/screen target_version=5.0.0 source_url=u source_sri=s target_source_archive=a proof_kind="" proof_nar_sri="" proof_revision=""',
+        createBlock,
+      ].join("\n")
+      const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` }
+      if (dockerHost) env.DOCKER_HOST = dockerHost
+      else delete env.DOCKER_HOST
+      const result = spawnSync("bash", ["-c", script], { encoding: "utf8", env })
+      expect(result.status, result.stderr).toBe(0)
+      return readFileSync(argvLog, "utf8").split("\0").filter(Boolean)
+    }
+
+    const rootfulArgv = captureDockerCreateArgv(
+      "[name=apparmor,profile=default name=seccomp,profile=builtin name=cgroupns]",
+    )
+    expect(rootfulArgv).toContain("--cap-drop")
+    expect(rootfulArgv).not.toContain("--cap-add")
+    expect(rootfulArgv).not.toContain("SETGID")
+    expect(rootfulArgv).not.toContain("SETUID")
+
+    await withUnixSocket(sockPath, () => {
+      const rootlessArgv = captureDockerCreateArgv(
+        "[name=seccomp,profile=builtin name=rootless name=cgroupns]",
+        `unix://${sockPath}`,
+      )
+      expect(rootlessArgv).toContain("--cap-drop")
+      const capAddValues: string[] = []
+      for (let i = 0; i < rootlessArgv.length; i++) {
+        if (rootlessArgv[i] === "--cap-add") capAddValues.push(rootlessArgv[i + 1] ?? "")
+      }
+      expect(capAddValues).toEqual(["SETGID"])
+      expect(rootlessArgv).not.toContain("SETUID")
+      expect(rootlessArgv).toContain(`TERMINFO_ROOTLESS_HOST_UID=${uid}`)
+    })
   })
 
   it("restores the rootful container uid 0 refusal when TERMINFO_ROOTLESS_HOST_UID is unset", () => {
