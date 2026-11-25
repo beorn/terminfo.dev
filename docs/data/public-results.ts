@@ -88,9 +88,10 @@ export interface TraceReceipt {
   sha256: string
 }
 
-/** Keeps a run's trace document for generate-api and returns the receipt its run version carries. */
+/** Keeps a run's trace document and cropped captures for generate-api and returns the receipt its run version carries. */
 function traceReceipt(
   documents: PublicDocuments,
+  captures: Map<string, Buffer>,
   trace: ReturnType<typeof currentTrace>,
   schemaVersion: 3 | 4,
 ): { trace?: TraceReceipt } {
@@ -110,6 +111,11 @@ function traceReceipt(
     describeTracePanes(loaded)
   }
   documents.set(trace.url, { bytes: trace.bytes, document: trace.document })
+  for (const [url, png] of trace.captures) {
+    const priorPng = captures.get(url)
+    if (priorPng && !priorPng.equals(png)) throw new Error(`Conflicting capture image ${url}`)
+    captures.set(url, png)
+  }
   return { trace: { url: trace.url, sha256: trace.sha256 } }
 }
 
@@ -169,7 +175,15 @@ export function publicCounts(counts: Readonly<Record<string, number>>): PublicCo
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "selection" | "screenRecord" | "readRaw" | "traceMemo" | "identityRuleCheck" | "counts"
+  | "results"
+  | "selection"
+  | "screenRecord"
+  | "readRaw"
+  | "readArtifact"
+  | "readTextArtifact"
+  | "traceMemo"
+  | "identityRuleCheck"
+  | "counts"
 > {
   counts: PublicCounts
   results: PublicProbeResult[]
@@ -401,6 +415,7 @@ export function publicResults(
   const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
   const documents: PublicDocuments = new Map()
+  const captures = new Map<string, Buffer>()
   // #37341 Q4: a result's undecided tests, and the words they recorded, are never published (@cto 760e9219). A
   // decided result carries no reason of its own here: a cell's reason comes from the marker that decided it.
   const mapResult = (result: ProbeResult): PublicProbeResult => {
@@ -432,6 +447,8 @@ export function publicResults(
       selection: _selection,
       screenRecord: _screen,
       readRaw: _read,
+      readArtifact: _readArtifact,
+      readTextArtifact: _readTextArtifact,
       traceMemo: _trace,
       // #34617: the identity-rule claim is published only inside the run's trace document.
       identityRuleCheck: _identityRuleCheck,
@@ -444,7 +461,7 @@ export function publicResults(
     const mappedResults = results.map(mapResult)
     const mapped: PublicVersion = {
       ...metadata,
-      ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version), version.schemaVersion)),
+      ...(traced.has(version.runId) && traceReceipt(documents, captures, currentTrace(version), version.schemaVersion)),
       ...(screen && { screen }),
       catalogIds: [...version.catalogIds],
       counts: publicCounts(version.counts),
@@ -572,5 +589,5 @@ export function publicResults(
       ]
     }),
   )
-  return { projection: selected, selectedByBackend, documents }
+  return { projection: selected, selectedByBackend, documents, captures }
 }

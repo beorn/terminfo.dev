@@ -34,6 +34,7 @@
  *   bun scripts/check-private-leak.ts <docs-dir> # custom docs dir
  */
 
+import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -165,12 +166,29 @@ export function scanSources(docsDir: string): Violation[] {
 // Layer 2 — BUILD scan (dist/**)
 // ---------------------------------------------------------------------------
 
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
 export function scanDist(distDir: string): Violation[] {
   const violations: Violation[] = []
   if (!existsSync(distDir)) return violations
 
+  const capturesDir = join(distDir, "api", "v3", "captures")
+  const inventoryPath = join(distDir, "api", "v3", "evidence-files.json")
+  const ownedCaptures = new Map<string, string>()
+  if (existsSync(capturesDir) && existsSync(inventoryPath)) {
+    const inv = parseJsonStrict(inventoryPath, readFileSync(inventoryPath, "utf8")) as {
+      files?: Array<{ path?: string; sha256?: string }>
+    }
+    for (const row of inv.files ?? []) {
+      if (typeof row.path === "string" && row.path.startsWith("api/v3/captures/") && typeof row.sha256 === "string") {
+        ownedCaptures.set(row.path, row.sha256)
+      }
+    }
+  }
+
   walk(distDir, (full) => {
     const rel = relative(distDir, full)
+    const posixRel = rel.split(sep).join("/")
     const seg = firstForbiddenSegment(rel)
     if (seg && full.endsWith(".html")) {
       violations.push({
@@ -178,6 +196,38 @@ export function scanDist(distDir: string): Violation[] {
         path: `dist/${rel}`,
         reason: `built page under "${seg}/" — internal content reached the published site`,
       })
+    }
+    if (posixRel.startsWith("api/v3/captures/")) {
+      const m = /^api\/v3\/captures\/([0-9a-f]{64})\.png$/.exec(posixRel)
+      if (!m) {
+        violations.push({
+          layer: "build",
+          path: `dist/${posixRel}`,
+          reason: "unexpected non-cropped or non-PNG file under api/v3/captures/",
+        })
+        return
+      }
+      const bytes = readFileSync(full)
+      const actualSha = createHash("sha256").update(bytes).digest("hex")
+      if (bytes.length < 8 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+        violations.push({
+          layer: "build",
+          path: `dist/${posixRel}`,
+          reason: "capture file is not a valid PNG",
+        })
+      } else if (actualSha !== m[1]) {
+        violations.push({
+          layer: "build",
+          path: `dist/${posixRel}`,
+          reason: "capture PNG bytes do not match its content-addressed filename digest",
+        })
+      } else if (ownedCaptures.size > 0 && ownedCaptures.get(posixRel) !== actualSha) {
+        violations.push({
+          layer: "build",
+          path: `dist/${posixRel}`,
+          reason: "capture PNG is not registered in api/v3/evidence-files.json",
+        })
+      }
     }
   })
 

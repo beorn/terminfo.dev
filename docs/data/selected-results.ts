@@ -63,7 +63,13 @@ type ReadAssertion = HistoricalRun["assertions"][number]
 
 /** Created only for a digest-bound stored reference; mutable working inputs never have one. */
 interface RunTraceMemo {
-  value?: { url: string; sha256: string; bytes: string; document: CurrentTraceDocument }
+  value?: {
+    url: string
+    sha256: string
+    bytes: string
+    document: CurrentTraceDocument
+    captures: ReadonlyMap<string, Buffer>
+  }
 }
 
 /** Selection facts only; run-owned evidence is read once when its public trace is built. */
@@ -95,6 +101,10 @@ export type ProjectionRun = Pick<
   screenRecord: string | undefined
   outerApp?: Pick<NonNullable<LoadedRun["outerApp"]>, "subject">
   readRaw: () => RunTraceFacts
+  /** Verified screenshot artifact reader for stored corpus runs; absent for synthetic in-memory runs. */
+  readArtifact?: (ref: string) => Buffer
+  /** Verified text-snapshot artifact reader for stored corpus runs; absent for synthetic in-memory runs. */
+  readTextArtifact?: (ref: string) => Buffer
   traceMemo?: RunTraceMemo
   /** Stored runs only: this build's identity-rule match (#34617). Working runs never carry it. */
   identityRuleCheck?: TraceIdentityRuleCheck
@@ -244,6 +254,8 @@ export interface CurrentSelectedVersion {
   selectionCoversSuite?: boolean
   screenRecord: string | undefined
   readRaw: () => RunTraceFacts
+  readArtifact?: (ref: string) => Buffer
+  readTextArtifact?: (ref: string) => Buffer
   traceMemo?: RunTraceMemo
   identityRuleCheck?: TraceIdentityRuleCheck
   suiteRelation: SuiteRelation
@@ -594,6 +606,8 @@ export function projectResults(
       ...(run.selectionCoversSuite !== undefined && { selectionCoversSuite: run.selectionCoversSuite }),
       screenRecord: run.screenRecord,
       readRaw: run.readRaw,
+      ...(run.readArtifact && { readArtifact: run.readArtifact }),
+      ...(run.readTextArtifact && { readTextArtifact: run.readTextArtifact }),
       ...(run.traceMemo && { traceMemo: run.traceMemo }),
       ...(run.identityRuleCheck && { identityRuleCheck: run.identityRuleCheck }),
       suiteFreshness,
@@ -1359,6 +1373,8 @@ export function loadSelectedResults(
     const selectionCoversSuite = selectionCoversCohort(selection, cohort)
     return {
       ...compactRun(run, readRaw),
+      readArtifact: (ref: string) => readVerifiedArtifact(contentDir, ref, run.path, "screenshot"),
+      readTextArtifact: (ref: string) => readVerifiedArtifact(contentDir, ref, run.path, "text-snapshot"),
       ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
       traceMemo: {},
       ...("matched" in check && {

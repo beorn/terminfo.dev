@@ -157,6 +157,7 @@ function writeEvidence(
   out: string,
   documents: ReturnType<typeof publicResults>["documents"],
   runDocuments: ReadonlyMap<string, Buffer>,
+  captureImages: ReadonlyMap<string, Buffer>,
   contentDir: string,
 ): void {
   const expected = new Map<string, Buffer>()
@@ -196,10 +197,11 @@ function writeEvidence(
     }
   }
   for (const [url, bytes] of runDocuments) expected.set(url.slice(1), bytes)
+  for (const [url, bytes] of captureImages) expected.set(url.slice(1), bytes)
   const inventoryPath = join(out, "api", "v3", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v3\/evidence\/[a-f0-9]{64}(?:\.json|\/[A-Za-z0-9_.%~-]+\.json)|api\/v3\/(?:runs|traces)\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v3\/evidence\/[a-f0-9]{64}(?:\.json|\/[A-Za-z0-9_.%~-]+\.json)|api\/v3\/(?:runs|traces)\/[a-f0-9]{64}\.json|api\/v3\/captures\/[a-f0-9]{64}\.png)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {
@@ -241,6 +243,7 @@ function writeEvidence(
   visit("api/v3/evidence")
   visit("api/v3/runs")
   visit("api/v3/traces")
+  visit("api/v3/captures")
   // Check the complete population before performing any replacement or withdrawal.
   for (const [relative, bytes] of existing) {
     if (expected.get(relative)?.equals(bytes)) continue
@@ -401,7 +404,7 @@ export function generateApi(
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })
   const dataPath = join(v3Dir, "data.json")
-  writeEvidence(outDir ?? publicDir, published.documents, runDocuments, resultsDir)
+  writeEvidence(outDir ?? publicDir, published.documents, runDocuments, published.captures, resultsDir)
   writeAsset(dataPath, JSON.stringify(storedDocument(currentData, dataPath)) + "\n")
 
   return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }

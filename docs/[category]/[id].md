@@ -10,8 +10,16 @@ import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 import { termAnchorId } from '../.vitepress/theme/bar-layout.ts'
+import { plainExpectedSentence } from '../.vitepress/theme/evidence-status.ts'
+import { vendorExtensionOrigin } from '../.vitepress/theme/card-explain.ts'
 const { params } = useData()
 const p = params.value
+const expectedSentence = plainExpectedSentence({
+  body: data.featureDescriptions[p.featureId]?.body,
+  probeGuidance: data.featureDescriptions[p.featureId]?.probe,
+  featureName: p.featureName,
+})
+const vendorOrigin = vendorExtensionOrigin(p.featureId)
 
 const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
@@ -68,6 +76,7 @@ function termTooltip(r) {
 
 <p class="feature-meta">
   Category: <a :href="'/' + p.featureCategory">{{ p.featureCategory }}</a>
+  <span v-if="vendorOrigin"> · {{ vendorOrigin }}</span>
   <span v-if="p.baseline"> · Baseline: <a :href="'/baseline/' + p.baseline" class="baseline-badge" :class="'baseline-' + p.baseline">{{ p.baseline }}</a></span>
   <span v-if="featureTags.length"> · Tags: <template v-for="(tag, i) in featureTags" :key="tag.id"><a :href="'/' + tag.id">{{ tag.label }}</a><template v-if="i < featureTags.length - 1">, </template></template></span>
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
@@ -78,6 +87,7 @@ function termTooltip(r) {
 </div>
 
 <div v-if="p.featureBody" class="feature-body" v-html="p.featureBody"></div>
+<p v-else class="feature-body">{{ expectedSentence }}</p>
 
 <div v-if="p.probeMethod" class="probe-method">
   <strong>How this is tested</strong>

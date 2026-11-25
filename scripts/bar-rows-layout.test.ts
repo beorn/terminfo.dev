@@ -178,11 +178,14 @@ describe("layout, hover, and single-system CSS/component contracts (#37631 fixes
     expect(featureMd).toContain("termAnchorId")
   })
 
-  it("keeps ResultEvidenceCell default view concise and moves full step/byte dumps into Technical details", () => {
-    expect(resultCardVue).toContain("declaredSequence")
-    expect(resultCardVue).toContain("expectedSentence")
-    expect(resultCardVue).toContain("observedSummary")
-    expect(resultCardVue).toContain("No test sequence declared.")
+  it("renders ResultEvidenceCell with v12 single-surface layout (top-right pill, bytes left / words right, blue ← reply, top-aligned shots, Details disclosure) (#38269)", () => {
+    expect(resultCardVue).toContain("rc-top")
+    expect(resultCardVue).toContain("rc-steps")
+    expect(resultCardVue).toContain("rc-rep")
+    expect(resultCardVue).toContain("rc-mk")
+    expect(resultCardVue).toContain("rc-shots")
+    expect(resultCardVue).toContain("detailsSummaryLabel")
+    expect(resultCardVue).not.toContain("No test sequence declared.")
     expect(resultCardVue).not.toContain("tracePaneCopy.expected.behavior")
   })
 
@@ -230,21 +233,17 @@ describe("layout, hover, and single-system CSS/component contracts (#37631 fixes
     expect(headless.parserStatePre).toContain("bg null")
   })
 
-  it("groups identity vs evidence with 12-16px heading spacing, 4px heading-to-text gap, and child-pane seam/breadcrumb (#37631)", () => {
-    expect(resultCardVue).toContain("result-evidence__identity-group")
-    expect(resultCardVue).toContain("result-evidence__breadcrumb")
-    expect(resultCardVue).toMatch(
-      /\.result-evidence__field\s*\+\s*\.result-evidence__field\s*\{[^}]*margin-top:\s*14px/s,
-    )
-    expect(resultCardVue).toMatch(/\.result-evidence__field\s*\{[^}]*gap:\s*4px/s)
+  it("teleports SupportBar popover above sticky headers, keeps child-pane seam, and coordinates active popovers (#37631, #38269)", () => {
+    expect(supportBarVue).toContain('<Teleport to="body">')
+    expect(barCss).toMatch(/\.support-pop\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*9500/s)
     expect(barCss).toContain("--detail-notch-top")
     expect(barCss).toContain(".support-pop-detail::after")
     expect(barCss).toContain(".support-bar-seg.bar-none")
     expect(barCss).toMatch(/\.support-bar-seg\.bar-fail\s*\{[^}]*#dc2626/s)
-    expect(supportBarVue).toContain(":breadcrumb=")
     expect(supportBarVue).toContain("registerActivePopover")
     expect(resultCardVue).toContain("registerActivePopover")
-    expect(resultCardVue).toContain('v-if="!blank" class="result-evidence__field"')
+    expect(resultCardVue).toContain("rc-who")
+    expect(resultCardVue).not.toContain("result-evidence__breadcrumb")
   })
 
   it("deletes legacy summary-bars.css and removes legacy bar tooltip rules from tooltip.css (fix 9)", () => {

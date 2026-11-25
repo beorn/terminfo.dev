@@ -64,6 +64,8 @@ const pinned = ref(false)
 const engaged = ref(false)
 /** Pixels from the bar's start to the popover's left edge (anchored to the active segment, clamped to the page). */
 const shift = ref(0)
+/** Fixed viewport coordinates for the teleported popover so it always stacks above sticky table headers (#38269). */
+const popCoords = ref<{ left: number; top: number; flipped: boolean }>({ left: 16, top: 0, flipped: false })
 const tab = ref<CategoryId>("supported")
 const activeFeatureId = ref<string | null>(null)
 const paneSide = ref<DetailPaneSide>("right")
@@ -91,30 +93,53 @@ const activeCell = computed(() =>
 let openTimer: ReturnType<typeof setTimeout> | undefined
 let hideTimer: ReturnType<typeof setTimeout> | undefined
 let suppressFocusReopen = false
+let lastAnchor: HTMLElement | null = null
 
 function place(anchor?: HTMLElement | null) {
   const box = root.value?.getBoundingClientRect()
   if (!box) return
+  if (anchor !== undefined) lastAnchor = anchor
   const page = document.documentElement.clientWidth
+  const viewH = window.innerHeight
   const popWidth = Math.min(440, page - 32)
-  const segLeft = anchor ? anchor.getBoundingClientRect().left : box.left
+  const segLeft = lastAnchor ? lastAnchor.getBoundingClientRect().left : box.left
   shift.value = segmentPopoverShift({
     barLeft: box.left,
     segmentLeft: segLeft,
     popWidth,
     pageWidth: page,
   })
+  const left = Math.max(16, Math.min(Math.round(box.left + shift.value), Math.max(16, page - popWidth - 16)))
+  const popHeight = pop.value?.getBoundingClientRect().height || Math.min(Math.round(viewH * 0.6), 420)
+  const belowTop = Math.round(box.bottom + 6)
+  const roomBelow = viewH - belowTop - 12
+  const roomAbove = box.top - 18
+  const flipped = roomBelow < Math.min(popHeight, 260) && roomAbove > roomBelow
+  const top = flipped
+    ? Math.max(12, Math.round(box.top - 6 - Math.min(popHeight, roomAbove)))
+    : Math.max(12, Math.min(belowTop, Math.max(12, viewH - 120)))
+  popCoords.value = { left, top, flipped }
+}
+
+function onViewportChange() {
+  if (!open.value) return
+  const box = root.value?.getBoundingClientRect()
+  if (!box || box.bottom < 0 || box.top > window.innerHeight) {
+    close(false)
+    return
+  }
+  place()
 }
 
 function updateDetailPlacement(rowEl?: HTMLElement | null) {
   const page = document.documentElement.clientWidth
   const box = pop.value?.getBoundingClientRect()
-  const popLeft = box?.left ?? (root.value?.getBoundingClientRect().left ?? 0) + shift.value
+  const popLeft = box?.left ?? popCoords.value.left
   const popWidth = box?.width ?? Math.min(440, page - 32)
   paneSide.value = detailPaneSide({
     popLeft,
     popWidth,
-    detailWidth: 360,
+    detailWidth: 420,
     pageWidth: page,
   })
   if (box && rowEl) {
@@ -131,7 +156,10 @@ function updateDetailPlacement(rowEl?: HTMLElement | null) {
 }
 
 function onOutside(event: PointerEvent) {
-  if (root.value && !root.value.contains(event.target as Node)) close()
+  const target = event.target as Node | null
+  if (!target) return
+  if (root.value?.contains(target) || pop.value?.contains(target)) return
+  close()
 }
 
 function onDocKeydown(event: KeyboardEvent) {
@@ -167,6 +195,8 @@ function openPopover(id: CategoryId, pin: boolean, anchor?: HTMLElement | null) 
   document.dispatchEvent(new CustomEvent("terminfo:close-previews"))
   document.addEventListener("pointerdown", onOutside, true)
   document.addEventListener("keydown", onDocKeydown, true)
+  window.addEventListener("scroll", onViewportChange, { passive: true, capture: true })
+  window.addEventListener("resize", onViewportChange, { passive: true })
 }
 
 function closeFromCoordinator() {
@@ -183,8 +213,11 @@ function close(explicitDismiss = false) {
   pinned.value = false
   engaged.value = false
   activeFeatureId.value = null
+  lastAnchor = null
   document.removeEventListener("pointerdown", onOutside, true)
   document.removeEventListener("keydown", onDocKeydown, true)
+  window.removeEventListener("scroll", onViewportChange, true)
+  window.removeEventListener("resize", onViewportChange)
   clearActivePopover(closeFromCoordinator)
 }
 
@@ -200,12 +233,15 @@ function leave() {
 
 function onFocusOut(event: FocusEvent) {
   const next = event.relatedTarget as Node | null
-  if (next && root.value && !root.value.contains(next)) close()
+  if (next && (root.value?.contains(next) || pop.value?.contains(next))) return
+  if (next) close()
 }
 
 function onEscape() {
   if (!open.value) return
-  const hadFocusInside = Boolean(root.value?.contains(document.activeElement))
+  const hadFocusInside = Boolean(
+    root.value?.contains(document.activeElement) || pop.value?.contains(document.activeElement),
+  )
   const back = root.value?.querySelector<HTMLElement>(`.support-bar-seg[data-category="${tab.value}"]`)
   close(true)
   if (hadFocusInside && back) {
@@ -274,80 +310,88 @@ onBeforeUnmount(close)
         @click="show(segment.id, 'tap', $event.currentTarget as HTMLElement)"
       />
     </div>
-    <div
-      v-if="open"
-      ref="pop"
-      class="support-pop"
-      :style="{ left: `${shift}px` }"
-      role="dialog"
-      :aria-label="label"
-      @mouseenter="engaged = true"
-    >
-      <div class="support-pop-head">
-        <strong class="support-pop-name">{{ label }}</strong>
-        <button type="button" class="support-pop-close" aria-label="Close" @click="close(true)">×</button>
-      </div>
-      <div class="support-pop-tabs" role="tablist">
-        <button
-          v-for="category in tabs"
-          :key="category.id"
-          type="button"
-          role="tab"
-          class="support-pop-tab"
-          :class="'support-pop-tab-' + category.style"
-          :aria-selected="tab === category.id"
-          @click="onSwitchTab(category.id)"
-        >
-          {{ category.label }} <span class="support-pop-n">{{ category.count }}</span>
-        </button>
-      </div>
-      <div class="support-pop-panel" role="tabpanel">
-        <p class="support-pop-meaning">{{ current.meaning }}</p>
-        <ResultList
-          v-if="items.length"
-          :items="items"
-          :mark="current.mark"
-          :tone="current.style"
-          :active-id="activeFeatureId"
-          technical-notes
-          @hover-item="onHoverItem"
-          @select-item="onSelectItem"
-        >
-          <template v-if="version && paneSide === 'below'" #detail="{ item }">
-            <div class="support-pop-detail-inline">
-              <ResultEvidenceCell
-                inline
-                :feature-id="item.id"
-                :feature-name="item.name"
-                :probe-guidance="data.featureDescriptions[item.id]?.probe"
-                :subject-name="label"
-                :version="version"
-                :cell="publicResultFor(version, item.id)"
-              />
-            </div>
-          </template>
-        </ResultList>
-      </div>
-      <a v-if="href" class="support-pop-all" :href="href">All results for {{ label }} →</a>
-
+    <Teleport to="body">
       <div
-        v-if="version && activeItem && paneSide !== 'below'"
-        class="support-pop-detail"
-        :class="'support-pop-detail--' + paneSide"
-        :style="{ top: `${detailTop}px`, '--detail-notch-top': `${detailNotchTop}px` }"
-        @mouseenter="stay"
+        v-if="open"
+        ref="pop"
+        class="support-pop"
+        :class="{ 'support-pop--flipped': popCoords.flipped }"
+        :style="{ left: `${popCoords.left}px`, top: `${popCoords.top}px` }"
+        role="dialog"
+        :aria-label="label"
+        @mouseenter="
+          stay()
+          engaged = true
+        "
+        @mouseleave="leave"
+        @focusout="onFocusOut"
+        @keydown.esc="onEscape"
       >
-        <ResultEvidenceCell
-          inline
-          :breadcrumb="`${label} › ${activeItem.name}`"
-          :feature-id="activeItem.id"
-          :feature-name="activeItem.name"
-          :probe-guidance="data.featureDescriptions[activeItem.id]?.probe"
-          :subject-name="label"
-          :version="version"
-          :cell="activeCell"
-        />
+        <div class="support-pop-head">
+          <strong class="support-pop-name">{{ label }}</strong>
+          <button type="button" class="support-pop-close" aria-label="Close" @click="close(true)">×</button>
+        </div>
+        <div class="support-pop-tabs" role="tablist">
+          <button
+            v-for="category in tabs"
+            :key="category.id"
+            type="button"
+            role="tab"
+            class="support-pop-tab"
+            :class="'support-pop-tab-' + category.style"
+            :aria-selected="tab === category.id"
+            @click="onSwitchTab(category.id)"
+          >
+            {{ category.label }} <span class="support-pop-n">{{ category.count }}</span>
+          </button>
+        </div>
+        <div class="support-pop-panel" role="tabpanel">
+          <p class="support-pop-meaning">{{ current.meaning }}</p>
+          <ResultList
+            v-if="items.length"
+            :items="items"
+            :mark="current.mark"
+            :tone="current.style"
+            :active-id="activeFeatureId"
+            technical-notes
+            @hover-item="onHoverItem"
+            @select-item="onSelectItem"
+          >
+            <template v-if="version && paneSide === 'below'" #detail="{ item }">
+              <div class="support-pop-detail-inline">
+                <ResultEvidenceCell
+                  inline
+                  :feature-id="item.id"
+                  :feature-name="item.name"
+                  :probe-guidance="data.featureDescriptions[item.id]?.probe"
+                  :subject-name="label"
+                  :version="version"
+                  :cell="publicResultFor(version, item.id)"
+                />
+              </div>
+            </template>
+          </ResultList>
+        </div>
+        <a v-if="href" class="support-pop-all" :href="href">All results for {{ label }} →</a>
+
+        <div
+          v-if="version && activeItem && paneSide !== 'below'"
+          class="support-pop-detail"
+          :class="'support-pop-detail--' + paneSide"
+          :style="{ top: `${detailTop}px`, '--detail-notch-top': `${detailNotchTop}px` }"
+          @mouseenter="stay"
+        >
+          <ResultEvidenceCell
+            inline
+            :feature-id="activeItem.id"
+            :feature-name="activeItem.name"
+            :probe-guidance="data.featureDescriptions[activeItem.id]?.probe"
+            :subject-name="label"
+            :version="version"
+            :cell="activeCell"
+          />
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>

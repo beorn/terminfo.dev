@@ -37,6 +37,23 @@ export interface TraceAssertion {
   observed?: string
 }
 
+export interface TraceCaptureImage {
+  url: string
+  sha256: string
+  width: number
+  height: number
+}
+
+export interface TraceCaptures {
+  observed?: TraceCaptureImage
+  /** Whole terminal cell grid crop only (never window titlebar or desktop). */
+  full?: TraceCaptureImage
+  expected?: TraceCaptureImage
+  /** Captured text-cell slice for terminals captured as text snapshots (e.g. Terminal.app macOS). */
+  textCells?: string
+  regionText?: string
+}
+
 export interface TraceCellRecord {
   outcome?: Observation["outcome"]
   status?: ProbeStatus
@@ -48,6 +65,8 @@ export interface TraceCellRecord {
   queries?: TraceQuery[]
   events?: TraceEvent[]
   parserState?: unknown
+  /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
+  captures?: TraceCaptures
   assertions: TraceAssertion[]
 }
 
@@ -414,6 +433,45 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
 
 const DECIDED_STATUSES = new Set(["supported", "unsupported", "untestable"])
 
+const CAPTURE_URL = /^\/api\/v3\/captures\/[0-9a-f]{64}\.png$/
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
+function validCaptureImage(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return (
+    typeof value.url === "string" &&
+    CAPTURE_URL.test(value.url) &&
+    typeof value.sha256 === "string" &&
+    SHA256_HEX.test(value.sha256) &&
+    value.url === `/api/v3/captures/${value.sha256}.png` &&
+    typeof value.width === "number" &&
+    Number.isInteger(value.width) &&
+    value.width > 0 &&
+    typeof value.height === "number" &&
+    Number.isInteger(value.height) &&
+    value.height > 0
+  )
+}
+
+function validCaptures(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!isRecord(value)) return false
+  const hasObserved = value.observed !== undefined
+  const hasText = value.textCells !== undefined
+  if (!hasObserved && !hasText) return false
+  if (hasObserved && !validCaptureImage(value.observed)) return false
+  if (
+    hasText &&
+    (typeof value.textCells !== "string" || value.textCells.length === 0 || value.textCells.length > 4000)
+  ) {
+    return false
+  }
+  if (value.full !== undefined && !validCaptureImage(value.full)) return false
+  if (value.expected !== undefined && !validCaptureImage(value.expected)) return false
+  if (value.regionText !== undefined && typeof value.regionText !== "string") return false
+  return true
+}
+
 /** A decided current cell carries one or two evidence sentences; an undecided one carries none. */
 function evidenceFits(status: string, evidence: unknown): boolean {
   if (!DECIDED_STATUSES.has(status)) return evidence === undefined
@@ -463,6 +521,7 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
   if (
     !isRecord(cellEntry) ||
     !Array.isArray(cellEntry.assertions) ||
+    !validCaptures(cellEntry.captures) ||
     (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? typeof cellEntry.status !== "string" || !evidenceFits(cellEntry.status, cellEntry.evidence)
       : typeof cellEntry.outcome !== "string" ||

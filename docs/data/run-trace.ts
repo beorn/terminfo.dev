@@ -14,7 +14,21 @@
  * path reaches a trace.
  */
 import { createHash } from "node:crypto"
-import type { ProbeResult, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
+import type {
+  ProbeResult,
+  ProbeAssertion,
+  PixelObservationFrame,
+  TextCellsObservationFrame,
+} from "../../packages/probe-defs/src/types.ts"
+import {
+  cropDecodedPng,
+  cropReadCellsFromDecoded,
+  cropTerminalGridFromDecoded,
+  decodePngBytes,
+  describeCellRegion,
+  type DecodedPng,
+} from "./crop-png.ts"
+import type { TraceCaptureImage, TraceCaptures } from "./evidence-reader.ts"
 import {
   evidenceFacts,
   evidenceSentences,
@@ -61,6 +75,8 @@ interface TraceRecord {
   events?: TraceEvent[]
   /** A headless engine's state as the run stored it, read windows removed. */
   parserState?: unknown
+  /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
+  captures?: TraceCaptures
   assertions: TraceAssertion[]
 }
 
@@ -289,12 +305,146 @@ function storedRecord(raw: Readonly<Record<string, string>>, key: string, where:
   return text === undefined ? undefined : storedJson(text, `${where}.${key}`)?.value
 }
 
+function isPixelFrame(frame: NonNullable<ProbeResult["frames"]>[number]): frame is PixelObservationFrame {
+  return frame.kind !== "text-cells" && typeof frame.ref === "string" && frame.ref.startsWith("sha256:")
+}
+
+function registerCapture(
+  captureImages: Map<string, Buffer>,
+  cropped: { png: Buffer; width: number; height: number },
+): TraceCaptureImage {
+  const sha256 = createHash("sha256").update(cropped.png).digest("hex")
+  const url = `/api/v3/captures/${sha256}.png`
+  if (!captureImages.has(url)) captureImages.set(url, cropped.png)
+  return { url, sha256, width: cropped.width, height: cropped.height }
+}
+
+function isTextCellsFrame(frame: NonNullable<ProbeResult["frames"]>[number]): frame is TextCellsObservationFrame {
+  return frame.kind === "text-cells" && typeof frame.ref === "string" && frame.ref.startsWith("sha256:")
+}
+
+function sliceTextCells(
+  rawText: string,
+  rect: { top: number; left: number; bottom: number; right: number },
+): { textCells: string; regionText: string } | undefined {
+  const rows = rawText.replace(/\r\n/g, "\n").split("\n")
+  const top = Math.max(1, rect.top)
+  const bottom = Math.min(rows.length, Math.max(top, rect.bottom))
+  const left = Math.max(1, rect.left)
+  const right = Math.max(left, rect.right)
+  const sliced: string[] = []
+  for (let r = top - 1; r < bottom && sliced.length < 6; r++) {
+    const line = rows[r] ?? ""
+    sliced.push(line.slice(left - 1, right).slice(0, 60))
+  }
+  const textCells = sliced.join("\n")
+  if (textCells.length === 0) return undefined
+  const rowPart = top === bottom ? `row ${top}` : `rows ${top}–${bottom}`
+  const colPart = left === right ? `column ${left}` : `columns ${left}–${right}`
+  return { textCells, regionText: `${rowPart}, ${colPart}` }
+}
+
+/**
+ * Item 5 (#38269): crop read-cell and terminal-grid-only PNGs from a decided screen-capture cell,
+ * or extract the captured text-cell slice for terminals captured as text snapshots (e.g. Terminal.app macOS).
+ * Strict zero-leak rule:
+ *   - When `cellCrop` calibration is recorded: emit `observed` (read cells clamped strictly inside the grid)
+ *     and `full` (whole terminal cell grid ONLY — never window titlebar or desktop).
+ *   - When `cellCrop` is absent on Linux Xvfb (no window chrome): emit `observed` from `regionRectangle` only,
+ *     never `full`.
+ *   - Never emit any uncropped screenshot, and never emit macOS/Windows captures without `cellCrop`.
+ */
+function extractCellCaptures(
+  version: Pick<CurrentSelectedVersion, "runId" | "subject" | "readArtifact" | "readTextArtifact">,
+  result: ProbeResult,
+  captureImages: Map<string, Buffer>,
+  decodedCache: Map<string, DecodedPng>,
+): TraceCaptures | undefined {
+  if (!result.frames || result.frames.length === 0) return undefined
+  const pixelFrames = version.readArtifact ? result.frames.filter(isPixelFrame) : []
+  const target =
+    pixelFrames.find((f) => f.role === "target" && f.regionRectangle !== undefined) ??
+    pixelFrames.find((f) => f.regionRectangle !== undefined)
+  if (target && target.regionRectangle && version.readArtifact) {
+    const getDecoded = (ref: string): DecodedPng => {
+      let cached = decodedCache.get(ref)
+      if (!cached) {
+        cached = decodePngBytes(version.readArtifact!(ref))
+        decodedCache.set(ref, cached)
+      }
+      return cached
+    }
+
+    const cropFrame = (frame: PixelObservationFrame): TraceCaptureImage | undefined => {
+      if (!frame.regionRectangle) return undefined
+      if (frame.cellCrop?.grid) {
+        return registerCapture(
+          captureImages,
+          cropReadCellsFromDecoded(getDecoded(frame.ref), frame.regionRectangle, {
+            origin: frame.cellCrop.origin,
+            cell: frame.cellCrop.cell,
+            grid: frame.cellCrop.grid,
+          }),
+        )
+      }
+      if (version.subject.os === "linux" && frame.regionRectangle.width > 0 && frame.regionRectangle.height > 0) {
+        return registerCapture(captureImages, cropDecodedPng(getDecoded(frame.ref), frame.regionRectangle))
+      }
+      return undefined
+    }
+
+    const expectedFrame = pixelFrames.find(
+      (f) => f.role === "control" && /expected frame/i.test(f.label) && f.regionRectangle !== undefined,
+    )
+    const expected = expectedFrame ? cropFrame(expectedFrame) : undefined
+
+    if (target.cellCrop?.grid) {
+      const gridCrop = {
+        origin: target.cellCrop.origin,
+        cell: target.cellCrop.cell,
+        grid: target.cellCrop.grid,
+      }
+      const decoded = getDecoded(target.ref)
+      const observed = registerCapture(
+        captureImages,
+        cropReadCellsFromDecoded(decoded, target.regionRectangle, gridCrop),
+      )
+      const full = registerCapture(captureImages, cropTerminalGridFromDecoded(decoded, gridCrop))
+      const regionText = describeCellRegion(target.regionRectangle, gridCrop)
+      return { observed, full, ...(expected && { expected }), regionText }
+    }
+
+    // Older Linux Xvfb runs without cellCrop carry a tight regionRectangle inside the borderless terminal window.
+    if (version.subject.os === "linux") {
+      const observed = cropFrame(target)
+      if (observed) return { observed, ...(expected && { expected }) }
+    }
+  }
+
+  // Live text-cell captures (e.g. Terminal.app macOS AppleScript text snapshots): slice cellRectangle only.
+  if (version.readTextArtifact) {
+    const textFrames = result.frames.filter(isTextCellsFrame)
+    const textTarget =
+      textFrames.find((f) => f.role === "target" && f.cellRectangle !== undefined) ??
+      textFrames.find((f) => f.cellRectangle !== undefined)
+    if (textTarget && textTarget.cellRectangle) {
+      const rawText = version.readTextArtifact(textTarget.ref).toString("utf8")
+      const sliced = sliceTextCells(rawText, textTarget.cellRectangle)
+      if (sliced) return sliced
+    }
+  }
+
+  return undefined
+}
+
 function traceRecord(
-  version: Pick<CurrentSelectedVersion, "runId" | "subject">,
+  version: Pick<CurrentSelectedVersion, "runId" | "subject" | "readArtifact" | "readTextArtifact">,
   result: ProbeResult,
   raw: ReturnType<CurrentSelectedVersion["readRaw"]>,
   rawReply: string | undefined,
   where: string,
+  captureImages: Map<string, Buffer>,
+  decodedCache: Map<string, DecodedPng>,
 ): TraceRecord {
   const { featureId } = result
   const headless = version.subject.kind === "lib"
@@ -344,6 +494,9 @@ function traceRecord(
       ...(published && { observed: publishedText(assertion.observed, `${where}.assertions[${index}].observed`) }),
     }
   })
+  const captures = DECIDED.has(result.status)
+    ? extractCellCaptures(version, result, captureImages, decodedCache)
+    : undefined
   return {
     ...(reasonCode !== undefined && { reason: reasonCode }),
     ...(sentences && { evidence: sentences }),
@@ -356,6 +509,7 @@ function traceRecord(
           (sentences !== undefined || REPLY_SHAPES[featureId] !== undefined) && replyPublishable(evidence, reply),
       )),
     ...(parserState !== undefined && { parserState }),
+    ...(captures && { captures }),
     assertions: traced,
   }
 }
@@ -400,7 +554,7 @@ function traceDocument<Cell>(
 
 /** Freeze the JSON trace tree before its original run shares it with another consumer. */
 function freezeTrace(value: unknown): void {
-  if (value === null || typeof value !== "object") return
+  if (value === null || typeof value !== "object" || value instanceof Map || ArrayBuffer.isView(value)) return
   for (const child of Object.values(value)) freezeTrace(child)
   Object.freeze(value)
 }
@@ -416,6 +570,8 @@ export function currentTrace(version: CurrentSelectedVersion) {
   if (version.traceMemo?.value) return version.traceMemo.value
   const raw = version.readRaw()
   const cells: Record<string, CurrentTraceCell> = {}
+  const captureImages = new Map<string, Buffer>()
+  const decodedCache = new Map<string, DecodedPng>()
   for (const result of version.results) {
     if (!isPublishedStatus(result.status)) continue
     const rawReply = result.rawReplyRef === undefined ? undefined : raw.rawReplies[result.rawReplyRef]
@@ -425,12 +581,22 @@ export function currentTrace(version: CurrentSelectedVersion) {
     cells[result.featureId] = {
       status: result.status,
       ...(result.assertionType && { assertionType: result.assertionType }),
-      ...traceRecord(version, result, raw, rawReply, `run ${version.runId} feature ${result.featureId}`),
+      ...traceRecord(
+        version,
+        result,
+        raw,
+        rawReply,
+        `run ${version.runId} feature ${result.featureId}`,
+        captureImages,
+        decodedCache,
+      ),
     }
   }
-  const trace = traceDocument(3, { ...version, identity: raw.identity }, cells, version.results.length)
+  const built = traceDocument(3, { ...version, identity: raw.identity }, cells, version.results.length)
+  const trace = built ? { ...built, captures: captureImages as ReadonlyMap<string, Buffer> } : undefined
   if (trace && version.traceMemo) {
-    freezeTrace(trace)
+    freezeTrace(trace.document)
+    Object.freeze(trace)
     version.traceMemo.value = trace
   }
   return trace
