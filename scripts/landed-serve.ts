@@ -32,7 +32,7 @@
  * a pre-existing staging or retired tree of unproven origin is retained evidence, not scratch (@cto 2026-11-22,
  * #34952).
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -88,8 +88,9 @@ function servedRevision(): string | null {
 }
 
 /**
- * The one rebuild check: `code` when the served output is not this landing's revision (rebuild in place, no fallback),
- * `run` when the code matches but a newer complete hourly run exists than the one the output shows, else null.
+ * The one rebuild check: `code` when the served output is not this landing's revision (a staged rebuild that keeps the
+ * previous dist if it fails, #38423), `run` when the code matches but a newer complete hourly run exists than the one
+ * the output shows, else null.
  */
 export function rebuildReason(target: string, stamp: ServedStamp, newestRunId: string | null): "code" | "run" | null {
   if (stamp.sourceCommit !== target) return "code"
@@ -152,7 +153,7 @@ function carriesStagingMarker(staging: string): boolean {
  */
 export function claimStaging(
   staging: string,
-  build: { target: string; runId: string },
+  build: { target: string; runId: string | null },
   now: Date = new Date(),
 ): string | null {
   let kept: string | null = null
@@ -205,6 +206,18 @@ const siteBuild: RunBuild = (env) =>
   })
 
 /**
+ * Retire the served dist and move a proven staged dist into place. Only trees this program produced are deleted;
+ * `discardRetiredDist` keeps anything of unproven origin instead.
+ */
+function swapStagedDist(served: string, stagedDist: string, retired: string): void {
+  discardRetiredDist(retired)
+  if (existsSync(served)) renameSync(served, retired)
+  renameSync(stagedDist, served)
+  // raw-delete-allow: standalone component repository without hh's removely; this is exactly the served dist the swap above retired a moment ago
+  rmSync(retired, { recursive: true, force: true })
+}
+
+/**
  * Rebuild for a new hourly run into `<outRoot>/staging` and swap the staged dist in only on success. On failure the
  * served dist is untouched, the failure is printed on stderr, and the rebuild marker stays behind; returns false.
  */
@@ -241,11 +254,7 @@ export async function rebuildForRun(args: {
     return fail(`staged build stamped ${staged.sourceCommit ?? "nothing"} / run ${staged.workingRunId ?? "none"}`)
   }
   const retired = join(args.outRoot, "dist.previous")
-  discardRetiredDist(retired)
-  if (existsSync(served)) renameSync(served, retired)
-  renameSync(stagedDist, served)
-  // raw-delete-allow: standalone component repository without hh's removely; this is exactly the served dist the swap above retired a moment ago
-  rmSync(retired, { recursive: true, force: true })
+  swapStagedDist(served, stagedDist, retired)
   clearMarker?.()
   console.log(`terminfo-site: now serving hourly run ${staged.workingRunId} (${args.target.slice(0, 10)})`)
   return true
@@ -297,33 +306,58 @@ export function createRunRebuilder(args: { runsDir: string; outRoot: string; tar
   return { check }
 }
 
-function build(target: string): void {
-  console.log(`terminfo-site: served output is ${servedRevision() ?? "absent"}, landing is ${target} — rebuilding`)
+/**
+ * Build this landing before the first serve, into `<outRoot>/staging`, and swap it in only on success (#38423).
+ * A failed build leaves the served dist untouched: the preview keeps serving the previous build and names both
+ * commits, because a 502 caused by a build that is merely over the memory ceiling is worse than a preview that says
+ * which older landing it is showing. The process exits only when there is nothing at all to serve, where serving
+ * nothing is the honest answer. Returns true when the staged build was swapped in.
+ */
+export async function buildLanding(
+  args: { outRoot: string; target: string; runBuild?: RunBuild },
+  now: Date = new Date(),
+): Promise<boolean> {
+  const served = join(args.outRoot, "dist")
+  const staging = join(args.outRoot, "staging")
+  const stagedDist = join(staging, "dist")
+  const previous = readServedStamp(served).sourceCommit
+  console.log(
+    `terminfo-site: served output is ${previous ?? "absent"}, landing is ${args.target} — rebuilding into ${staging}`,
+  )
   // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker` for why it
-  // is cleared only on success.
-  const clearMarker = writeSiteRebuildMarker(target)
+  // is cleared only once the outcome is known: on success because the build landed, on a kept previous build because
+  // this program has stopped rebuilding and is serving again.
+  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot })
+  claimStaging(staging, { target: args.target, runId: null }, now)
   // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
   // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
   // checkout's HEAD is that pin, and `target` is it; the build has no other way to know a landing is the caller.
-  const result = spawnSync("bun", siteBuildArgs(process.env), {
-    cwd: repoRoot,
-    stdio: "inherit",
-    env: { ...process.env, TERMINFO_SITE_CODE_GITLINK: target },
+  const status = await (args.runBuild ?? siteBuild)({
+    ...process.env,
+    TERMINFO_SITE_OUT_DIR: staging,
+    TERMINFO_SITE_CODE_GITLINK: args.target,
   })
-  if (result.error) {
-    console.error(`terminfo-site: cannot run the site build: ${result.error.message}`)
-    process.exit(1)
+  const staged = readServedStamp(stagedDist)
+  const failure = status !== 0 ? `site build failed (exit ${String(status)})` : null
+  const mismatch =
+    failure === null && staged.sourceCommit !== args.target
+      ? `build stamped ${staged.sourceCommit ?? "nothing"}, expected ${args.target}`
+      : null
+  if (failure !== null || mismatch !== null) {
+    if (previous === null) {
+      console.error(`terminfo-site: ${failure ?? mismatch}; no previous build to serve`)
+      process.exit(1)
+    }
+    console.error(
+      `terminfo-site: ${failure ?? mismatch}; NOT serving ${args.target.slice(0, 12)} — still serving the previous ` +
+        `build ${previous.slice(0, 12)} from ${served} until a build passes`,
+    )
+    clearMarker?.()
+    return false
   }
-  if (result.status !== 0) {
-    console.error(`terminfo-site: site build failed (exit ${result.status}); refusing to serve the previous output`)
-    process.exit(1)
-  }
-  const built = servedRevision()
-  if (built !== target) {
-    console.error(`terminfo-site: build stamped ${built ?? "nothing"}, expected ${target}; refusing to serve`)
-    process.exit(1)
-  }
+  swapStagedDist(served, stagedDist, join(args.outRoot, "dist.previous"))
   clearMarker?.()
+  return true
 }
 
 /**
@@ -399,7 +433,7 @@ export function createPreviewHandler(distDir: string): (request: Request) => Res
   }
 }
 
-function serveLanded(): void {
+async function serveLanded(): Promise<void> {
   const target = landingRevision()
   const runsDir = siteWorkingRunsDir()
   const outRoot = siteOutRoot()
@@ -408,8 +442,11 @@ function serveLanded(): void {
       "TERMINFO_SITE_WORKING_RUNS_DIR needs TERMINFO_SITE_OUT_DIR: an hourly rebuild stages beside the served build",
     )
   }
-  // A code mismatch rebuilds in place before serving, exactly as before; that build reads the newest hourly run itself.
-  if (servedRevision() !== target) build(target)
+  // A code mismatch rebuilds into the staging root before serving; that build reads the newest hourly run itself, and
+  // a failure keeps the previous build serving instead of taking the preview down (#38423).
+  if (servedRevision() !== target) {
+    await buildLanding({ outRoot: outRoot ?? resolve(repoRoot, "docs", ".vitepress"), target })
+  }
 
   console.log(`terminfo-site: serving ${distDir} (${target.slice(0, 10)}) at http://${hostname}:${port}/`)
   Bun.serve({ hostname, port, fetch: createPreviewHandler(distDir) })
@@ -425,4 +462,4 @@ function serveLanded(): void {
   console.log(`terminfo-site: rebuilding on each new complete hourly run under ${runsDir}`)
 }
 
-if (import.meta.main) serveLanded()
+if (import.meta.main) void serveLanded()

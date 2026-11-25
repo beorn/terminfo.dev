@@ -12,6 +12,7 @@ import { join } from "node:path"
 import { execFileSync, spawn, spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import {
+  buildLanding,
   createPreviewHandler,
   createRunRebuilder,
   readServedStamp,
@@ -344,6 +345,45 @@ describe("landed-serve hourly-run rebuild", () => {
     expect(errors.join("\n")).toContain("still serving the previous build")
     // The existing rebuild marker stays behind on failure, as it does for a failed code rebuild.
     expect(existsSync(join(out, "rebuild.json"))).toBe(true)
+  })
+
+  // #38423: a landing whose own build is over the memory ceiling must not take the preview down. The operator sees an
+  // older named build instead of a 502, and the marker the health probe reads is cleared because rebuilding stopped.
+  it("a failed landing build keeps the previous build serving and clears the marker", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
+    stamp(join(out, "dist"), RUN_A)
+    const target = "b".repeat(40)
+    const errors: string[] = []
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => errors.push(String(line)))
+    try {
+      expect(await buildLanding({ outRoot: out, target, runBuild: async () => 70 })).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_A })
+    expect(readFileSync(join(out, "dist", "index.html"), "utf8")).toBe(`built-for-${RUN_A}`)
+    expect(errors.join("\n")).toContain("site build failed (exit 70)")
+    expect(errors.join("\n")).toContain(`NOT serving ${target.slice(0, 12)}`)
+    expect(errors.join("\n")).toContain(`still serving the previous build ${CODE.slice(0, 12)}`)
+    expect(existsSync(join(out, "rebuild.json"))).toBe(false)
+  })
+
+  it("a passing landing build swaps the staged dist in and clears the marker", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
+    stamp(join(out, "dist"), RUN_A)
+    const target = "b".repeat(40)
+    const ok = await buildLanding({
+      outRoot: out,
+      target,
+      runBuild: async (env) => {
+        stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), null, target)
+        return 0
+      },
+    })
+    expect(ok).toBe(true)
+    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: target, workingRunId: null })
+    expect(existsSync(join(out, "staging", "dist"))).toBe(false)
+    expect(existsSync(join(out, "rebuild.json"))).toBe(false)
   })
 
   it("a successful run rebuild swaps the staged build in and clears the marker", async () => {
