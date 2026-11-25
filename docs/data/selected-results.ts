@@ -802,10 +802,10 @@ function applyDeclared(
       )
     }
     if (replaces && cell && featureResult && status === "probe-invalid") {
-      if (subject.version !== replaces.version) {
+      if (cell.run.subject.version !== replaces.version) {
         throw new Error(
           `Declared-untestable cell ${cellLabel(row)} reads probe-invalid in ${contextKey} (run ${cell.run.runId}, version ` +
-            `${subject.version}); the row replaces PROBE INVALID only at version ${replaces.version}: ${REMOVE_DECLARED_ROW}`,
+            `${cell.run.subject.version}); the row replaces PROBE INVALID only at version ${replaces.version}: ${REMOVE_DECLARED_ROW}`,
         )
       }
     } else if (!cell || !featureResult || status !== "probe-todo") {
