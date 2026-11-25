@@ -639,7 +639,6 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Missing run, runner, target, preset, or clipboard profile metadata" >&2
     exit 2
   }
-  [[ "$(id -u)" != 0 ]] || { echo "Refusing root container user" >&2; exit 2; }
   [[ -r /out/host-measured.json && -w /out ]] || { echo "Missing writable single-run output mount" >&2; exit 2; }
   [[ "$TERMINFO_RUN_ID" == "$(jq -er .runId /out/host-measured.json)" ]] || {
     echo "Container run ID disagrees with host receipt" >&2
@@ -1763,8 +1762,37 @@ container_shell=$(jq -er '.[0].Config.Entrypoint[0]' "$prep/image-inspect.json")
 [[ "$container_shell" == /* ]] || {
   echo "Loaded image entrypoint is not an absolute shell path: $container_shell" >&2; exit 2;
 }
-printf 'runner:x:%s:%s:terminfo run user:/home/runner:%s\n' "$run_uid" "$run_gid" "$container_shell" > "$prep/passwd"
-printf 'runner:x:%s:\n' "$run_gid" > "$prep/group"
+# #38428: the contract 27892 states - the bind-mounted /out is THIS host user's - is met by whichever
+# container identity the daemon maps onto that host user, and that is not always $run_uid. Rootless
+# Docker (hh.hab.tsx, 2026-11-25) maps container root to the invoking user and every other uid into
+# the hh subuid range (165536+), so `--user $run_uid` writes files the host cannot read or remove and
+# the run dies with "Missing writable single-run output mount". Probe both candidates against the
+# loaded image and refuse rather than guess: the wrong pair only surfaces later as an unreadable
+# artifact, after the measurement has been paid for.
+container_user=""
+probe_dir=$(mktemp -d "$run_dir/uidprobe.XXXXXX")
+for candidate in "$run_uid:$run_gid" "0:0"; do
+  docker run --rm --user "$candidate" --network none --read-only --entrypoint "$container_shell" \
+    --mount "type=bind,src=$probe_dir,dst=/probe" "$image_reference" -c 'touch /probe/wrote' \
+    >/dev/null 2>&1 || continue
+  [[ "$(stat -c %u "$probe_dir/wrote" 2>/dev/null)" == "$run_uid" ]] || continue
+  container_user=$candidate
+  break
+done
+rm -f "$probe_dir/wrote"
+rmdir "$probe_dir" 2>/dev/null || true
+[[ -n "$container_user" ]] || {
+  echo "No container user writes the bind-mounted /out as host uid $run_uid: the daemon maps neither uid $run_uid nor container root onto this user" >&2
+  exit 2
+}
+container_uid=${container_user%%:*}
+container_gid=${container_user##*:}
+# The passwd and group names follow the mapped uid, so a tool that special-cases root by name still
+# sees root rather than a stranger holding uid 0.
+container_name=runner
+[[ "$container_uid" != 0 ]] || container_name=root
+printf '%s:x:%s:%s:terminfo run user:/home/runner:%s\n' "$container_name" "$container_uid" "$container_gid" "$container_shell" > "$prep/passwd"
+printf '%s:x:%s:\n' "$container_name" "$container_gid" > "$prep/group"
 chmod 0644 "$prep/passwd" "$prep/group"
 
 selection_env=()
@@ -1776,10 +1804,10 @@ grace_env=()
 # The declared locale every collector-owned terminal launch runs under (28752): the container's
 # shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
 # rather than whatever the launching shell happened to carry. Recorded in observed.json below.
-container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-only \
+container_id=$(docker create --user "$container_user" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
-  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$run_uid,gid=$run_gid,mode=0700" \
+  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$container_uid,gid=$container_gid,mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
   --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
   --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
