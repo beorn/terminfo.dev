@@ -342,11 +342,21 @@ export function heldAccumulate(ctx: TermProbeSource, reader: Reader): Promise<Pr
 /** The qualified Linux output row reuses the same held reader and observed-model qualification. */
 export function heldViewportHoldOutput(ctx: TermProbeSource, reader: Reader): Promise<ProbeCallbackResult> {
   if (reader.route !== LINUX_ALACRITTY_0_17_VIEWPORT_ROUTE && reader.route !== XTERM_411_VIEWPORT_ROUTE) {
-    return Promise.resolve(todo(`viewport output hold has no qualified Linux route: ${reader.route}`, {}))
+    return Promise.resolve(
+      todo(`viewport output hold has no qualified Linux route: ${reader.route}`, {
+        route: reader.route,
+      }),
+    )
   }
   const route = ctx.viewportScroll
   if (!route?.returnToBottom || !route.adoptHold) {
-    return Promise.resolve(todo("viewport output hold needs recorded dispatch and owned restoration", {}))
+    return Promise.resolve(
+      todo("viewport output hold needs recorded dispatch and owned restoration", {
+        route: reader.route,
+        returnToBottom: Boolean(route?.returnToBottom),
+        adoptHold: Boolean(route?.adoptHold),
+      }),
+    )
   }
   const restore = route.returnToBottom.bind(route)
   return heldRow(ctx, reader, "scrollback.viewport-hold-output", async (fixture, bracket, qualify) => {

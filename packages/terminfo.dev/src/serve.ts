@@ -60,6 +60,7 @@ import {
   COMPLETE_XTVERSION,
   declaredAppVersion,
   resolveMeasuredAppVersion,
+  terminalIdentityRequiresDa2,
   verifyTerminalIdentity,
 } from "./identity-guard.ts"
 import {
@@ -1133,11 +1134,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           if (activeRowMove !== undefined && activeRowMove.featureId !== checkpoint.featureId) {
             activeRowMove = undefined
           }
-          const sentinel = alternate
-            ? alternate.witness.sentinel
-            : reverse
-              ? reverse.sentinel
-              : calibrated.sentinel
+          const sentinel = alternate ? alternate.witness.sentinel : reverse ? reverse.sentinel : calibrated.sentinel
           const paintClasses = alternate
             ? alternate.witness.paintClasses
             : reverse
@@ -1983,8 +1980,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   raw: identity.raw,
                   rawBase64: identity.rawBase64,
                 }
-                // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
-                if (measuredTerminal.name === "screen") {
+                // Collect run-level DA2 evidence whenever the target's identity rule requires DA2 (Screen, Terminal.app, #34528).
+                if (terminalIdentityRequiresDa2(measuredTerminal.name)) {
                   da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
                 }
                 declarationVersion = declaredAppVersion(
@@ -2034,6 +2031,7 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                 draft,
                 onCheckpoint: (progress) => {
                   Object.assign(draft, {
+                    results: progress.results,
                     rawReplies: { ...draft.rawReplies, ...progress.rawReplies },
                     assertions: progress.assertions,
                     screenshotRefs: progress.screenshotRefs,
@@ -2301,6 +2299,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       recordCollectionFailure(draft, collectionStartedAt, diagnostic, delegatedIds)
     } else if (result === "failed") {
       draft.rawReplies["collector.prerequisite"] = diagnostic
+      draft.rawReplies["collector.failure"] = JSON.stringify({
+        name: error instanceof Error ? error.name : "Error",
+        error: diagnostic,
+        nothingMeasured: true,
+        ...(error instanceof Error && "captureCommand" in error ? { captureCommand: error.captureCommand } : {}),
+      })
       for (const row of draft.results) {
         if (row.status === "probe-todo" && selectedIds.includes(row.featureId)) row.reason = diagnostic
       }

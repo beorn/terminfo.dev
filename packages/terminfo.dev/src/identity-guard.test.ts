@@ -9,6 +9,7 @@ import {
   declaredAppVersion,
   deriveIdentity,
   resolveMeasuredAppVersion,
+  terminalIdentityRequiresDa2,
   verifyTerminalIdentity,
 } from "./identity-guard.ts"
 import muxIdentity from "./fixtures/mux-identity.json"
@@ -147,7 +148,18 @@ describe("verifyTerminalIdentity", () => {
       "collector.xtversion": "\x1b[?1;2c",
       "device.secondary-da": "\x1b[>1;95;0c",
     }
+    expect(terminalIdentityRequiresDa2("terminal-app")).toBe(true)
+    expect(terminalIdentityRequiresDa2("screen")).toBe(true)
+    expect(terminalIdentityRequiresDa2("kitty")).toBe(false)
     expect(verifyTerminalIdentity("terminal-app", responses)).toEqual({ ok: true, checked: true })
+    // #34528: when --probe-ids omits device.primary-da and device.secondary-da, run-level collector.xtversion
+    // and collector.da2 verify Terminal.app identity without feature identity cells.
+    expect(
+      verifyTerminalIdentity("terminal-app", {
+        "collector.xtversion": "\x1b[?1;2c",
+        "collector.da2": "\x1b[>1;95;0c\x1b[?1;2c",
+      }),
+    ).toEqual({ ok: true, checked: true })
     expect(
       verifyTerminalIdentity("terminal-app", { "collector.xtversion": responses["collector.xtversion"] }).reason,
     ).toContain("DA2 mismatch")

@@ -539,6 +539,19 @@ test.each<{
     )
     const diagnostic = Object.fromEntries(Object.keys(error).map((key) => [key, Reflect.get(failure, key)]))
     expect(diagnostic).toMatchObject(error)
+    if (source === undefined) {
+      // #34527: a missing executable is a named preflight refusal carrying the executable, searched PATH, and "nothing measured".
+      expect(failure.name).toBe("CapturePreflightMissingExecutable")
+      expect(failure.message).toContain("absent-command")
+      expect(failure.message).toContain(process.env.PATH ?? "")
+      expect(failure.message).toContain("nothing measured")
+      expect(failure.captureCommand).toMatchObject({
+        file: expect.stringContaining("absent-command"),
+        searchedPath: process.env.PATH ?? "",
+        nothingMeasured: true,
+        code: "ENOENT",
+      })
+    }
     if (step !== undefined) {
       // #34892: our own timer killed it, so the message names the step and the budget it passed and
       // never reads as the measured app's bare signal.
