@@ -849,8 +849,9 @@ describe("selected-run consumer parity", () => {
         expect(terminal?.score).toEqual({ supported: all - 1, all })
         expect(terminal?.analysis).toContain("less than full recorded support")
         expect(terminal?.analysis).not.toContain("Observed unsupported")
-        expect(feature?.analysis).toContain("No recorded support")
-        expect(feature?.analysis).not.toContain("Not supported by")
+        expect(feature?.analysis).toContain("No stored current result covers it")
+        expect(feature?.analysis).not.toContain("Supported by")
+        expect(feature?.analysis).not.toContain("Not supported:")
         expect(JSON.stringify(Object.values(selected.cells).map((cell) => cell.result))).toBe(stored)
       } finally {
         warning.mockRestore()
@@ -1208,7 +1209,7 @@ describe("selected-run consumer parity", () => {
       expect(analyses["framework/ink"]?.analysis).toContain("<strong>0</strong> of 3")
       expect(analyses["framework/ink"]?.analysis).not.toContain("Known unsupported baseline results")
       expect(analyses["framework/ink"]?.analysis).toContain("Less than full recorded support")
-      expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("recorded support")
+      expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("No stored current result covers it")
       expect(analyses.cursor?.analysis).toContain("covers 22 features")
       expect(analyses.vt220?.analysis).toBeDefined()
       expect(analyses["baseline/modern"]?.analysis).toContain("0</strong>")
@@ -1522,8 +1523,8 @@ describe("selected-run consumer parity", () => {
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
-      expect(unreviewed).toContain("No recorded support among")
-      expect(unreviewed).toContain("Not supported by:")
+      expect(unreviewed).toContain("Not supported by any of the")
+      expect(unreviewed).toContain("Not supported:")
       cell.note = "Reviewed Kitty sixel observation note"
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)

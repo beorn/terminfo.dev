@@ -178,15 +178,28 @@ const VENDOR_BY_FEATURE: Readonly<Record<string, string>> = {
   "input.urxvt-mouse": "rxvt-unicode extension",
 }
 
-export function vendorExtensionOrigin(featureId: string, tags?: readonly string[]): string | undefined {
-  const direct = VENDOR_BY_FEATURE[featureId]
-  if (direct) return direct
-  if (featureId.startsWith("extensions.kitty-") || featureId.startsWith("input.kitty-")) return "Kitty extension"
-  if (tags?.includes("vscode-extensions")) return "VS Code extension"
-  if (tags?.includes("iterm2")) return "iTerm2 extension"
-  if (tags?.includes("conemu")) return "ConEmu extension"
-  if (tags?.includes("kitty-extensions") && !tags.includes("ecma-48")) return "Kitty extension"
-  return undefined
+export function vendorExtensionOrigin(
+  featureId: string,
+  tags?: readonly string[],
+  testedTerminal?: string,
+): string | undefined {
+  let origin: string | undefined = VENDOR_BY_FEATURE[featureId]
+  if (!origin) {
+    if (featureId.startsWith("extensions.kitty-") || featureId.startsWith("input.kitty-")) origin = "Kitty extension"
+    else if (tags?.includes("vscode-extensions")) origin = "VS Code extension"
+    else if (tags?.includes("iterm2")) origin = "iTerm2 extension"
+    else if (tags?.includes("conemu")) origin = "ConEmu extension"
+    else if (tags?.includes("kitty-extensions") && !tags.includes("ecma-48")) origin = "Kitty extension"
+  }
+  if (!origin) return undefined
+  const target = testedTerminal?.trim()
+  if (target) {
+    const vendor = origin.replace(/\s+extension$/iu, "").trim()
+    if (vendor && target.toLowerCase() !== vendor.toLowerCase()) {
+      return `${vendor}'s command, tested in ${target}`
+    }
+  }
+  return origin
 }
 
 export function shortTerminalName(subjectName: string, subjectKind?: string): string {
@@ -207,12 +220,17 @@ export function formatWhoLine(input: {
 }): string {
   const isLib = input.subjectKind === "lib" || /\(lib\)\s*$/iu.test(input.subjectName)
   const base = shortTerminalName(input.subjectName, input.subjectKind)
+  const datePart = input.measuredDate
+    ? /^tested\s+/iu.test(input.measuredDate)
+      ? input.measuredDate
+      : `tested ${input.measuredDate}`
+    : undefined
   if (isLib) {
     const namePart = input.version ? `${base} ${input.version}` : base
-    return [namePart, "library (no window)", input.osName, input.measuredDate].filter(Boolean).join(" · ")
+    return [namePart, "library (no window)", input.osName, datePart].filter(Boolean).join(" · ")
   }
   const namePart = input.version ? `${base} ${input.version}` : base
-  return [namePart, input.osName, input.measuredDate].filter(Boolean).join(" · ")
+  return [namePart, input.osName, datePart].filter(Boolean).join(" · ")
 }
 
 function isCollectorScaffoldingWrite(raw: string): boolean {
@@ -456,17 +474,39 @@ export function explainSentCommand(
     return { words: decsca[1] === "1" ? "Protect cells from selective erase" : "Unprotect cells", fallback: false }
   const decsace = /^\x1b\[(\d*)\*x$/.exec(raw)
   if (decsace) return { words: "Set rectangular edit mode (DECSACE)", fallback: false }
-  const rectOp = /^\x1b\[[0-9;]*\$([rzvtx\{])$/.exec(raw)
+  const rectOp = /^\x1b\[([0-9;]*)\$([rzvtx\{])$/.exec(raw)
   if (rectOp) {
-    const names: Record<string, string> = {
-      r: "Change attributes in rectangle (DECCARA)",
-      t: "Reverse attributes in rectangle (DECRARA)",
-      v: "Copy rectangular area (DECCRA)",
-      x: "Fill rectangular area (DECFRA)",
-      z: "Erase rectangular area (DECERA)",
-      "{": "Selectively erase rectangle (DECSERA)",
+    const params = (rectOp[1] ?? "").split(";")
+    const op = rectOp[2] ?? ""
+    const [pt, pl, pb, pr, ...rest] = params
+    const rectDesc = pt && pl && pb && pr ? `rows ${pt}–${pb}, cols ${pl}–${pr}` : "rectangle"
+    if (op === "r" || op === "t") {
+      const rectAttrNames: Record<string, string> = {
+        "0": "plain",
+        "1": "bold",
+        "4": "underline",
+        "5": "blink",
+        "7": "inverse",
+        "22": "not bold",
+        "24": "not underlined",
+        "25": "not blinking",
+        "27": "not inverse",
+      }
+      const attrLabels = rest
+        .filter((code) => code !== "")
+        .map((code) => (rectAttrNames[code] ? `${rectAttrNames[code]} (${code})` : `SGR ${code}`))
+      const attrText = attrLabels.length > 0 ? attrLabels.join(", ") : "attributes"
+      const verb = op === "r" ? "Set" : "Reverse"
+      const tag = op === "r" ? "DECCARA" : "DECRARA"
+      return { words: `${verb} ${attrText} in ${rectDesc} (${tag})`, fallback: false }
     }
-    return { words: names[rectOp[1]!] ?? "Edit rectangular region", fallback: false }
+    const names: Record<string, string> = {
+      v: "Copy rectangular area (DECCRA)",
+      x: `Fill ${rectDesc} (DECFRA)`,
+      z: `Erase ${rectDesc} (DECERA)`,
+      "{": `Selectively erase ${rectDesc} (DECSERA)`,
+    }
+    return { words: names[op] ?? "Edit rectangular region", fallback: false }
   }
   const rectCksum = /^\x1b\[[0-9;]*\*y$/.exec(raw)
   if (rectCksum) return { words: "Ask rectangle checksum (DECRQCRA)", fallback: false }
@@ -603,7 +643,10 @@ export function explainReplyCommand(raw: string): { words: string; fallback: boo
   if (kbd) return { words: `“Keyboard flags ${kbd[1]}”`, fallback: false }
   const decrqss = /^\x1bP([01])\$r([\s\S]*?)\x1b\\$/.exec(raw)
   if (decrqss) {
-    return { words: decrqss[1] === "1" ? `“Setting: ${decrqss[2] || "default"}”` : "“Not recognized”", fallback: false }
+    if (decrqss[1] !== "1") return { words: "“Not recognized”", fallback: false }
+    const val = decrqss[2] ?? ""
+    if (val === "" || val === "m" || val === "0m") return { words: "“Setting: plain (default)”", fallback: false }
+    return { words: `“Setting: ${val}”`, fallback: false }
   }
   const tcap = /^\x1bP([01])\+([rR])([\s\S]*?)\x1b\\$/.exec(raw)
   if (tcap) {
@@ -712,6 +755,7 @@ export function buildCardModel(input: {
   readonly status: AppCellStatus | undefined
   readonly featureId: string
   readonly featureName: string
+  readonly shortSubjectName?: string
   readonly subjectKind?: string
   readonly assertionType?: string
   readonly declaredSequence?: string
@@ -729,6 +773,7 @@ export function buildCardModel(input: {
   const {
     status,
     featureId,
+    shortSubjectName,
     subjectKind,
     assertionType,
     declaredSequence,
@@ -768,11 +813,12 @@ export function buildCardModel(input: {
     }
   }
 
-  let truncated = false
+  let codeTruncated = false
+  let stepsOmitted = false
   const trimCode = (code: string): { code: string; fullCode?: string } => {
     const t = truncateCode(code)
     if (t.truncated) {
-      truncated = true
+      codeTruncated = true
       return { code: t.text, fullCode: code }
     }
     return { code: t.text }
@@ -806,7 +852,7 @@ export function buildCardModel(input: {
       readout,
       closing,
       contextNote: "A library has no screen, so we read its cells instead of a picture.",
-      truncated,
+      truncated: codeTruncated,
     }
   }
 
@@ -901,16 +947,21 @@ export function buildCardModel(input: {
 
   const writeSteps: CardStepRow[] = []
   const querySteps: CardStepRow[] = []
-  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean }> = []
+  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean; cupPos?: string; isTextCmd?: boolean }> =
+    []
   let pendingSaveCup: string | undefined
   const replyParts: Array<{ raw: string; code: string; words: string }> = []
   let queryReplyCount = 0
   let sawDecrqm = false
+  let decrqmMode: string | undefined
+  let decrpmCode: string | undefined
 
   for (const step of activeSteps) {
     const cmds = splitRawCommands(step.sequence)
     const isQuery = step.kind === "query"
-    for (const cmd of cmds) {
+    for (let cmdIdx = 0; cmdIdx < cmds.length; cmdIdx++) {
+      const cmd = cmds[cmdIdx]
+      if (!cmd) continue
       // Drop non-DA1 trailing end marker from query/write (re-added explicitly as "End marker" when proving no-reply).
       if (!da1Feature && isDa1Fence(cmd.raw)) continue
       // Risk #1: NEVER drop a command from a query step; only strip pure setup writes.
@@ -926,10 +977,41 @@ export function buildCardModel(input: {
             pendingSaveCup = `${cupMatch[1]};${cupMatch[2]}`
             continue
           }
+          // For multi-line visual grid probes (e.g. DECCARA), pair "Move to r;c" + immediately following text write
+          // into a single readable step ("Draw “aaaaaZ” at 1;1") so all rows fit cleanly without omitting line 3,
+          // and drop cursor-park moves that don't precede a text write or cursor-relative op.
+          const nextCmd = cmds[cmdIdx + 1]
+          if (nextCmd?.isText && featureId.startsWith("editing.")) {
+            const textStr = nextCmd.raw.trim()
+            if (textStr) {
+              const combinedRaw = `${formatControlBytes(cmd.raw)} ${textStr}`
+              const trimmedPair = trimCode(combinedRaw)
+              const pairRow = {
+                num: orderedSteps.length + 1,
+                code: trimmedPair.code,
+                ...(trimmedPair.fullCode ? { fullCode: trimmedPair.fullCode } : {}),
+                words: `Draw “${textStr}” at ${cupMatch[1]};${cupMatch[2]}`,
+                isQuery: false,
+                isSeed: true,
+              }
+              orderedSteps.push(pairRow)
+              writeSteps.push(pairRow)
+              cmdIdx++
+              continue
+            }
+          }
+          // Drop dead cursor-park moves in editing.* visual probes (e.g. trailing ESC[4;1H after DECCARA or ESC[1;1H before DECSACE).
+          if (featureId.startsWith("editing.") && (!nextCmd || !nextCmd.isText)) {
+            continue
+          }
         }
         if (cmd.isText && hasCaptures && featureId.startsWith("sgr.")) continue
       }
-      if (/^\x1b\[\??\d+\$p$/.test(cmd.raw)) sawDecrqm = true
+      const decrqmMatch = /^\x1b\[\??(\d+)\$p$/.exec(cmd.raw)
+      if (decrqmMatch) {
+        sawDecrqm = true
+        decrqmMode = decrqmMatch[1]
+      }
 
       const rawCode = cmd.isText ? cmd.raw.trim() : formatControlBytes(cmd.raw)
       if (!rawCode) continue
@@ -967,6 +1049,11 @@ export function buildCardModel(input: {
       let stepAddedReply = false
       for (const part of splitRawCommands(step.match[0])) {
         if (!da1Feature && isDa1Reply(part.raw)) continue
+        const decrpmMatch = /^\x1b\[\??(\d+);(\d+)\$y$/.exec(part.raw)
+        if (decrpmMatch) {
+          decrqmMode ??= decrpmMatch[1]
+          decrpmCode = decrpmMatch[2]
+        }
         const rawCode = part.isText ? part.raw : formatControlBytes(part.raw)
         if (!rawCode) continue
         replyParts.push({
@@ -995,7 +1082,7 @@ export function buildCardModel(input: {
       if (mustKeep.size < 6 && !mustKeep.has(idx)) mustKeep.add(idx)
     })
     keptOrdered = orderedSteps.filter((_, idx) => mustKeep.has(idx))
-    truncated = true
+    stepsOmitted = true
   }
   const shownSteps: CardStepRow[] = keptOrdered.map((r, i) => ({
     num: i + 1,
@@ -1042,14 +1129,14 @@ export function buildCardModel(input: {
         ...(ok ? { mark: "ok" as const } : no ? { mark: "no" as const } : {}),
       })
     }
-  } else if (!hasCaptures) {
+  } else if (!hasCaptures || querySteps.length > 0) {
     const label = readbackSourceLabel(featureId, assertionType)
     if (replyParts.length > 0) {
       const combined = trimCode(replyParts.map((r) => r.code).join("  "))
       const combinedWords = replyParts.map((r) => r.words).join(", ")
       // Risk #2: if multiple separate queries replied and we cannot tell which one caused an unsupported verdict,
-      // omit the per-reply mark rather than guessing.
-      const markAllowed = singleMark !== undefined && (queryReplyCount <= 1 || status === "supported")
+      // omit the per-reply mark rather than guessing; on hybrid screen+query probes, keep the mark on the screen crop.
+      const markAllowed = !hasCaptures && singleMark !== undefined && (queryReplyCount <= 1 || status === "supported")
       readouts.push({
         label,
         text: combinedWords,
@@ -1061,10 +1148,10 @@ export function buildCardModel(input: {
       const fenceTrim = da1FenceReply ? trimCode(formatControlBytes(da1FenceReply)) : { code: "ESC [ ? … c" }
       readouts.push({
         label: "Reply",
-        text: "only to the end marker",
+        text: "answered only the end marker",
         code: fenceTrim.code,
         ...(fenceTrim.fullCode ? { fullCode: fenceTrim.fullCode } : {}),
-        ...(singleMark ? { mark: singleMark } : {}),
+        ...(!hasCaptures && singleMark ? { mark: singleMark } : {}),
       })
     } else if (hadNullQuery) {
       readouts.push({
@@ -1072,13 +1159,14 @@ export function buildCardModel(input: {
         text: "no reply",
         code: "",
         codeMuted: "nothing",
-        ...(singleMark ? { mark: singleMark } : {}),
+        ...(!hasCaptures && singleMark ? { mark: singleMark } : {}),
       })
     } else if (
-      assertionType === "clipboard" ||
-      assertionType === "notification" ||
-      assertionType === "buffer_state" ||
-      assertionType === "input_bytes"
+      !hasCaptures &&
+      (assertionType === "clipboard" ||
+        assertionType === "notification" ||
+        assertionType === "buffer_state" ||
+        assertionType === "input_bytes")
     ) {
       const ev = traceEvidence?.[0]?.replace(/\.$/, "")
       readouts.push({
@@ -1093,23 +1181,33 @@ export function buildCardModel(input: {
 
   const readout = readouts[0]
 
-  // Closing plain sentence (no terminal/feature names, no verdict pill, carries any caveat)
+  // Closing plain sentence (no verdict pill, carries any caveat)
   let closing: string
   if (status === "differs-by-context") {
     closing = "Results differed across measured settings or setups."
   } else if (sawDecrqm && !isScreen) {
     if (status === "supported") {
+      const who = shortSubjectName || "It"
+      const modeText = decrqmMode ? `mode ${decrqmMode}` : "this mode"
+      const replyDetail =
+        decrpmCode === "1"
+          ? " (reply 1 = known, currently on)"
+          : decrpmCode === "2"
+            ? " (reply 2 = known, currently off)"
+            : decrpmCode === "3"
+              ? " (reply 3 = permanently on)"
+              : ""
       if (/mouse|1000|1002|1003|1005|1006|1015|1016/i.test(featureId)) {
-        closing = "It knows this mode. Mouse reports were not checked."
+        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not move the mouse.`
       } else if (/focus|1004/i.test(featureId)) {
-        closing = "It knows this mode. Focus events were not checked."
+        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not move focus.`
       } else if (/paste|2004/i.test(featureId)) {
-        closing = "It knows this mode. Pasting was not checked."
+        closing = `${who} knows ${modeText}${replyDetail}. We asked; we did not paste.`
       } else {
-        closing = "It knows this mode. Live behavior was not checked."
+        closing = `${who} knows ${modeText}${replyDetail}. We asked; live behavior was not checked.`
       }
     } else if (hasEndMarkerProof) {
-      closing = "It ignored the question and answered the next one."
+      closing = "It ignored the question and answered only the end marker."
     } else if (hadNullQuery) {
       closing = "No reply when asked about this mode."
     } else {
@@ -1139,6 +1237,15 @@ export function buildCardModel(input: {
       closing = status === "supported" ? "Text hidden on screen." : "Text remained visible."
     } else if (featureId.startsWith("sgr.fg.") || featureId.startsWith("sgr.bg.")) {
       closing = status === "supported" ? "Color drawn as requested." : "Color did not change as requested."
+    } else if (
+      featureId === "extensions.iterm2-images" ||
+      featureId === "extensions.kitty-graphics" ||
+      featureId === "extensions.sixel"
+    ) {
+      closing =
+        status === "supported"
+          ? "The expected image appeared on screen."
+          : "No image was drawn (a solid block at the left edge is the terminal's cursor)."
     } else if (!hasExpectedPicture && expectedSentence) {
       const outcome = status === "supported" ? "Screen matched." : "Screen did not match."
       closing = `${outcome} Expected: ${expectedSentence}`
@@ -1147,7 +1254,7 @@ export function buildCardModel(input: {
         status === "supported" ? "Matched the expected screen output." : "Did not match the expected screen output."
     }
   } else if (hasEndMarkerProof && replyParts.length === 0) {
-    closing = "It ignored the question and answered the next one."
+    closing = "It ignored the question and answered only the end marker."
   } else if (hadNullQuery && replyParts.length === 0 && status === "unsupported") {
     closing = "No reply came back."
   } else if (assertionType === "clipboard") {
@@ -1164,14 +1271,18 @@ export function buildCardModel(input: {
     closing = status === "supported" ? "Worked as expected." : "Did not work as expected."
   }
 
-  const contextNote = truncated ? "Long data is shortened with …; Details shows all of it." : undefined
+  const contextNote = codeTruncated
+    ? "Long data is shortened with …; Details shows all of it."
+    : stepsOmitted
+      ? "Extra setup steps are omitted; Details shows all of them."
+      : undefined
   return {
     steps: shownSteps,
     readouts,
     ...(readout ? { readout } : {}),
     closing,
     ...(contextNote ? { contextNote } : {}),
-    truncated,
+    truncated: codeTruncated,
   }
 }
 
@@ -1180,11 +1291,11 @@ export function buildCardModel(input: {
  * for the 23 SGR/color features (Cut (a): non-SGR features show the single screen crop + closing sentence).
  */
 export function expectedVisualSpecimen(featureId: string): ExpectedVisual | undefined {
-  const sample = "AaBb 0123456789"
+  const sample = "AaBb 0123456789 - terminal text"
   switch (featureId) {
     case "sgr.overline":
       return {
-        text: "Overline",
+        text: sample,
         style: { textDecoration: "overline", textDecorationColor: "#f59e0b", textDecorationThickness: "2px" },
       }
     case "sgr.bold":

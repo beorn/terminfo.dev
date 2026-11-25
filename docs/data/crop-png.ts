@@ -292,7 +292,7 @@ export interface CachedCroppedPng {
   readonly blobPath: string
 }
 
-const CROP_CACHE_VERSION = "png-rgba-f0-z3-v1"
+const CROP_CACHE_VERSION = "png-rgba-f0-z3-v2"
 const CROP_CACHE_BASE = process.env.TERMINFO_CROP_CACHE_DIR ?? process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache")
 const CROP_CACHE_ROOT = join(CROP_CACHE_BASE || tmpdir(), `terminfo-crop-cache-${CROP_CACHE_VERSION}`)
 const CROP_META_DIR = join(CROP_CACHE_ROOT, "meta")
@@ -397,7 +397,7 @@ export function cropReadCellsFromDecoded(
   decoded: DecodedPng,
   regionRectangle: Rect,
   cellCrop: CellGridCrop,
-  padPx = 6,
+  padPx = 0,
   label = "read-cells",
 ): CroppedPng {
   const grid = terminalGridRect(cellCrop, decoded.width, decoded.height)

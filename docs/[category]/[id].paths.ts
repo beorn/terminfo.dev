@@ -83,6 +83,7 @@ export default {
       const yesCount = backendResults.filter((r) => r.result === "supported").length
       // Subjects with a decided result for this feature; a result we haven't decided is not counted.
       const totalCount = backendResults.filter((r) => isPublishedStatus(r.result)).length
+      const noResultCount = backendResults.length - totalCount
 
       // Build tags with labels for display
       const tags = (meta?.tags ?? []).map((t: string) => ({
@@ -154,6 +155,7 @@ export default {
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),
           totalCount: String(totalCount),
+          noResultCount: String(noResultCount),
           analysis: linkifyContentExcluding(a?.analysis ?? "", selfHrefs),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",

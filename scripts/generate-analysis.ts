@@ -31,7 +31,7 @@ import {
   joinedAppCells,
   loadCurrentResults,
 } from "../docs/data/current-results.ts"
-import { DIFFERS_BY_CONTEXT, standInGrade, type JoinedApp } from "../docs/data/app-cells.ts"
+import { DIFFERS_BY_CONTEXT, isPublishedStatus, standInGrade, type JoinedApp } from "../docs/data/app-cells.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -729,17 +729,24 @@ function generateFeatureAnalysis(
 ): AnalysisEntry {
   const parts: string[] = []
 
-  // Count support across terminals that have this feature
+  // Count support across terminals that have a decided/published result for this feature,
+  // matching docs/[category]/[id].paths.ts so the Analysis box and feature heading never disagree (#38269).
   let supported = 0
   let unsupported = 0
   let total = 0
+  let noResult = 0
   const unsupportedNames: string[] = []
 
   for (const stats of allStats.values()) {
     if (!(featureId in stats.results)) continue
+    const status = stats.results[featureId]
+    if (!status || !isPublishedStatus(status)) {
+      noResult++
+      continue
+    }
     total++
-    if (stats.results[featureId] === "supported") supported++
-    if (stats.results[featureId] === "unsupported") {
+    if (status === "supported") supported++
+    if (status === "unsupported") {
       unsupported++
       unsupportedNames.push(stats.name)
     }
@@ -753,12 +760,15 @@ function generateFeatureAnalysis(
   }
 
   // Support summary (#37341 D2 + #37631: plain wording, counts never a percentage)
+  const pendingSuffix = noResult > 0 ? ` (${noResult} without a result yet)` : ""
   if (supported === total) {
-    parts.push(`Supported by <strong>all ${total}</strong> terminals tested`)
+    parts.push(`Supported by <strong>all ${total}</strong> terminals tested${pendingSuffix}`)
   } else if (supported === 0) {
-    parts.push(`Not supported by any of the <strong>${total}</strong> terminals tested`)
+    parts.push(`Not supported by any of the <strong>${total}</strong> terminals tested${pendingSuffix}`)
   } else {
-    parts.push(`Supported by <strong>${supported}</strong> of <strong>${total}</strong> terminals tested`)
+    parts.push(
+      `Supported by <strong>${supported}</strong> of <strong>${total}</strong> terminals tested${pendingSuffix}`,
+    )
   }
 
   // Who doesn't support it

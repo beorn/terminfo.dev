@@ -42,11 +42,22 @@ const props = withDefaults(
         })
     /** compact: the mark alone (matrices); text: mark and word; label: the word alone, for a list whose bullet is the mark (#37761). */
     display?: "compact" | "text" | "label"
-    /** Render the result card directly inline (used by SupportBar's cascading detail pane, #37631). */
+    /** Render the result card directly inline (used by SupportBar's cascading detail pane and feature pages, #37631, #38269). */
     inline?: boolean
+    /** Show a close button on an inline card and emit `close` when dismissed. */
+    closable?: boolean
+    /** Emit `select` on click instead of opening a floating overlay over neighboring badges (#38269). */
+    emitSelect?: boolean
+    /** Visually mark the trigger button as currently expanded. */
+    active?: boolean
   }>(),
-  { display: "compact", inline: false },
+  { display: "compact", inline: false, closable: false, emitSelect: false, active: false },
 )
+
+const emit = defineEmits<{
+  select: []
+  close: []
+}>()
 
 const sourceRun = computed<PublicRunMetadata | undefined>(() => {
   const selection = props.version
@@ -136,8 +147,8 @@ function readerSafeExplanation(value?: string): string | undefined {
 }
 
 const featureMeta = computed(() => data.featureDescriptions[props.featureId])
-const vendorTag = computed(() => vendorExtensionOrigin(props.featureId))
 const shortName = computed(() => shortTerminalName(props.subjectName, sourceRun.value?.subject.kind))
+const vendorTag = computed(() => vendorExtensionOrigin(props.featureId, undefined, shortName.value))
 
 const whoLine = computed(() => {
   const run = sourceRun.value
@@ -197,6 +208,7 @@ const cardModel = computed(() => {
     status: effectiveStatus.value,
     featureId: props.featureId,
     featureName: props.featureName,
+    shortSubjectName: shortName.value,
     subjectKind: sourceRun.value?.subject.kind,
     assertionType: currentResult.value?.assertionType,
     declaredSequence: featureMeta.value?.sequence,
@@ -406,12 +418,34 @@ async function loadEvidence(): Promise<void> {
   }
 }
 
+function isSmallCrop(cap?: { width: number; height: number }): boolean {
+  return Boolean(cap && cap.width < 180 && cap.height < 120)
+}
+
 function openFullShot(): void {
   fullShotDialog.value?.showModal()
 }
 
 function closeFullShot(): void {
   fullShotDialog.value?.close()
+}
+
+function onTriggerClick(): void {
+  if (props.emitSelect) {
+    emit("select")
+    return
+  }
+  void focusPreview()
+}
+
+function onInlineKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && props.closable) {
+    if (fullShotDialog.value?.open) {
+      closeFullShot()
+      return
+    }
+    emit("close")
+  }
 }
 
 function cancelOpenTimer(): void {
@@ -425,6 +459,7 @@ function keepPreview(): void {
 }
 
 function scheduleOpenPreview(): void {
+  if (props.emitSelect) return
   keepPreview()
   if (previewVisible.value) return
   cancelOpenTimer()
@@ -435,6 +470,7 @@ function scheduleOpenPreview(): void {
 }
 
 function scheduleHidePreview(event?: FocusEvent): void {
+  if (props.emitSelect) return
   cancelOpenTimer()
   if (previewPinned.value || fullShotDialog.value?.open) return
   const next = event?.relatedTarget
@@ -443,12 +479,24 @@ function scheduleHidePreview(event?: FocusEvent): void {
   previewHideTimer = setTimeout(hidePreview, HOVER_CLOSE_GRACE_MS)
 }
 
+function containerBounds(): { left: number; right: number } {
+  const doc = trigger.value?.closest(".vp-doc")
+  if (doc) {
+    const rect = doc.getBoundingClientRect()
+    const left = Math.max(8, Math.floor(rect.left))
+    const right = Math.min(window.innerWidth - 8, Math.ceil(rect.right))
+    if (right - left >= 320) return { left, right }
+  }
+  return { left: 8, right: window.innerWidth - 8 }
+}
+
 function positionPreview(): void {
   if (!previewVisible.value || !trigger.value || !preview.value) return
   const box = trigger.value.getBoundingClientRect()
   const height = preview.value.getBoundingClientRect().height
-  const width = Math.min(480, window.innerWidth - 16)
-  const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
+  const bounds = containerBounds()
+  const width = Math.min(540, bounds.right - bounds.left)
+  const left = Math.max(bounds.left, Math.min(box.left, bounds.right - width))
   const below = box.bottom + 8
   const above = box.top - height - 8
   const preferred = below + height <= window.innerHeight - 8 ? below : above
@@ -459,10 +507,11 @@ function positionPreview(): void {
 function repositionPreview(): void {
   keepPreview()
   if (!previewVisible.value || !trigger.value) return
+  const bounds = containerBounds()
   const viewportSpace = window.innerHeight - 16
   previewPosition.value = {
     ...previewPosition.value,
-    width: `${Math.min(480, window.innerWidth - 16)}px`,
+    width: `${Math.min(540, bounds.right - bounds.left)}px`,
     maxHeight: `min(88vh, 680px, ${viewportSpace}px)`,
   }
   void nextTick(positionPreview)
@@ -479,13 +528,15 @@ function onDocKeydown(event: KeyboardEvent): void {
 }
 
 function showPreview(pin = false): void {
+  if (props.emitSelect) return
   cancelOpenTimer()
   keepPreview()
   if (!trigger.value || typeof window === "undefined") return
   registerActivePopover(hidePreview)
   if (pin) previewPinned.value = true
   previewVisible.value = true
-  previewPosition.value = { width: `${Math.min(480, window.innerWidth - 16)}px` }
+  const bounds = containerBounds()
+  previewPosition.value = { width: `${Math.min(540, bounds.right - bounds.left)}px` }
   document.addEventListener("pointerdown", outsidePreview)
   document.addEventListener("keydown", onDocKeydown)
   document.addEventListener("terminfo:close-previews", hidePreview)
@@ -545,18 +596,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="inline" class="rc-card rc-card--inline" role="region" :aria-label="`${featureName} result`">
+  <div
+    v-if="inline"
+    class="rc-card rc-card--inline"
+    role="region"
+    :aria-label="`${featureName} result`"
+    @keydown="onInlineKeydown"
+  >
     <div class="rc-top">
-      <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
-      <span class="rc-pill" :class="pillClass">
-        <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68" />
-          <path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61" />
-          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-          <path d="M2 2l20 20" />
-        </svg>
-        <span v-else aria-hidden="true">{{ pillIcon }}</span> {{ pillLabel }}
-      </span>
+      <p class="rc-title">
+        {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
+      </p>
+      <div class="rc-top-right">
+        <span class="rc-pill" :class="pillClass">
+          <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68" />
+            <path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61" />
+            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+            <path d="M2 2l20 20" />
+          </svg>
+          <span v-else aria-hidden="true">{{ pillIcon }}</span> {{ pillLabel }}
+        </span>
+        <button v-if="closable" type="button" class="rc-close-mini" aria-label="Close" @click="emit('close')">×</button>
+      </div>
     </div>
 
     <div class="rc-who">
@@ -587,7 +649,9 @@ onBeforeUnmount(() => {
           <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
             ro.codeMuted || ro.code
           }}</code>
-          <span class="rc-w"><b>{{ ro.label }}:</b> {{ ro.text }}</span>
+          <span class="rc-w"
+            ><b>{{ ro.label }}:</b> {{ ro.text }}</span
+          >
           <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
         </div>
       </div>
@@ -595,12 +659,18 @@ onBeforeUnmount(() => {
       <div v-if="showShots" class="rc-shots" :class="{ 'rc-shots--single': !hasExpectedPicture }">
         <div v-if="hasExpectedPicture" class="rc-shot">
           <span class="rc-cap">Expected</span>
-          <div class="rc-term">
+          <div
+            class="rc-term"
+            :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+            :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+            @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
+          >
             <img
               v-if="captures?.expected"
               :src="withBase(captures.expected.url)"
               :width="captures.expected.width"
               :height="captures.expected.height"
+              :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
               alt="Expected terminal rendering"
             />
             <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
@@ -612,16 +682,32 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div v-if="hasObservedPicture" class="rc-shot" :class="{ 'rc-shot--bad': status.tone === 'no' }">
-          <span class="rc-cap">
-            {{ shortName }}'s screen
-            <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
+          <span class="rc-cap rc-cap--row">
+            <span>
+              {{ shortName }}'s screen
+              <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
+            </span>
+            <button
+              v-if="captures?.observed || captures?.full"
+              type="button"
+              class="rc-shot-zoom"
+              @click="openFullShot"
+            >
+              Enlarge ⤢
+            </button>
           </span>
-          <div class="rc-term">
+          <div
+            class="rc-term"
+            :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+            :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+            @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+          >
             <img
               v-if="captures?.observed"
               :src="withBase(captures.observed.url)"
               :width="captures.observed.width"
               :height="captures.observed.height"
+              :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
               :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
             />
             <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
@@ -674,42 +760,87 @@ onBeforeUnmount(() => {
     </details>
 
     <Teleport to="body">
-      <dialog v-if="captures?.full" ref="fullShotDialog" class="rc-fullshot-dialog" @click.self="closeFullShot">
+      <dialog
+        v-if="captures?.observed || captures?.full"
+        ref="fullShotDialog"
+        class="rc-fullshot-dialog"
+        @click.self="closeFullShot"
+      >
         <div class="rc-fullshot-head">
           <strong>{{ shortName }} — {{ featureName }}</strong>
           <button type="button" class="rc-close-mini" aria-label="Close screenshot" @click="closeFullShot">×</button>
         </div>
-        <p v-if="captures.regionText" class="rc-muted">
-          Whole terminal cell grid (window chrome excluded). Read region: {{ captures.regionText }}.
-        </p>
-        <img
-          :src="withBase(captures.full.url)"
-          :width="captures.full.width"
-          :height="captures.full.height"
-          :alt="`${shortName} terminal cell grid screenshot`"
-        />
+        <div v-if="captures?.observed" class="rc-zoom-grid" :class="{ 'rc-zoom-grid--single': !hasExpectedPicture }">
+          <div v-if="hasExpectedPicture" class="rc-zoom-pane">
+            <span class="rc-bytes-label">Expected</span>
+            <div class="rc-term rc-term--enlarged">
+              <img
+                v-if="captures?.expected"
+                :src="withBase(captures.expected.url)"
+                :width="captures.expected.width"
+                :height="captures.expected.height"
+                alt="Expected terminal rendering (enlarged)"
+              />
+              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <img
+                v-else-if="expectedIllustration"
+                :src="expectedIllustration"
+                alt="Illustrative expected Unicode cells"
+              />
+            </div>
+          </div>
+          <div class="rc-zoom-pane">
+            <span class="rc-bytes-label">{{ shortName }}'s screen</span>
+            <div class="rc-term rc-term--enlarged">
+              <img
+                :src="withBase(captures.observed.url)"
+                :width="captures.observed.width"
+                :height="captures.observed.height"
+                :alt="`${shortName} screen crop (enlarged)`"
+              />
+            </div>
+          </div>
+        </div>
+        <template v-if="captures?.full">
+          <p v-if="captures.regionText" class="rc-muted">
+            Whole terminal cell grid (window chrome excluded). Read region: {{ captures.regionText }}.
+          </p>
+          <img
+            :src="withBase(captures.full.url)"
+            :width="captures.full.width"
+            :height="captures.full.height"
+            :alt="`${shortName} terminal cell grid screenshot`"
+          />
+        </template>
       </dialog>
     </Teleport>
   </div>
 
   <span v-else class="result-evidence" :class="`result-evidence--${display}`">
-    <span v-if="blank" class="result-evidence__blank" role="img" :title="status.title" :aria-label="accessibleName">{{
-      status.icon
-    }}</span>
+    <span
+      v-if="blank"
+      class="result-evidence__blank"
+      :class="{ 'result-evidence__blank--pill': display === 'label' }"
+      role="img"
+      :title="status.title"
+      :aria-label="accessibleName"
+      >{{ display === "label" ? "No result" : status.icon }}</span
+    >
     <button
       v-else
       ref="trigger"
       type="button"
       class="result-evidence__trigger"
-      :class="`result-evidence__trigger--${status.tone}`"
+      :class="[`result-evidence__trigger--${status.tone}`, { 'result-evidence__trigger--active': active }]"
       :aria-label="accessibleName"
-      :aria-describedby="previewVisible ? tooltipId : undefined"
+      :aria-expanded="emitSelect ? active : previewVisible"
+      :aria-describedby="!emitSelect && previewVisible ? tooltipId : undefined"
       @pointerenter="scheduleOpenPreview"
       @pointerleave="scheduleHidePreview()"
       @focus="showPreview(false)"
       @blur="scheduleHidePreview"
       @keydown.esc.stop="closePreview"
-      @click="focusPreview"
+      @click="onTriggerClick"
     >
       <span v-if="display !== 'label'" aria-hidden="true">{{ status.icon }}</span>
       <span v-if="display !== 'compact'" class="result-evidence__label">{{ shortLabel }}</span>
@@ -733,7 +864,9 @@ onBeforeUnmount(() => {
         @toggle.capture="repositionPreview"
       >
         <div class="rc-top">
-          <p class="rc-title">{{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span></p>
+          <p class="rc-title">
+            {{ featureName }}<span v-if="vendorTag" class="rc-vendor">{{ vendorTag }}</span>
+          </p>
           <div class="rc-top-right">
             <span class="rc-pill" :class="pillClass">
               <svg v-if="isUntestable" class="rc-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -776,7 +909,9 @@ onBeforeUnmount(() => {
               <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
                 ro.codeMuted || ro.code
               }}</code>
-              <span class="rc-w"><b>{{ ro.label }}:</b> {{ ro.text }}</span>
+              <span class="rc-w"
+                ><b>{{ ro.label }}:</b> {{ ro.text }}</span
+              >
               <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
             </div>
           </div>
@@ -784,12 +919,18 @@ onBeforeUnmount(() => {
           <div v-if="showShots" class="rc-shots" :class="{ 'rc-shots--single': !hasExpectedPicture }">
             <div v-if="hasExpectedPicture" class="rc-shot">
               <span class="rc-cap">Expected</span>
-              <div class="rc-term">
+              <div
+                class="rc-term"
+                :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+                :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+                @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
+              >
                 <img
                   v-if="captures?.expected"
                   :src="withBase(captures.expected.url)"
                   :width="captures.expected.width"
                   :height="captures.expected.height"
+                  :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
                   alt="Expected terminal rendering"
                 />
                 <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
@@ -801,16 +942,32 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div v-if="hasObservedPicture" class="rc-shot" :class="{ 'rc-shot--bad': status.tone === 'no' }">
-              <span class="rc-cap">
-                {{ shortName }}'s screen
-                <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
+              <span class="rc-cap rc-cap--row">
+                <span>
+                  {{ shortName }}'s screen
+                  <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
+                </span>
+                <button
+                  v-if="captures?.observed || captures?.full"
+                  type="button"
+                  class="rc-shot-zoom"
+                  @click="openFullShot"
+                >
+                  Enlarge ⤢
+                </button>
               </span>
-              <div class="rc-term">
+              <div
+                class="rc-term"
+                :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+                :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+                @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+              >
                 <img
                   v-if="captures?.observed"
                   :src="withBase(captures.observed.url)"
                   :width="captures.observed.width"
                   :height="captures.observed.height"
+                  :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
                   :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
                 />
                 <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
@@ -862,20 +1019,58 @@ onBeforeUnmount(() => {
           </div>
         </details>
 
-        <dialog v-if="captures?.full" ref="fullShotDialog" class="rc-fullshot-dialog" @click.self="closeFullShot">
+        <dialog
+          v-if="captures?.observed || captures?.full"
+          ref="fullShotDialog"
+          class="rc-fullshot-dialog"
+          @click.self="closeFullShot"
+        >
           <div class="rc-fullshot-head">
             <strong>{{ shortName }} — {{ featureName }}</strong>
             <button type="button" class="rc-close-mini" aria-label="Close screenshot" @click="closeFullShot">×</button>
           </div>
-          <p v-if="captures.regionText" class="rc-muted">
-            Whole terminal cell grid (window chrome excluded). Read region: {{ captures.regionText }}.
-          </p>
-          <img
-            :src="withBase(captures.full.url)"
-            :width="captures.full.width"
-            :height="captures.full.height"
-            :alt="`${shortName} terminal cell grid screenshot`"
-          />
+          <div v-if="captures?.observed" class="rc-zoom-grid" :class="{ 'rc-zoom-grid--single': !hasExpectedPicture }">
+            <div v-if="hasExpectedPicture" class="rc-zoom-pane">
+              <span class="rc-bytes-label">Expected</span>
+              <div class="rc-term rc-term--enlarged">
+                <img
+                  v-if="captures?.expected"
+                  :src="withBase(captures.expected.url)"
+                  :width="captures.expected.width"
+                  :height="captures.expected.height"
+                  alt="Expected terminal rendering (enlarged)"
+                />
+                <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                <img
+                  v-else-if="expectedIllustration"
+                  :src="expectedIllustration"
+                  alt="Illustrative expected Unicode cells"
+                />
+              </div>
+            </div>
+            <div class="rc-zoom-pane">
+              <span class="rc-bytes-label">{{ shortName }}'s screen</span>
+              <div class="rc-term rc-term--enlarged">
+                <img
+                  :src="withBase(captures.observed.url)"
+                  :width="captures.observed.width"
+                  :height="captures.observed.height"
+                  :alt="`${shortName} screen crop (enlarged)`"
+                />
+              </div>
+            </div>
+          </div>
+          <template v-if="captures?.full">
+            <p v-if="captures.regionText" class="rc-muted">
+              Whole terminal cell grid (window chrome excluded). Read region: {{ captures.regionText }}.
+            </p>
+            <img
+              :src="withBase(captures.full.url)"
+              :width="captures.full.width"
+              :height="captures.full.height"
+              :alt="`${shortName} terminal cell grid screenshot`"
+            />
+          </template>
         </dialog>
       </div>
     </Teleport>

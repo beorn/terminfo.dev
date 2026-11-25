@@ -5,6 +5,7 @@ next: false
 ---
 
 <script setup>
+import { ref, watch } from 'vue'
 import { publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
@@ -20,6 +21,17 @@ const expectedSentence = plainExpectedSentence({
   featureName: p.featureName,
 })
 const vendorOrigin = vendorExtensionOrigin(p.featureId)
+
+const openBackendId = ref(null)
+watch(() => params.value?.featureId, () => {
+  openBackendId.value = null
+})
+function toggleBackendCard(id) {
+  openBackendId.value = openBackendId.value === id ? null : id
+}
+function closeBackendCard() {
+  openBackendId.value = null
+}
 
 const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
@@ -110,16 +122,22 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> terminals tested
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> terminals tested<span v-if="Number(p.noResultCount) > 0" class="feature-score-pending"> ({{ p.noResultCount }} without a result yet)</span>
 </p>
 <p v-else class="feature-score">No results yet for this feature.</p>
 
 ## Terminal Applications
 
-<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" class="feature-results" technical-notes>
+<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" :active-id="openBackendId" class="feature-results" technical-notes>
   <template #after="{ item }">
     <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
+      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
+  </template>
+  <template #detail="{ item }">
+    <div class="feature-detail-card">
+      <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+        :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
+    </div>
   </template>
 </ResultList>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -130,10 +148,16 @@ function termTooltip(r) {
 
 <p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
-<ResultList :items="resultRows(headlessResults)" class="feature-results result-list-muted" technical-notes>
+<ResultList :items="resultRows(headlessResults)" :active-id="openBackendId" class="feature-results result-list-muted" technical-notes>
   <template #after="{ item }">
     <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" />
+      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
+  </template>
+  <template #detail="{ item }">
+    <div class="feature-detail-card">
+      <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+        :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
+    </div>
   </template>
 </ResultList>
 
@@ -325,6 +349,11 @@ function termTooltip(r) {
   margin: 1em 0;
 }
 
+.feature-score-pending {
+  font-size: 0.88em;
+  color: var(--vp-c-text-2);
+}
+
 .support-table {
   width: 100%;
   table-layout: fixed;
@@ -404,10 +433,25 @@ function termTooltip(r) {
 .vp-doc .feature-results {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: row dense;
   align-items: start;
   column-gap: 24px;
   row-gap: 2px;
   margin: 0.4em 0 1.2em;
+}
+
+.feature-results > .result-detail-row,
+.vp-doc .feature-results > .result-detail-row {
+  grid-column: 1 / -1;
+  margin: 6px 0 10px;
+}
+
+.feature-detail-card {
+  padding: 16px 18px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-elv);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
 }
 
 @media (max-width: 640px) {

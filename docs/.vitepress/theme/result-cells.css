@@ -82,7 +82,7 @@
   cursor: pointer;
 }
 
-/* #37341 D3: a result we haven't decided is a plain dash with no badge colour and nothing to click. */
+/* #37341 D3: a result we haven't decided is a plain dash on compact grids, or a muted non-interactive "No result" pill on labeled lists (#38269). */
 .result-evidence__blank {
   display: inline-flex;
   align-items: center;
@@ -91,6 +91,21 @@
   height: 28px;
   color: var(--vp-c-text-3);
   cursor: default;
+}
+.result-evidence__blank--pill {
+  box-sizing: border-box;
+  min-width: 11ch;
+  padding: 0 7px;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 5px;
+  background: transparent;
+  font-size: 0.85em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.result-evidence__trigger--active {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 1px;
 }
 
 .result-evidence--text .result-evidence__trigger {
@@ -498,6 +513,10 @@
 
 /* Result card v12 (#38269, card-mock-v12.html): single surface, top-right pill, bytes left / words right, blue ← reply, closing sentence. */
 :root {
+  /* Put concrete macOS/Linux/Windows monospace fonts ahead of `ui-monospace` so headless Linux Chromium never falls back to serif (#38269). */
+  --vp-font-family-mono:
+    "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New",
+    ui-monospace, monospace;
   --rc-ok: #047857;
   --rc-ok-bg: rgba(4, 120, 87, 0.1);
   --rc-no: #c81e1e;
@@ -705,10 +724,10 @@
   text-decoration: underline;
 }
 
-/* Single surface steps with shared subgrid: col 1 = step num / ←, col 2 = bytes fit-content(12em), col 3 = words, col 4 = 22px mark pill. */
+/* Single surface steps with shared subgrid: col 1 = step num / ←, col 2 = bytes fit-content(15em), col 3 = words, col 4 = 22px mark pill. */
 .rc-steps {
   display: grid;
-  grid-template-columns: 16px fit-content(12em) minmax(0, 1fr) 22px;
+  grid-template-columns: 16px fit-content(15em) minmax(0, 1fr) 22px;
   column-gap: 12px;
   row-gap: 2px;
 }
@@ -733,7 +752,8 @@
   font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
 }
-.rc-st code {
+.rc-st code,
+.vp-doc .rc-st code {
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
@@ -742,6 +762,7 @@
   color: var(--rc-code);
   background: transparent;
   padding: 0;
+  border-radius: 0;
   white-space: pre;
   text-align: left;
   overflow: hidden;
@@ -812,27 +833,127 @@
   line-height: 18px;
   color: var(--vp-c-text-2);
 }
+.rc-cap--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rc-shot-zoom {
+  border: 0;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--vp-c-brand-1);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 18px;
+  cursor: pointer;
+}
+.rc-shot-zoom:hover,
+.rc-shot-zoom:focus-visible {
+  text-decoration: underline;
+}
 .rc-term {
   background: var(--rc-cell);
   border-radius: 6px;
-  padding: 9px 11px;
+  padding: 11px 13px;
   font-family: var(--vp-font-family-mono);
   font-size: 0.85rem;
   color: var(--rc-cell-fg);
-  min-height: 46px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   overflow: hidden;
 }
+.rc-term--zoomable {
+  cursor: zoom-in;
+}
+.rc-term--zoomable:hover {
+  outline: 1px solid var(--vp-c-brand-1);
+}
 .rc-term img {
   display: block;
   max-width: 100%;
-  max-height: 54px;
+  max-height: 160px;
   width: auto;
   height: auto;
   object-fit: contain;
   image-rendering: pixelated;
+}
+.rc-term img.rc-term-img--small {
+  min-height: 112px;
+  max-height: 170px;
+  width: auto;
+  height: auto;
+}
+.rc-zoom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.rc-zoom-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rc-zoom-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.rc-term--enlarged {
+  min-height: 120px;
+  padding: 16px;
+  justify-content: center;
+}
+.rc-term--enlarged img {
+  min-height: 96px;
+  max-height: 360px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+/* Pure CSS colored dots for sidebar/nav Baselines links (no Unicode emoji tofu boxes on Linux, #38269). */
+.VPSidebarItem a.link[href="/baseline/core"] .text::before,
+.VPSidebarItem a.link[href="/baseline/modern"] .text::before,
+.VPSidebarItem a.link[href="/baseline/rich"] .text::before,
+.VPSidebarItem a.link[href="/baseline/unicode"] .text::before,
+.VPSidebarItem a.link[href="/baseline/legacy"] .text::before,
+.VPMenuLink a[href="/baseline/core"]::before,
+.VPMenuLink a[href="/baseline/modern"]::before,
+.VPMenuLink a[href="/baseline/rich"]::before,
+.VPMenuLink a[href="/baseline/unicode"]::before,
+.VPMenuLink a[href="/baseline/legacy"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 7px;
+  vertical-align: middle;
+  flex: none;
+}
+.VPSidebarItem a.link[href="/baseline/core"] .text::before,
+.VPMenuLink a[href="/baseline/core"]::before {
+  background: #10b981;
+}
+.VPSidebarItem a.link[href="/baseline/modern"] .text::before,
+.VPMenuLink a[href="/baseline/modern"]::before {
+  background: #3b82f6;
+}
+.VPSidebarItem a.link[href="/baseline/rich"] .text::before,
+.VPMenuLink a[href="/baseline/rich"]::before {
+  background: #8b5cf6;
+}
+.VPSidebarItem a.link[href="/baseline/unicode"] .text::before,
+.VPMenuLink a[href="/baseline/unicode"]::before {
+  background: #f59e0b;
+}
+.VPSidebarItem a.link[href="/baseline/legacy"] .text::before,
+.VPMenuLink a[href="/baseline/legacy"]::before {
+  background: #a16207;
 }
 .rc-textcells {
   margin: 0;

@@ -97,11 +97,12 @@ describe("crop-png — pure-TS PNG cropping strictly inside calibrated terminal 
 })
 
 describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () => {
-  it("formats DECRQM mouse card: drops DA1 fence, blue Reply readout, caveat in closing sentence", () => {
+  it("formats DECRQM mouse card: drops DA1 fence, blue Reply readout, explains reply 2 in closing sentence", () => {
     const model = buildCardModel({
       status: "supported",
       featureId: "input.mouse-any-event",
       featureName: "All-motion mouse (DECSET 1003)",
+      shortSubjectName: "Alacritty",
       assertionType: "query_reply",
       exchange: {
         events: [
@@ -117,7 +118,9 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       code: "ESC [ ?1003;2 $ y",
       mark: "ok",
     })
-    expect(model.closing).toBe("It knows this mode. Mouse reports were not checked.")
+    expect(model.closing).toBe(
+      "Alacritty knows mode 1003 (reply 2 = known, currently off). We asked; we did not move the mouse.",
+    )
   })
 
   it("formats no-reply with DA1 end marker (OSC 776 card)", () => {
@@ -139,14 +142,14 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     ])
     expect(model.readout).toEqual({
       label: "Reply",
-      text: "only to the end marker",
+      text: "answered only the end marker",
       code: "ESC [ ?62;4 c",
       mark: "no",
     })
-    expect(model.closing).toBe("It ignored the question and answered the next one.")
+    expect(model.closing).toBe("It ignored the question and answered only the end marker.")
   })
 
-  it("formats Kitty overline screen card & Cut (a) single-screen non-SGR card", () => {
+  it("formats Kitty overline screen+DECRQSS card, iTerm2 cursor note, and Cut (a) single-screen non-SGR card", () => {
     const fakeCap = {
       observed: { url: `/api/v3/captures/${"a".repeat(64)}.png`, sha256: "a".repeat(64), width: 100, height: 24 },
     }
@@ -158,17 +161,40 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
       captures: fakeCap,
       hasExpectedPicture: true,
       exchange: {
-        writes: [
-          "\x1b7\x1b[1;1H\x1b[0m\x1b[45m   \x1b[2;1H\x1b[45m   \x1b[0m\x1b8",
-          "\x1b[2J\x1b[H",
-          "\x1b[0m\x1b[3;3H\x1b[53mAaBb 0123456789\x1b[0m\x1b[2;1H\x1b[1;1H",
+        events: [
+          { kind: "write", sequence: "\x1b[53m" },
+          { kind: "query", sequence: "\x1bP$qm\x1b\\\x1b[c", match: ["\x1bP1$rm\x1b\\"] },
+          { kind: "write", sequence: "\x1b7\x1b[1;1H\x1b[0m\x1b[45m   \x1b[2;1H\x1b[45m   \x1b[0m\x1b8" },
+          { kind: "write", sequence: "\x1b[2J\x1b[H" },
+          {
+            kind: "write",
+            sequence: "\x1b[0m\x1b[3;3H\x1b[53mAaBb 0123456789 - terminal text\x1b[0m\x1b[2;1H\x1b[1;1H",
+          },
         ],
       },
     })
-    expect(overline.steps).toEqual([{ num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" }])
-    expect(overline.readout).toBeUndefined()
+    expect(overline.steps).toEqual([
+      { num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" },
+      { num: 2, code: "ESC P $ q m ESC \\", words: "Ask current setting (DECRQSS)" },
+    ])
+    expect(overline.readout).toEqual({
+      label: "Reply",
+      text: "“Setting: plain (default)”",
+      code: "ESC P 1 $ r m ESC \\",
+    })
     expect(overline.closing).toBe("No line above the text.")
     expect(expectedVisualSpecimen("sgr.overline")?.style.textDecoration).toBe("overline")
+    expect(expectedVisualSpecimen("sgr.overline")?.text).toBe("AaBb 0123456789 - terminal text")
+
+    const iterm2 = buildCardModel({
+      status: "unsupported",
+      featureId: "extensions.iterm2-images",
+      featureName: "iTerm2 Inline Images (OSC 1337)",
+      assertionType: "screenshot",
+      captures: fakeCap,
+      hasExpectedPicture: true,
+    })
+    expect(iterm2.closing).toContain("cursor")
 
     const deccara = buildCardModel({
       status: "unsupported",
@@ -296,11 +322,15 @@ describe("card-explain v12 — all card cases (#38269, card-mock-v12.html)", () 
     expect(differsModel.readouts[1]?.mark).toBe("no")
     expect(differsModel.readouts[1]?.codeMuted).toBe("nothing")
 
-    expect(formatWhoLine({ subjectName: "Kitty (lib)", subjectKind: "lib", osName: "Linux" })).toBe(
-      "Kitty · library (no window) · Linux",
-    )
+    expect(
+      formatWhoLine({ subjectName: "Kitty (lib)", subjectKind: "lib", osName: "Linux", measuredDate: "Nov 20, 2026" }),
+    ).toBe("Kitty · library (no window) · Linux · tested Nov 20, 2026")
     expect(shortTerminalName("Kitty (Linux)", "term")).toBe("Kitty")
     expect(vendorExtensionOrigin("extensions.osc776-cell-size")).toBe("rxvt-unicode extension")
+    expect(vendorExtensionOrigin("extensions.osc776-cell-size", undefined, "WezTerm")).toBe(
+      "rxvt-unicode's command, tested in WezTerm",
+    )
+    expect(vendorExtensionOrigin("extensions.iterm2-images", undefined, "iTerm2")).toBe("iTerm2 extension")
     expect(vendorExtensionOrigin("sgr.overline")).toBeUndefined()
   })
 })
@@ -343,7 +373,10 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
       exchange: { writes: deccara?.writes, queries: deccara?.queries, events: deccara?.events },
       captures: deccara?.captures,
     })
-    expect(deccaraCard.steps.some((s) => /DECCARA/i.test(s.words))).toBe(true)
+    expect(deccaraCard.steps.some((s) => /inverse \(7\).*DECCARA/i.test(s.words))).toBe(true)
+    expect(deccaraCard.steps.some((s) => s.words.includes("cccccX"))).toBe(true)
+    expect(deccaraCard.truncated).toBe(false)
+    expect(deccaraCard.contextNote).toBeUndefined()
     const overlineCard = buildCardModel({
       status: "unsupported",
       featureId: "sgr.overline",
@@ -353,6 +386,8 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
     })
     expect(overlineCard.steps.some((s) => /SGR 99|reverse video/i.test(s.words))).toBe(false)
     expect(overlineCard.steps.some((s) => /overline/i.test(s.words))).toBe(true)
+    expect(overlineCard.readout?.code).toBe("ESC P 1 $ r m ESC \\")
+    expect(overlineCard.readout?.text).toContain("plain")
 
     const loaded = readCellTrace(trace!.document, {
       schemaVersion: kittyRun.schemaVersion,

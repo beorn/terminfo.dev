@@ -146,7 +146,7 @@ function buildSidebar() {
   // Flat list for convenience (used in nav dropdown)
   const allTerminals = [...termAppTerminals, ...termLibraries, ...termMultiplexers]
 
-  // Load baselines for sidebar
+  // Load baselines for sidebar (CSS colored dots on /baseline/* links replace raw Unicode emoji that render as tofu boxes without emoji fonts)
   const baselinesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8")) as Record<
     string,
     { label: string; emoji: string; order: number }
@@ -154,7 +154,7 @@ function buildSidebar() {
   const baselineItems = Object.entries(baselinesData)
     .sort(([, a], [, b]) => a.order - b.order)
     .map(([id, bl]) => ({
-      text: `${bl.emoji} ${bl.label}`,
+      text: bl.label,
       link: `/baseline/${id}`,
     }))
 

@@ -38,36 +38,38 @@ const emit = defineEmits<{
 
 <template>
   <ul class="result-list" :class="tone ? 'result-list-' + tone : undefined">
-    <li
-      v-for="item in items"
-      :id="item.anchor"
-      :key="item.id"
-      :class="[
-        item.tone && 'result-tone-' + item.tone,
-        $slots.after && 'result-with-after',
-        activeId === item.id && 'result-item-active',
-      ]"
-      @mouseenter="emit('hover-item', item, $event.currentTarget as HTMLElement)"
-      @focusin="emit('hover-item', item, $event.currentTarget as HTMLElement)"
-    >
-      <component
-        :is="item.href ? 'a' : 'span'"
-        class="result-row"
-        :href="item.href"
-        :title="item.note && !technicalNotes ? item.name + ': ' + item.note : undefined"
-        @click="emit('select-item', item, $event)"
+    <template v-for="item in items" :key="item.id">
+      <li
+        :id="item.anchor"
+        :class="[
+          item.tone && 'result-tone-' + item.tone,
+          $slots.after && 'result-with-after',
+          activeId === item.id && 'result-item-active',
+        ]"
+        @mouseenter="emit('hover-item', item, $event.currentTarget as HTMLElement)"
+        @focusin="emit('hover-item', item, $event.currentTarget as HTMLElement)"
       >
-        <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
-        <span class="result-name">{{ item.name }}</span>
-        <span v-if="item.icon" class="result-icon" :title="item.iconTitle" v-html="item.icon" />
-        <span v-if="item.note && !technicalNotes" class="result-note">{{ item.note }}</span>
-      </component>
-      <span v-if="$slots.after" class="result-after"><slot name="after" :item="item" /></span>
-      <details v-if="item.note && technicalNotes" class="result-note-details">
-        <summary>Technical details</summary>
-        <p>{{ item.note }}</p>
-      </details>
-      <slot v-if="activeId === item.id" name="detail" :item="item" />
-    </li>
+        <component
+          :is="item.href ? 'a' : 'span'"
+          class="result-row"
+          :href="item.href"
+          :title="item.note && !technicalNotes ? item.name + ': ' + item.note : undefined"
+          @click="emit('select-item', item, $event)"
+        >
+          <span class="result-mark" aria-hidden="true">{{ item.mark ?? mark }}</span>
+          <span class="result-name">{{ item.name }}</span>
+          <span v-if="item.icon" class="result-icon" :title="item.iconTitle" v-html="item.icon" />
+          <span v-if="item.note && !technicalNotes" class="result-note">{{ item.note }}</span>
+        </component>
+        <span v-if="$slots.after" class="result-after"><slot name="after" :item="item" /></span>
+        <details v-if="item.note && technicalNotes" class="result-note-details">
+          <summary>Technical details</summary>
+          <p>{{ item.note }}</p>
+        </details>
+      </li>
+      <li v-if="activeId === item.id && $slots.detail" :key="item.id + '-detail'" class="result-detail-row">
+        <slot name="detail" :item="item" />
+      </li>
+    </template>
   </ul>
 </template>
