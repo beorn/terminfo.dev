@@ -12,7 +12,7 @@
  *   bun scripts/generate-analysis.ts --dry-run    # Print what would be generated
  *   bun scripts/generate-analysis.ts --validate   # Validate existing against data
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync, rmSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
@@ -1369,7 +1369,16 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
 // --- CLI ---
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// package.json invokes this as `bun scripts/generate-analysis.ts`, so argv[1] is a RELATIVE path and an exact
+// `file://${argv[1]}` compare never matches: the whole CLI block was skipped, the script exited 0 having written
+// nothing, and the site build then died on the missing content/probes.json. Resolve both sides before comparing.
+function isCliEntry(): boolean {
+  const entry = process.argv[1]
+  if (entry === undefined) return false
+  return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
+}
+
+if (isCliEntry()) {
   const args = process.argv.slice(2)
   const isDryRun = args.includes("--dry-run")
   const isValidate = args.includes("--validate")

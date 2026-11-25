@@ -105,10 +105,13 @@ it("analysis generation writes under the override and leaves the source tree alo
     for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
     mkdirSync(join(out, "docs"))
     cpSync(join(sourceRoot, "docs", "data"), join(out, "docs", "data"), { recursive: true })
-    // probes.data.ts reads displayVersions from the theme (#37341 D11), its one import outside docs/data.
+    // probes.data.ts reads displayVersions (#37341 D11) and contextLabel beside it (#37631), its only imports outside
+    // docs/data.
     mkdirSync(join(out, "docs", ".vitepress", "theme"), { recursive: true })
-    const displayVersion = join("docs", ".vitepress", "theme", "display-version.ts")
-    cpSync(join(sourceRoot, displayVersion), join(out, displayVersion))
+    for (const name of ["display-version.ts", "context-label.ts"]) {
+      const themeFile = join("docs", ".vitepress", "theme", name)
+      cpSync(join(sourceRoot, themeFile), join(out, themeFile))
+    }
     for (const dir of ["packages", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
     for (const name of [
       "features",

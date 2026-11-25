@@ -22,6 +22,7 @@ import {
   unlinkSync,
   rmdirSync,
   lstatSync,
+  realpathSync,
 } from "node:fs"
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
@@ -418,8 +419,13 @@ export function generateApi(
   return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }
 }
 
-// Allow standalone execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Allow standalone execution. package.json documents `bun scripts/generate-api.ts` — a RELATIVE argv[1], which an
+// exact `file://${argv[1]}` compare never matches; resolve both sides so the documented command is not a silent no-op.
+function isCliEntry(): boolean {
+  return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+}
+
+if (isCliEntry()) {
   const { dataPath } = generateApi()
   const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
     contexts: Record<string, unknown>
