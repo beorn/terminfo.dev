@@ -850,9 +850,19 @@ const declarations: readonly AppSemanticCapability[] = [
         "VS Code 1.142.0 on macOS offers no read of a terminal cell or its link. The extension API's Terminal interface (src/vscode-dts/vscode.d.ts:7672-7683 at tag 1.142.0) carries name, processId, creationOptions, exitStatus, state, shellIntegration and send/show/hide/dispose; TerminalShellExecution.read() (:7770-7780) is command output as plain text. The proposed terminalSelection API returns plain text and terminalDataWriteEvent echoes the data written to the terminal, which is the probe's own input and cannot show what the app stored. The renderer's link layer needs a --remote-debugging-port launch, which is not a default-launch reader, and its hover tooltip needs a pointer the owned-host no-input rule forbids.",
       ],
       [
+        "com.microsoft.VSCode",
+        "1.147.0",
+        "VS Code 1.147.0 on macOS offers no read of a terminal cell or its link. Verified src/vscode-dts/vscode.d.ts at tag 1.147.0: export interface Terminal still carries only name, processId, creationOptions, exitStatus, state, shellIntegration, sendText, show, hide and dispose; TerminalShellExecution.read() returns plain text only. The renderer's link layer needs a --remote-debugging-port launch, which is not a default-launch reader, and its hover tooltip needs a pointer the owned-host no-input rule forbids.",
+      ],
+      [
         "cursor",
         "3.25.9",
         "Cursor 3.25.9 on macOS runs the same generated extension and reports the VS Code 1.128.0 extension API (the run's editor-activation record), whose Terminal interface (src/vscode-dts/vscode.d.ts:7661-7673 at tag 1.128.0) has no buffer, cell or link read; command output is plain text. Cursor is closed source, so its internals are unprobed; through the API it ships, no cell's link can be read. Its renderer link layer needs a non-default debug launch and its hover tooltip a pointer the owned-host no-input rule forbids.",
+      ],
+      [
+        "cursor",
+        "3.32.4",
+        "Cursor 3.32.4 on macOS runs the same generated extension and reports the VS Code 1.147.0 extension API (editor-activation.json in hosted run 45529254438), whose Terminal interface (src/vscode-dts/vscode.d.ts at tag 1.147.0) has no buffer, cell or link read; command output is plain text. Cursor is closed source, so its internals are unprobed; through the API it ships, no cell's link can be read. Its renderer link layer needs a non-default debug launch and its hover tooltip a pointer the owned-host no-input rule forbids.",
       ],
       [
         "terminal-app",
@@ -863,6 +873,11 @@ const declarations: readonly AppSemanticCapability[] = [
         "warp",
         "v0.2026.10.14.08.27.stable_01",
         "Warp v0.2026.10.14.08.27.stable_01 on macOS has no programmatic read surface: its only input is the write-only launch configuration YAML, and the owned run decides Warp rows by screenshot and query reply alone. Warp is closed source, so its internals are unprobed; its hover tooltip needs a pointer the owned-host no-input rule forbids, and its logs and telemetry are not a default-launch reader.",
+      ],
+      [
+        "warp",
+        "v0.2026.11.18.08.17.stable_05",
+        "Warp v0.2026.11.18.08.17.stable_05 on macOS has no programmatic read surface: its only input is the write-only launch configuration YAML, and hosted run 45526885127 (a975f203999d956a66e1cd54eaaf0ecd) decides Warp rows by screenshot and query reply alone. Warp is closed source, so its internals are unprobed; its hover tooltip needs a pointer the owned-host no-input rule forbids, and its logs and telemetry are not a default-launch reader.",
       ],
     ] as const
   ).map(([id, version, surface]) => ({
