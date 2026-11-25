@@ -946,7 +946,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   ]
   const cases = [
     ["fixture.sgr", "Cursor advance does not verify SGR styling", 2],
-    ["sgr.underline-color-indexed", "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling", 2],
+    ["sgr.underline-color-indexed", "SGR 58:5:2 (colon form); Cursor advance does not verify SGR styling", 2],
     [
       "sgr.underline-color-reset",
       "SGR 59 after setup SGR 58:2::255:0:128 (colon form); Cursor advance does not verify the reset rendered",
@@ -1038,7 +1038,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
   } as unknown as TermProbeSource)
   expect(record(wrong)).toMatchObject({
     status: "probe-invalid",
-    reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+    reason: "SGR 58:5:2 (colon form); Cursor advance does not verify SGR styling",
   })
   for (const [id, col, reason] of [
     [
@@ -1055,7 +1055,7 @@ it("preserves producer-specific native geometry refusal reasons without appendin
     [
       "sgr.underline-color-indexed",
       null,
-      "SGR 58:5:1 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
+      "SGR 58:5:2 (colon form); no parsable cursor position reply; the public projection returned null and retained no bytes",
     ],
     [
       "sgr.underline-color-reset",

@@ -89,7 +89,7 @@ function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackRes
 test.each([
   ["sgr.underline.color", "58:2::255:0:128", "colon"],
   ["sgr.underline-color-rgb", "58:2::255:0:128", "colon"],
-  ["sgr.underline-color-indexed", "58:5:1", "colon"],
+  ["sgr.underline-color-indexed", "58:5:2", "colon"],
   ["sgr.underline-color-reset", "58:2::255:0:128", "colon"],
   ["sgr.fg.256", "38;5;67", "semicolon"],
   ["sgr.bg.256", "48;5;67", "semicolon"],
@@ -246,7 +246,7 @@ test.each(["0;4;58;5;5", "0;4;58:5:5", "0;4;58;5;6", "0;4"])(
       {
         id: "criterion",
         status: "probe-todo",
-        reason: "SGR 58:5:1 (colon form); Cursor advance does not verify SGR styling",
+        reason: "SGR 58:5:2 (colon form); Cursor advance does not verify SGR styling",
       },
     ])
   },

@@ -341,11 +341,12 @@ test("App reverse video selects the reverse screen paint on exactly the reads ta
   expect(surface.getMode("reverseVideo")).toBe(false)
 })
 
-// #37240 AC3 (@cto 9b959406): WezTerm (Linux and macOS) applies BCE with SGR 7 inverse on ED 2 (\x1b[2J),
-// so setting SGR 7 before ED 2 fills the entire viewport with the inverse background colour and makes the
-// normal-mode expected baseline refuse against the calibrated (0,0,0) background anchor. Clearing in SGR 0
-// first and wrapping only REVERSED in SGR 7..0 keeps blank canvas and sentinel cells at normal background.
-test("App reverse video expected frame clears in SGR 0 before SGR 7 so BCE-with-inverse terminals keep normal blank cells", async () => {
+// #37240 AC3 (@cto 9b959406) & #38524 (@cto 66598f9f): WezTerm (Linux and macOS) applies BCE with SGR 7 inverse
+// on ED 2 (\x1b[2J), so setting SGR 7 before ED 2 fills the entire viewport with the inverse background colour and
+// makes the normal-mode expected baseline refuse against the calibrated (0,0,0) background anchor. Clearing in
+// SGR 0 first and wrapping only the 8-space blank sample in SGR 7..0 keeps blank canvas and sentinel cells at normal
+// background while proving DECSCNM screen-background swap by exact digest without depending on DECSCNM glyph ink.
+test("App reverse video expected frame clears in SGR 0 before SGR 7 on blank cells so BCE-with-inverse terminals keep normal blank canvas", async () => {
   const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
   if (!definition?.term) throw new Error("Missing App reverse-video callback")
   const cols = 20
@@ -429,9 +430,83 @@ test("App reverse video expected frame clears in SGR 0 before SGR 7 so BCE-with-
     vi.useRealTimers()
   }
   expect(result.observation?.outcome).toBe("supported")
-  const expectedWrite = writes.find((entry) => entry.includes("REVERSED") && entry.includes("\x1b[7m"))
-  expect(expectedWrite).toBe("\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7mREVERSED\x1b[0m")
+  const expectedWrite = writes.find((entry) => entry.includes("\x1b[7m") && entry.includes(" ".repeat(8)))
+  expect(expectedWrite).toBe(`\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7m${" ".repeat(8)}\x1b[0m`)
   expect(sgr7Active).toBe(false)
+})
+
+// #38524 (@cto 66598f9f): WezTerm's DECSCNM (CSI ?5h) swaps background to #b2b2b2 (matching SGR 7) while drawing
+// non-space glyph ink at #545454 vs SGR 7's #101010 (macOS 2c6ba7ae, Linux 4eae8c0d). Comparing blank cells proves
+// screen-background swap by exact digest, keeps decscnm-noop unsupported, and records the ink difference in the note.
+test("App reverse video grades supported on blank cells when DECSCNM glyph ink differs from SGR 7 (#38524)", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.reverse-video")
+  if (!definition?.term) throw new Error("Missing App reverse-video callback")
+  const cols = 20
+  const rows = 5
+  const surface = createSemanticSurface({ cols, rows })
+  let sequence = 0
+  const plane = (rectangle: CaptureCells) => {
+    const cells: unknown[] = []
+    const decscnm = surface.getMode("reverseVideo") === true
+    for (let row = rectangle.top; row <= rectangle.bottom; row++) {
+      for (let col = rectangle.left; col <= rectangle.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        const inv = cell.inverse !== decscnm
+        const bg = inv ? "#b2b2b2" : "#000000"
+        // Model WezTerm's observed ink difference: non-space glyphs draw #545454 under DECSCNM vs #101010 under SGR 7.
+        const fg = cell.char === " " ? bg : decscnm ? "#545454" : inv ? "#101010" : "#b2b2b2"
+        cells.push([cell.char, bg, fg])
+      }
+    }
+    return JSON.stringify(cells)
+  }
+  const source = replayTermProbeSource(new Map(), {
+    cols,
+    rows,
+    captureKind: "pixels",
+    write: (text) => surface.feed(text),
+    queryCursorPosition: async () => {
+      const cursor = surface.getCursor()
+      return { row: cursor.y + 1, col: cursor.x + 1 }
+    },
+    captureGeometry: {
+      geometry: { cellWidth: 10, cellHeight: 20, textWidth: cols * 10, textHeight: rows * 20 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async ({ role, label, cells, pixelGeometry }) => {
+      if (!cells || !pixelGeometry) throw new Error("Reverse pixel fixture needs its measured crop")
+      return {
+        kind: "pixels",
+        role,
+        label,
+        capturedAt: ++sequence,
+        ref: `sha256:${sequence.toString(16).padStart(64, "0")}`,
+        regionDigest: plane(cells),
+        pixelsDigest: plane({ top: 1, left: 1, bottom: rows, right: cols }),
+        regionRectangle: {
+          x: (cells.left - 1) * pixelGeometry.cellWidth,
+          y: (cells.top - 1) * pixelGeometry.cellHeight,
+          width: (cells.right - cells.left + 1) * pixelGeometry.cellWidth,
+          height: (cells.bottom - cells.top + 1) * pixelGeometry.cellHeight,
+        },
+      }
+    },
+  })
+  vi.useFakeTimers()
+  let result: ProbeCallbackResult
+  try {
+    const pending = definition.term(source)
+    await vi.runAllTimersAsync()
+    result = await pending
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.note).toContain("#545454")
+  expect(result.note).toContain("#101010")
+  expect(result.note).toContain("2c6ba7ae")
+  expect(result.note).toContain("4eae8c0d")
+  expect(result.observation?.note).toBe(result.note)
 })
 
 // #33036: the DA sentinel answers in the same raw reply as the DECRPM 0, so the probe records
@@ -4036,7 +4111,10 @@ test("alt-screen probes declare termScreenMode, stay probe-todo when alternate c
         source: "measured by complete raster calibration",
         sentinel: { form: "basic", rgb: [255, 143, 253] },
         alternateScreens: {
-          [mode]: { status: "unavailable", reason: `${mode} grid 992x624 at 1,36 differs from primary grid 984x624 at 17,46` },
+          [mode]: {
+            status: "unavailable",
+            reason: `${mode} grid 992x624 at 1,36 differs from primary grid 984x624 at 17,46`,
+          },
         },
       },
     } as unknown as TermProbeSource)
@@ -4084,7 +4162,11 @@ test("alt-screen probes declare termScreenMode, stay probe-todo when alternate c
       source: "measured by complete raster calibration",
       sentinel: { form: "basic", rgb: [255, 143, 253] },
       alternateScreens: {
-        "alternate-1049": { status: "witnessed", sentinel: { form: "basic", rgb: [255, 143, 253] }, origin: { x: 1, y: 36 } },
+        "alternate-1049": {
+          status: "witnessed",
+          sentinel: { form: "basic", rgb: [255, 143, 253] },
+          origin: { x: 1, y: 36 },
+        },
       },
     },
     capture: async (request: CaptureRequest) => {
@@ -4125,8 +4207,16 @@ test("alt-screen probes declare termScreenMode, stay probe-todo when alternate c
   } as unknown as TermProbeSource)
 
   expect(enterResult.observation?.outcome).toBe("supported")
-  expect(seenModes.filter((r) => r.label.includes("pre-edit seed")).every((r) => r.screenMode === "alternate-1049")).toBe(true)
-  expect(seenModes.filter((r) => r.label.includes("ignored-attribute")).every((r) => r.screenMode === "alternate-1049")).toBe(true)
-  expect(seenModes.filter((r) => r.label.includes("post-sequence target")).every((r) => r.screenMode === undefined)).toBe(true)
-  expect(seenModes.filter((r) => r.label.includes("expected frame")).every((r) => r.screenMode === undefined)).toBe(true)
+  expect(
+    seenModes.filter((r) => r.label.includes("pre-edit seed")).every((r) => r.screenMode === "alternate-1049"),
+  ).toBe(true)
+  expect(
+    seenModes.filter((r) => r.label.includes("ignored-attribute")).every((r) => r.screenMode === "alternate-1049"),
+  ).toBe(true)
+  expect(
+    seenModes.filter((r) => r.label.includes("post-sequence target")).every((r) => r.screenMode === undefined),
+  ).toBe(true)
+  expect(seenModes.filter((r) => r.label.includes("expected frame")).every((r) => r.screenMode === undefined)).toBe(
+    true,
+  )
 })

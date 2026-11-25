@@ -2247,7 +2247,8 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   }
   const refusal = captureRefusal(ctx, 3, 8, "Reverse video")
   if (refusal) return refusal
-  const plain = "\x1b[?5l\x1b[0m\x1b[2J\x1b[HREVERSED"
+  const blankSample = " ".repeat(8)
+  const plain = `\x1b[?5l\x1b[0m\x1b[2J\x1b[H${blankSample}`
   const result = await captureRegionCallbackResult(ctx, "modes.reverse-video", {
     region: { top: 1, left: 1, bottom: 1, right: 8 },
     sentinel: { row: 2, col: 1 },
@@ -2258,9 +2259,11 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
     edit: "\x1b[?5h",
     // The edit leaves DECSCNM set for the target's reads; the expected and ignored frames reset it first.
     editScreenMode: "reverse",
-    // Clear in normal SGR 0 before enabling SGR 7 for the cropped REVERSED region (#37240 AC3, @cto 9b959406):
-    // terminals with BCE-with-inverse (WezTerm Linux/macOS) fill the whole erased viewport when SGR 7 precedes ED 2.
-    expected: "\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7mREVERSED\x1b[0m",
+    // Clear in normal SGR 0 before enabling SGR 7 for the cropped blank region (#37240 AC3, @cto 9b959406;
+    // #38524, @cto 66598f9f): terminals with BCE-with-inverse (WezTerm Linux/macOS) fill the whole erased
+    // viewport when SGR 7 precedes ED 2, and blank cells compare screen-background swap by exact digest
+    // without requiring DECSCNM glyph ink to equal SGR 7 ink.
+    expected: `\x1b[?5l\x1b[0m\x1b[2J\x1b[H\x1b[7m${blankSample}\x1b[0m`,
     ignored: plain,
     discriminator: { signal: "reverse-video-pixels", expected: "change" },
     cleanup: "\x1b[?5l\x1b[0m",
@@ -2268,7 +2271,7 @@ async function reverseVideoApp(ctx: TermProbeSource): Promise<ProbeCallbackResul
   })
   if (!result) throw new Error("Reverse-video owned pixel readback disappeared")
   const detail = result.note ?? result.observation?.note
-  const note = `${ps === 0 ? "DECRPM mode 5 returned Ps 0" : "No usable DECRPM reply for mode 5"}; controlled reverse-video pixel read${detail ? `; ${detail}` : ""}`
+  const note = `${ps === 0 ? "DECRPM mode 5 returned Ps 0" : "No usable DECRPM reply for mode 5"}; controlled reverse-video pixel read on blank cells (compares background inversion by exact digest; under DECSCNM, WezTerm draws text in #545454 where SGR 7 uses #101010, on macOS 2c6ba7ae and Linux 4eae8c0d)${detail ? `; ${detail}` : ""}`
   result.note = note
   if (result.observation) result.observation.note = note
   const missingFreshPixel = result.tests?.find(

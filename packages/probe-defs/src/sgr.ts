@@ -1724,31 +1724,31 @@ export const sgrProbes: ProbeDefinition[] = [
 
   rgbUnderlineProbe("sgr.underline.color"),
 
-  // Indices 1 and 4 match the capture witness. Both are needed: one coincidental/default palette
-  // colour cannot prove SGR 58, and two identical entries cannot provide a colour discriminator.
+  // Indices 2 and 6 match the capture witness (#38523, @cto 08de1fb1). Both are needed: one coincidental/default
+  // palette colour cannot prove SGR 58, and two identical entries cannot provide a colour discriminator.
   {
     ...probe(
       "sgr.underline-color-indexed",
       withUnhandledSgrReport(
         "sgr.underline-color-indexed",
-        "\x1b[4m\x1b[58:5:1m\x1b[58:5:4m",
+        "\x1b[4m\x1b[58:5:2m\x1b[58:5:6m",
         (ctx) => {
-          const encoding = `${sgrColourEncoding("\x1b[58:5:1m\x1b[58:5:4m")}; two contrasting palette entries rule out a coincidental default-colour match`
-          ctx.feed("\x1b[4m\x1b[38:5:4m\x1b[59mA\x1b[58:5:1mX\x1b[38:5:1m\x1b[59mB\x1b[58:5:4mY")
-          const default4 = ctx.getCell(0, 0)
-          const target1 = ctx.getCell(0, 1)
-          const default1 = ctx.getCell(0, 2)
-          const target4 = ctx.getCell(0, 3)
+          const encoding = `${sgrColourEncoding("\x1b[58:5:2m\x1b[58:5:6m")}; two contrasting palette entries rule out a coincidental default-colour match`
+          ctx.feed("\x1b[4m\x1b[38:5:6m\x1b[59mA\x1b[58:5:2mX\x1b[38:5:2m\x1b[59mB\x1b[58:5:6mY")
+          const default6 = ctx.getCell(0, 0)
+          const target2 = ctx.getCell(0, 1)
+          const default2 = ctx.getCell(0, 2)
+          const target6 = ctx.getCell(0, 3)
           const state = {
-            default4,
-            target1,
-            default1,
-            target4,
+            default6,
+            target2,
+            default2,
+            target6,
           }
           const expected =
-            "SGR 58:5:1 and 58:5:4 (colon form) underline colours match the opposite foreground-route palette controls; both indices must differ from their same-foreground defaults to rule out a coincidental palette match"
-          const framed = default4.char === "A" && target1.char === "X" && default1.char === "B" && target4.char === "Y"
-          if (framed && target1.underlineColor == null && target4.underlineColor == null) {
+            "SGR 58:5:2 and 58:5:6 (colon form) underline colours match the opposite foreground-route palette controls; both indices must differ from their same-foreground defaults to rule out a coincidental palette match"
+          const framed = default6.char === "A" && target2.char === "X" && default2.char === "B" && target6.char === "Y"
+          if (framed && target2.underlineColor == null && target6.underlineColor == null) {
             return (
               nativeUnderlineAbsence(ctx, 1, state) ??
               underlineColorUnknownArm(ctx, "5:1", expected, state) ??
@@ -1756,18 +1756,18 @@ export const sgrProbes: ProbeDefinition[] = [
             )
           }
           if (
-            default4.char !== "A" ||
-            target1.char !== "X" ||
-            default1.char !== "B" ||
-            target4.char !== "Y" ||
-            !default4.underline ||
-            !target1.underline ||
-            !default1.underline ||
-            !target4.underline ||
-            !default4.fg ||
-            !default1.fg ||
-            target1.underlineColor == null ||
-            target4.underlineColor == null
+            default6.char !== "A" ||
+            target2.char !== "X" ||
+            default2.char !== "B" ||
+            target6.char !== "Y" ||
+            !default6.underline ||
+            !target2.underline ||
+            !default2.underline ||
+            !target6.underline ||
+            !default6.fg ||
+            !default2.fg ||
+            target2.underlineColor == null ||
+            target6.underlineColor == null
           ) {
             return parserStateResult(
               null,
@@ -1776,7 +1776,7 @@ export const sgrProbes: ProbeDefinition[] = [
               `${encoding}: palette control or underline cell state was not exposed`,
             )
           }
-          if (sameRgb(default4.fg, default1.fg)) {
+          if (sameRgb(default6.fg, default2.fg)) {
             return parserStateResult(
               null,
               expected,
@@ -1785,10 +1785,10 @@ export const sgrProbes: ProbeDefinition[] = [
             )
           }
           const matches =
-            sameRgb(default1.fg, target1.underlineColor) &&
-            sameRgb(default4.fg, target4.underlineColor) &&
-            (!default4.underlineColor || !sameRgb(default4.underlineColor, target1.underlineColor)) &&
-            (!default1.underlineColor || !sameRgb(default1.underlineColor, target4.underlineColor))
+            sameRgb(default2.fg, target2.underlineColor) &&
+            sameRgb(default6.fg, target6.underlineColor) &&
+            (!default6.underlineColor || !sameRgb(default6.underlineColor, target2.underlineColor)) &&
+            (!default2.underlineColor || !sameRgb(default2.underlineColor, target6.underlineColor))
           if (matches) {
             return parserStateResult(
               true,
@@ -1798,9 +1798,9 @@ export const sgrProbes: ProbeDefinition[] = [
             )
           }
           if (
-            default4.underlineColor &&
-            default1.underlineColor &&
-            !sameRgb(default4.underlineColor, default1.underlineColor)
+            default6.underlineColor &&
+            default2.underlineColor &&
+            !sameRgb(default6.underlineColor, default2.underlineColor)
           ) {
             return parserStateResult(
               false,
@@ -1817,10 +1817,10 @@ export const sgrProbes: ProbeDefinition[] = [
           )
         },
         {
-          feed: "\x1b[4m\x1b[58:5:1m\x1b[58:5:4m",
+          feed: "\x1b[4m\x1b[58:5:2m\x1b[58:5:6m",
           codes: [
-            { kind: "csi", code: "58:5:1m" },
-            { kind: "csi", code: "58:5:4m" },
+            { kind: "csi", code: "58:5:2m" },
+            { kind: "csi", code: "58:5:6m" },
           ],
         },
       ),
@@ -1831,13 +1831,13 @@ export const sgrProbes: ProbeDefinition[] = [
         if (ctx.capture) {
           const refusal = sgrCaptureTooSmall(
             ctx,
-            "Selected SGR 58:5:1 and SGR 58:5:4 (colon form); selected feature bytes were not sent; SGR fixture",
+            "Selected SGR 58:5:2 and SGR 58:5:6 (colon form); selected feature bytes were not sent; SGR fixture",
           )
           if (refusal) return refusal
           const captured = await underlineColourIndexedCaptureResult(ctx)
           if (captured) return colourCaptureCallbackResult("sgr.underline-color-indexed", captured, { mux: ctx.mux })
         }
-        return consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58:5:1m")
+        return consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58:5:2m")
       },
       null,
     ),

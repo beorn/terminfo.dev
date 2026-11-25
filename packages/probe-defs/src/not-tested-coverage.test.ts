@@ -193,9 +193,9 @@ const headlessStateFeatures = [
   [
     "sgr.underline-color-indexed",
     ["A", "X", "B", "Y"],
-    "SGR 58 index 1/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+    "SGR 58 index 2/6 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
     "Open: we set an underline colour (SGR 58), but the screen cell shows none, so we cannot tell whether the library ignored it or does not report it.",
-    ["58:5:1", "58:5:4", "colon form"],
+    ["58:5:2", "58:5:6", "colon form"],
   ],
   // Seedless SGR59/default-color cases are named TODOs, covered by sgr-contract.test.ts.
   [

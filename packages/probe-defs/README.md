@@ -340,9 +340,9 @@ Application-cursor and reverse-video opt into a public-state criterion when DECR
 reset false, set true, reset false, an unknown mode leaves the state unchanged, and the other
 flag stays unchanged throughout. Cursor-key encoding and reverse-video presentation remain unmeasured.
 Library reverse-video presentation stays unmeasured. The application arm keeps the DECRPM set
-check, and when mode 5 answers Ps 0 or nothing it reads the effect in pixels: a seeded `REVERSED`
-line, then DECSCNM set, compared against an SGR 7 reference and the unchanged line
-(`reverse-video-pixels`). A text-cell collector records PROBE INVALID, since text cells cannot
+check, and when mode 5 answers Ps 0 or nothing it reads the effect in pixels: a seeded 8-space blank
+line, then DECSCNM set, compared against an SGR 7 blank reference and the unchanged line
+(`reverse-video-pixels`, #38524, @cto 66598f9f). A text-cell collector records PROBE INVALID, since text cells cannot
 show the effect. Those target reads are taken with the screen inverted, so the definition declares
 `termScreenMode: "reverse"` and its region-readback spec marks the under-edit steps with
 `editScreenMode: "reverse"`. Each such read reaches the collector as `CaptureRequest.screenMode`.
@@ -848,7 +848,7 @@ cohort below and the following DEC colour/setup slice.
 The three underline-colour setters also consult this runtime report when their cell colour is
 unexposed. Their selected bytes remain colon-form SGR 58, including the empty RGB colourspace field.
 The measured Rust callback reports that RGB field as 0; the report target names that exact code,
-while the indexed target requires both selected `58:5:1m` and `58:5:4m` reports in order. The existing
+while the indexed target requires both selected `58:5:2m` and `58:5:6m` reports in order. The existing
 handled SGR 1/bold control and exact report-list matcher decide Unsupported; absent, different or
 extra reports leave TODO. Reasons say “measured: library reported the code unhandled”; no source
 grade or silence-positive is admitted, and a previously decided cell result keeps precedence.
