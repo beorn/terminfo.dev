@@ -482,8 +482,16 @@ test.each([
   ["neighbour bleed even with shaping", { bleed: true, pair: 3 }, "inconclusive"],
   // #37240 (@cto 3cd2c588): underscore-only overhang cannot produce a false negative when 0/10
   // operator cells differ from isolated controls and the positive control moved.
-  ["underscore-only bleed with 0/10 operator diffs and moving positive control", { bleed: "underscore-only" }, "unsupported"],
-  ["underscore-only bleed with blind positive control stays inconclusive", { bleed: "underscore-only", blind: true }, "inconclusive"],
+  [
+    "underscore-only bleed with 0/10 operator diffs and moving positive control",
+    { bleed: "underscore-only" },
+    "unsupported",
+  ],
+  [
+    "underscore-only bleed with blind positive control stays inconclusive",
+    { bleed: "underscore-only", blind: true },
+    "inconclusive",
+  ],
   ["blind positive control", { blind: true }, "inconclusive"],
   // #33639: the first paint-witness return has captured one frame. It must cite no frames, never a lone one.
   ["never paints, so no paint witness arrives", { neverPaint: true }, "inconclusive"],
@@ -708,11 +716,17 @@ test("OSC 9;4 qualifies a repeatable value-dependent App effect and retains a pa
   expectCapturedResultParses("extensions.osc9-progress", result)
 })
 
-test("OSC 9;4 settles a transient initial frame fade (overlay scrollbar) and still refuses continuous baseline instability (#38149)", async () => {
-  const settled = calibratedIterm2Arm({ effect: "progress", progress: "values", initialUnstableFrames: 1 })
-  const decided = await find("extensions.osc9-progress").term!(settled.context)
-  expect(decided.observation?.outcome).toBe("supported")
-  expectCapturedResultParses("extensions.osc9-progress", decided)
+test("OSC 9;4 settles a transient initial frame fade (overlay scrollbar / VS Code 3764c54d) and still refuses continuous baseline instability (#38149, #38522)", async () => {
+  for (const unstableCount of [1, 3]) {
+    const settled = calibratedIterm2Arm({
+      effect: "progress",
+      progress: "values",
+      initialUnstableFrames: unstableCount,
+    })
+    const decided = await find("extensions.osc9-progress").term!(settled.context)
+    expect(decided.observation?.outcome, `initialUnstableFrames=${unstableCount}`).toBe("supported")
+    expectCapturedResultParses("extensions.osc9-progress", decided)
+  }
 
   const unstable = calibratedIterm2Arm({ effect: "progress", progress: "values", initialUnstableFrames: 10 })
   const refused = await find("extensions.osc9-progress").term!(unstable.context)
