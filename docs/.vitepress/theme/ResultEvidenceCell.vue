@@ -86,6 +86,7 @@ const previewPosition = ref<Record<string, string>>({})
 const cellTrace = ref<LoadedCellTrace | null>(null)
 const evidenceLoading = ref(false)
 const evidenceError = ref<string | null>(null)
+const detailsOpen = ref(false)
 let evidenceRequest = 0
 let evidenceController: AbortController | null = null
 const id = useId()
@@ -216,6 +217,7 @@ const cardModel = computed(() => {
     derived: derived.value,
     reason,
     traceEvidence: cellTrace.value?.cell.evidence,
+    logLine: cellTrace.value?.cell.logLine,
     exchange: cellTrace.value?.cell,
     parserState: cellTrace.value?.cell.parserState,
     captures: captures.value,
@@ -336,6 +338,12 @@ function invalidateEvidence(): void {
   cellTrace.value = null
   evidenceLoading.value = false
   evidenceError.value = null
+  detailsOpen.value = false
+}
+
+function toggleDetails(): void {
+  detailsOpen.value = !detailsOpen.value
+  if (!props.inline) repositionPreview()
 }
 
 async function verifiedBytes(
@@ -625,7 +633,7 @@ onBeforeUnmount(() => {
       <span>{{ whoLine }}</span>
     </div>
 
-    <p v-if="blank || isUntestable" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
+    <p v-if="blank || isUntestable || isDiffers" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
     <p v-else-if="derived" class="rc-answer">
       Unsupported because
       <a v-if="derivedParentHref" :href="derivedParentHref" class="rc-parent-link">{{ derivedParentName }}</a>
@@ -636,95 +644,129 @@ onBeforeUnmount(() => {
     <template v-else>
       <span v-if="evidenceLoading" class="rc-muted">Loading recorded evidence…</span>
 
-      <div v-if="cardModel.steps.length > 0 || cardModel.readouts.length > 0" class="rc-steps">
-        <div v-for="step in cardModel.steps" :key="step.num" class="rc-st">
+      <div class="rc-steps">
+        <div v-for="step in cardModel.steps" :key="step.num" class="rc-st" :class="{ 'rc-setup': step.setup }">
           <span class="rc-n">{{ step.num }}</span>
           <code :class="{ 'rc-act': Boolean(step.codeMuted) }" :title="step.fullCode || undefined">{{
             step.codeMuted || step.code
           }}</code>
           <span class="rc-w">{{ step.words }}</span>
         </div>
-        <div v-for="(ro, rIdx) in cardModel.readouts" :key="'r-' + rIdx" class="rc-st rc-rep">
-          <span class="rc-n" aria-hidden="true">←</span>
-          <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
-            ro.codeMuted || ro.code
-          }}</code>
-          <span class="rc-w"
-            ><b>{{ ro.label }}:</b> {{ ro.text }}</span
-          >
-          <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
-        </div>
-      </div>
 
-      <div v-if="showShots" class="rc-shots" :class="{ 'rc-shots--single': !hasExpectedPicture }">
-        <div v-if="hasExpectedPicture" class="rc-shot">
-          <span class="rc-cap">Expected</span>
-          <div
-            class="rc-term"
-            :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
-            :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
-            @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
-          >
-            <img
-              v-if="captures?.expected"
-              :src="withBase(captures.expected.url)"
-              :width="captures.expected.width"
-              :height="captures.expected.height"
-              :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
-              alt="Expected terminal rendering"
-            />
-            <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
-            <img
-              v-else-if="expectedIllustration"
-              :src="expectedIllustration"
-              alt="Illustrative expected Unicode cells"
-            />
+        <div v-if="cardModel.expected && cardModel.received && cardModel.verdict" class="rc-pair">
+          <div class="rc-lbl">Expected</div>
+          <div class="rc-st rc-exp" :class="{ 'rc-st--nobytes': !cardModel.expected.code }">
+            <span class="rc-n" aria-hidden="true">←</span>
+            <code v-if="cardModel.expected.code" :title="cardModel.expected.fullCode || undefined">{{
+              cardModel.expected.code
+            }}</code>
+            <span class="rc-w">{{ cardModel.expected.words }}</span>
           </div>
-        </div>
-        <div v-if="hasObservedPicture" class="rc-shot" :class="{ 'rc-shot--bad': status.tone === 'no' }">
-          <span class="rc-cap rc-cap--row">
-            <span>
-              {{ shortName }}'s screen
-              <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
-            </span>
-            <button
-              v-if="captures?.observed || captures?.full"
-              type="button"
-              class="rc-shot-zoom"
-              @click="openFullShot"
+          <div v-if="showShots && hasExpectedPicture" class="rc-pic">
+            <div
+              class="rc-term"
+              :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+              :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+              @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
             >
-              Enlarge ⤢
-            </button>
-          </span>
+              <img
+                v-if="captures?.expected"
+                :src="withBase(captures.expected.url)"
+                :width="captures.expected.width"
+                :height="captures.expected.height"
+                :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                alt="Expected terminal rendering"
+              />
+              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <img
+                v-else-if="expectedIllustration"
+                :src="expectedIllustration"
+                alt="Illustrative expected Unicode cells"
+              />
+            </div>
+          </div>
+
+          <div class="rc-lbl">Received</div>
           <div
-            class="rc-term"
-            :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
-            :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
-            @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+            class="rc-st rc-rep"
+            :class="{ 'rc-st--nobytes': !cardModel.received.code && !cardModel.received.codeMuted }"
           >
-            <img
-              v-if="captures?.observed"
-              :src="withBase(captures.observed.url)"
-              :width="captures.observed.width"
-              :height="captures.observed.height"
-              :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
-              :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
-            />
-            <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
+            <span class="rc-n" aria-hidden="true">←</span>
+            <code
+              v-if="cardModel.received.code || cardModel.received.codeMuted"
+              :class="{ 'rc-act': Boolean(cardModel.received.codeMuted) }"
+              :title="cardModel.received.fullCode || undefined"
+              >{{ cardModel.received.codeMuted || cardModel.received.code }}</code
+            >
+            <span class="rc-w" :class="{ 'rc-w--log': cardModel.received.isLog }">{{
+              evidenceError || cardModel.received.words
+            }}</span>
+          </div>
+          <div v-if="showShots && hasObservedPicture" class="rc-pic">
+            <div
+              class="rc-term"
+              :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+              :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+              @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+            >
+              <img
+                v-if="captures?.observed"
+                :src="withBase(captures.observed.url)"
+                :width="captures.observed.width"
+                :height="captures.observed.height"
+                :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
+                :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
+              />
+              <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
+            </div>
+          </div>
+
+          <div class="rc-verdict" :class="cardModel.verdict.tone === 'ok' ? 'rc-verdict--ok' : 'rc-verdict--no'">
+            <span class="rc-vt"
+              ><span aria-hidden="true">{{ cardModel.verdict.tone === "ok" ? "✓" : "✕" }}</span>
+              {{ cardModel.verdict.text }}</span
+            >
+            <button v-if="hasDetails" type="button" class="rc-dl" :aria-expanded="detailsOpen" @click="toggleDetails">
+              {{ detailsOpen ? "Details ⌄" : detailsSummaryLabel }}
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="rc-steps">
-        <div class="rc-st rc-res">
-          <span class="rc-w rc-sum">{{ evidenceError || cardModel.closing }}</span>
+      <div v-if="hasDetails && detailsOpen" class="rc-details-body">
+        <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
+        <div v-if="captures?.full" class="rc-detail-sec">
+          <div class="rc-detail-row">
+            <span class="rc-bytes-label">Full terminal screenshot</span>
+            <button type="button" class="rc-link-btn" @click="openFullShot">Enlarge ›</button>
+          </div>
+          <span v-if="captures.regionText" class="rc-muted">Read region: {{ captures.regionText }}</span>
+          <img
+            class="rc-fullshot-thumb"
+            :src="withBase(captures.full.url)"
+            :alt="`${shortName} full terminal grid screenshot`"
+            @click="openFullShot"
+          />
         </div>
+        <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+        <div v-if="sentFromTrace" class="rc-bytes">
+          <span class="rc-bytes-label">Setup &amp; sent bytes</span>
+          <pre>{{ sentFromTrace }}</pre>
+        </div>
+        <div v-if="replyBytes?.full" class="rc-bytes">
+          <span class="rc-bytes-label">Raw reply bytes</span>
+          <pre>{{ replyBytes.full }}</pre>
+        </div>
+        <div v-if="parserStatePre" class="rc-bytes">
+          <span class="rc-bytes-label">Parser state</span>
+          <pre>{{ parserStatePre }}</pre>
+        </div>
+        <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
+        <span v-if="detailsEnvironment" class="rc-muted">{{ detailsEnvironment }}</span>
       </div>
-
-      <p v-if="cardModel.contextNote" class="rc-ctx">{{ cardModel.contextNote }}</p>
     </template>
 
-    <details v-if="!blank && hasDetails" class="rc-details">
+    <details v-if="!cardModel.measured && !blank && hasDetails" class="rc-details">
       <summary class="rc-foot">{{ detailsSummaryLabel }}</summary>
       <div class="rc-details-body">
         <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
@@ -885,7 +927,7 @@ onBeforeUnmount(() => {
           <span>{{ whoLine }}</span>
         </div>
 
-        <p v-if="isUntestable" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
+        <p v-if="isUntestable || isDiffers" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
         <p v-else-if="derived" class="rc-answer">
           Unsupported because
           <a v-if="derivedParentHref" :href="derivedParentHref" class="rc-parent-link">{{ derivedParentName }}</a>
@@ -896,95 +938,135 @@ onBeforeUnmount(() => {
         <template v-else>
           <span v-if="evidenceLoading" class="rc-muted">Loading recorded evidence…</span>
 
-          <div v-if="cardModel.steps.length > 0 || cardModel.readouts.length > 0" class="rc-steps">
-            <div v-for="step in cardModel.steps" :key="step.num" class="rc-st">
+          <div class="rc-steps">
+            <div v-for="step in cardModel.steps" :key="step.num" class="rc-st" :class="{ 'rc-setup': step.setup }">
               <span class="rc-n">{{ step.num }}</span>
               <code :class="{ 'rc-act': Boolean(step.codeMuted) }" :title="step.fullCode || undefined">{{
                 step.codeMuted || step.code
               }}</code>
               <span class="rc-w">{{ step.words }}</span>
             </div>
-            <div v-for="(ro, rIdx) in cardModel.readouts" :key="'r-' + rIdx" class="rc-st rc-rep">
-              <span class="rc-n" aria-hidden="true">←</span>
-              <code :class="{ 'rc-act': Boolean(ro.codeMuted) }" :title="ro.fullCode || undefined">{{
-                ro.codeMuted || ro.code
-              }}</code>
-              <span class="rc-w"
-                ><b>{{ ro.label }}:</b> {{ ro.text }}</span
-              >
-              <span v-if="ro.mark" class="rc-mk" :class="'rc-mk--' + ro.mark">{{ ro.mark === "ok" ? "✓" : "✕" }}</span>
-            </div>
-          </div>
 
-          <div v-if="showShots" class="rc-shots" :class="{ 'rc-shots--single': !hasExpectedPicture }">
-            <div v-if="hasExpectedPicture" class="rc-shot">
-              <span class="rc-cap">Expected</span>
-              <div
-                class="rc-term"
-                :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
-                :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
-                @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
-              >
-                <img
-                  v-if="captures?.expected"
-                  :src="withBase(captures.expected.url)"
-                  :width="captures.expected.width"
-                  :height="captures.expected.height"
-                  :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
-                  alt="Expected terminal rendering"
-                />
-                <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
-                <img
-                  v-else-if="expectedIllustration"
-                  :src="expectedIllustration"
-                  alt="Illustrative expected Unicode cells"
-                />
+            <div v-if="cardModel.expected && cardModel.received && cardModel.verdict" class="rc-pair">
+              <div class="rc-lbl">Expected</div>
+              <div class="rc-st rc-exp" :class="{ 'rc-st--nobytes': !cardModel.expected.code }">
+                <span class="rc-n" aria-hidden="true">←</span>
+                <code v-if="cardModel.expected.code" :title="cardModel.expected.fullCode || undefined">{{
+                  cardModel.expected.code
+                }}</code>
+                <span class="rc-w">{{ cardModel.expected.words }}</span>
               </div>
-            </div>
-            <div v-if="hasObservedPicture" class="rc-shot" :class="{ 'rc-shot--bad': status.tone === 'no' }">
-              <span class="rc-cap rc-cap--row">
-                <span>
-                  {{ shortName }}'s screen
-                  <span v-if="verdictMark" class="rc-mk" :class="verdictMarkClass">{{ verdictMark }}</span>
-                </span>
-                <button
-                  v-if="captures?.observed || captures?.full"
-                  type="button"
-                  class="rc-shot-zoom"
-                  @click="openFullShot"
+              <div v-if="showShots && hasExpectedPicture" class="rc-pic">
+                <div
+                  class="rc-term"
+                  :class="{ 'rc-term--zoomable': Boolean(captures?.expected || captures?.observed || captures?.full) }"
+                  :title="captures?.expected || captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+                  @click="captures?.expected || captures?.observed || captures?.full ? openFullShot() : undefined"
                 >
-                  Enlarge ⤢
-                </button>
-              </span>
+                  <img
+                    v-if="captures?.expected"
+                    :src="withBase(captures.expected.url)"
+                    :width="captures.expected.width"
+                    :height="captures.expected.height"
+                    :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                    alt="Expected terminal rendering"
+                  />
+                  <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                  <img
+                    v-else-if="expectedIllustration"
+                    :src="expectedIllustration"
+                    alt="Illustrative expected Unicode cells"
+                  />
+                </div>
+              </div>
+
+              <div class="rc-lbl">Received</div>
               <div
-                class="rc-term"
-                :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
-                :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
-                @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+                class="rc-st rc-rep"
+                :class="{ 'rc-st--nobytes': !cardModel.received.code && !cardModel.received.codeMuted }"
               >
-                <img
-                  v-if="captures?.observed"
-                  :src="withBase(captures.observed.url)"
-                  :width="captures.observed.width"
-                  :height="captures.observed.height"
-                  :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
-                  :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
-                />
-                <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
+                <span class="rc-n" aria-hidden="true">←</span>
+                <code
+                  v-if="cardModel.received.code || cardModel.received.codeMuted"
+                  :class="{ 'rc-act': Boolean(cardModel.received.codeMuted) }"
+                  :title="cardModel.received.fullCode || undefined"
+                  >{{ cardModel.received.codeMuted || cardModel.received.code }}</code
+                >
+                <span class="rc-w" :class="{ 'rc-w--log': cardModel.received.isLog }">{{
+                  evidenceError || cardModel.received.words
+                }}</span>
+              </div>
+              <div v-if="showShots && hasObservedPicture" class="rc-pic">
+                <div
+                  class="rc-term"
+                  :class="{ 'rc-term--zoomable': Boolean(captures?.observed || captures?.full) }"
+                  :title="captures?.observed || captures?.full ? 'Click to enlarge' : undefined"
+                  @click="captures?.observed || captures?.full ? openFullShot() : undefined"
+                >
+                  <img
+                    v-if="captures?.observed"
+                    :src="withBase(captures.observed.url)"
+                    :width="captures.observed.width"
+                    :height="captures.observed.height"
+                    :class="{ 'rc-term-img--small': isSmallCrop(captures.observed) }"
+                    :alt="`${shortName} screen crop${captures.regionText ? ` (${captures.regionText})` : ''}`"
+                  />
+                  <pre v-else-if="captures?.textCells" class="rc-textcells">{{ captures.textCells }}</pre>
+                </div>
+              </div>
+
+              <div class="rc-verdict" :class="cardModel.verdict.tone === 'ok' ? 'rc-verdict--ok' : 'rc-verdict--no'">
+                <span class="rc-vt"
+                  ><span aria-hidden="true">{{ cardModel.verdict.tone === "ok" ? "✓" : "✕" }}</span>
+                  {{ cardModel.verdict.text }}</span
+                >
+                <button
+                  v-if="hasDetails"
+                  type="button"
+                  class="rc-dl"
+                  :aria-expanded="detailsOpen"
+                  @click="toggleDetails"
+                >
+                  {{ detailsOpen ? "Details ⌄" : detailsSummaryLabel }}
+                </button>
               </div>
             </div>
           </div>
 
-          <div class="rc-steps">
-            <div class="rc-st rc-res">
-              <span class="rc-w rc-sum">{{ evidenceError || cardModel.closing }}</span>
+          <div v-if="hasDetails && detailsOpen" class="rc-details-body">
+            <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>
+            <div v-if="captures?.full" class="rc-detail-sec">
+              <div class="rc-detail-row">
+                <span class="rc-bytes-label">Full terminal screenshot</span>
+                <button type="button" class="rc-link-btn" @click="openFullShot">Enlarge ›</button>
+              </div>
+              <span v-if="captures.regionText" class="rc-muted">Read region: {{ captures.regionText }}</span>
+              <img
+                class="rc-fullshot-thumb"
+                :src="withBase(captures.full.url)"
+                :alt="`${shortName} full terminal grid screenshot`"
+                @click="openFullShot"
+              />
             </div>
+            <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+            <div v-if="sentFromTrace" class="rc-bytes">
+              <span class="rc-bytes-label">Setup &amp; sent bytes</span>
+              <pre>{{ sentFromTrace }}</pre>
+            </div>
+            <div v-if="replyBytes?.full" class="rc-bytes">
+              <span class="rc-bytes-label">Raw reply bytes</span>
+              <pre>{{ replyBytes.full }}</pre>
+            </div>
+            <div v-if="parserStatePre" class="rc-bytes">
+              <span class="rc-bytes-label">Parser state</span>
+              <pre>{{ parserStatePre }}</pre>
+            </div>
+            <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
+            <span v-if="detailsEnvironment" class="rc-muted">{{ detailsEnvironment }}</span>
           </div>
-
-          <p v-if="cardModel.contextNote" class="rc-ctx">{{ cardModel.contextNote }}</p>
         </template>
 
-        <details v-if="hasDetails" class="rc-details" @toggle="repositionPreview">
+        <details v-if="!cardModel.measured && hasDetails" class="rc-details" @toggle="repositionPreview">
           <summary class="rc-foot">{{ detailsSummaryLabel }}</summary>
           <div class="rc-details-body">
             <p v-if="showJoinedGrades" class="result-evidence__contexts">{{ joinedGrades }}</p>

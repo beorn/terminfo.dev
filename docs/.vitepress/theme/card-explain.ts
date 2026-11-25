@@ -25,6 +25,8 @@ export interface CardStepRow {
   readonly fullCode?: string
   /** Muted italic placeholder in the bytes column when a step sends no bytes (v16). */
   readonly codeMuted?: "no bytes"
+  /** True for short setup/seed rows styled grey (Style 5, #38269). */
+  readonly setup?: boolean
   readonly words: string
 }
 
@@ -44,11 +46,41 @@ export interface CardReadoutRow {
   readonly mark?: "ok" | "no"
 }
 
+/** Style 5 EXPECTED row inside the result panel (#38269). Bytes only for reply families; never fake bytes. */
+export interface CardExpectedRow {
+  readonly code?: string
+  readonly fullCode?: string
+  readonly words: string
+}
+
+/** Style 5 RECEIVED row inside the result panel (#38269). Bytes only for reply families; verbatim log line for report kinds. */
+export interface CardReceivedRow {
+  readonly code?: string
+  readonly fullCode?: string
+  /** Set ONLY for reply families when the terminal sent nothing back. */
+  readonly codeMuted?: "nothing"
+  readonly words: string
+  /** True when `words` is a verbatim parser/app log line (rendered monospace blue). */
+  readonly isLog?: boolean
+}
+
+/** Style 5 bottom result line: centered, 3–6 words, green ✓ on pass or red ✕ on fail (#38269). */
+export interface CardVerdict {
+  readonly tone: "ok" | "no"
+  readonly text: string
+}
+
 export interface CardModel {
+  /** True for measured Supported/Unsupported cards (rendered with the Style 5 panel); false for Untestable/Derived/Differs/No result. */
+  readonly measured: boolean
   readonly steps: readonly CardStepRow[]
+  readonly expected?: CardExpectedRow
+  readonly received?: CardReceivedRow
+  readonly verdict?: CardVerdict
   readonly readouts: readonly CardReadoutRow[]
   /** Convenience alias for the first readout row when present. */
   readonly readout?: CardReadoutRow
+  /** One-line explanation for non-measured kinds (Untestable, Derived, Differs, No result yet). */
   readonly closing: string
   readonly contextNote?: string
   readonly truncated: boolean
@@ -564,6 +596,7 @@ export function explainSentCommand(
   if (raw === "\x1b[?u") return { words: "Ask Kitty keyboard flags", fallback: false }
   if (/^\x1b\[>[0-9;]*u$/.test(raw)) return { words: "Enable Kitty keyboard flags", fallback: false }
   if (/^\x1b\[<[0-9]*u$/.test(raw)) return { words: "Pop Kitty keyboard flags", fallback: false }
+  if (/^\x1bP\$qm(?:\x1b\\)?$/.test(raw)) return { words: "Ask the current text style", fallback: false }
   if (/^\x1bP\$q/.test(raw)) return { words: "Ask current setting (DECRQSS)", fallback: false }
   if (/^\x1bP\+q/.test(raw)) return { words: "Ask terminfo capability", fallback: false }
   if (/^\x1bP\+Q/.test(raw)) return { words: "Ask xterm resource", fallback: false }
@@ -645,8 +678,8 @@ export function explainReplyCommand(raw: string): { words: string; fallback: boo
   if (decrqss) {
     if (decrqss[1] !== "1") return { words: "“Not recognized”", fallback: false }
     const val = decrqss[2] ?? ""
-    if (val === "" || val === "m" || val === "0m") return { words: "“Setting: plain (default)”", fallback: false }
-    return { words: `“Setting: ${val}”`, fallback: false }
+    if (val === "" || val === "m" || val === "0m") return { words: "“Style: plain”", fallback: false }
+    return { words: val.endsWith("m") ? `“Style: ${val}”` : `“Setting: ${val}”`, fallback: false }
   }
   const tcap = /^\x1bP([01])\+([rR])([\s\S]*?)\x1b\\$/.exec(raw)
   if (tcap) {
@@ -748,8 +781,356 @@ function inputProbeActionWords(featureId: string): string {
   return "Send test key press"
 }
 
+const RAW_JSON_OR_STORE_PATH = /^\s*\{[\s\S]*"[\w-]+":|\/nix\/store\/[a-z0-9]{10,}/i
+
+function sanitizeCardText(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const trimmed = text.replace(/\s+/g, " ").trim().replace(/\.$/, "")
+  if (!trimmed) return undefined
+  if (RAW_JSON_OR_STORE_PATH.test(trimmed)) return undefined
+  return trimmed
+}
+
+function capitalizeFirst(text: string): string {
+  return text ? text[0]!.toUpperCase() + text.slice(1) : text
+}
+
+function shortWhoForVerdict(shortSubjectName?: string): string {
+  const clean = shortSubjectName?.trim()
+  if (!clean) return "Terminal"
+  const words = clean.split(/\s+/).filter(Boolean)
+  return words.length <= 2 ? clean : "Terminal"
+}
+
+export function countVerdictWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function isAppLogCalibrationCmd(raw: string, featureId: string): boolean {
+  if (/^\x1b\](?:7654|7655);/.test(raw)) return true
+  if (!featureId.includes("title") && /^\x1b\]2;/.test(raw)) return true
+  return false
+}
+
+function oscCodeForFeature(featureId: string, sentCommands: readonly string[]): string | undefined {
+  for (const raw of sentCommands) {
+    const m = /^\x1b\](\d+)(?:;|\x07|\x1b\\)/.exec(raw)
+    if (m && m[1] !== "7654" && m[1] !== "7655" && m[1] !== "2") return m[1]
+  }
+  const idMatch = /osc-?(\d+)/i.exec(featureId)
+  return idMatch?.[1]
+}
+
+function sgrExpectedStyleName(featureId: string, sentCommands: readonly string[]): { code?: string; label: string } {
+  const sgrMap: Record<string, { code: string; label: string }> = {
+    "sgr.overline": { code: "53", label: "overline" },
+    "sgr.bold": { code: "1", label: "bold" },
+    "sgr.faint": { code: "2", label: "faint" },
+    "sgr.italic": { code: "3", label: "italic" },
+    "sgr.blink": { code: "5", label: "blink" },
+    "sgr.inverse": { code: "7", label: "inverse" },
+    "sgr.hidden": { code: "8", label: "hidden" },
+    "sgr.strikethrough": { code: "9", label: "strikethrough" },
+    "sgr.underline.single": { code: "4", label: "underline" },
+    "sgr.underline.double": { code: "4:2", label: "double underline" },
+    "sgr.underline.curly": { code: "4:3", label: "curly underline" },
+    "sgr.underline.dotted": { code: "4:4", label: "dotted underline" },
+    "sgr.underline.dashed": { code: "4:5", label: "dashed underline" },
+  }
+  if (sgrMap[featureId]) return sgrMap[featureId]!
+  for (const raw of sentCommands) {
+    const m = /^\x1b\[([0-9;:]+)m$/.exec(raw)
+    if (m && m[1] !== "0") {
+      return { code: m[1], label: SGR_NAMES[m[1]!]?.replace(/^Turn on /i, "") ?? `SGR ${m[1]}` }
+    }
+  }
+  return { label: "styled text" }
+}
+
+function expectedReplyForProbe(opts: {
+  featureId: string
+  featureName: string
+  sawDecrqm: boolean
+  decrqmMode?: string
+  saveRestore: boolean
+  savedCupPos?: string
+  sentCommands: readonly string[]
+  queryCommands: readonly string[]
+  assertionType?: string
+  trimCode: (code: string) => { code: string; fullCode?: string }
+}): CardExpectedRow {
+  const {
+    featureId,
+    sawDecrqm,
+    decrqmMode,
+    saveRestore,
+    savedCupPos,
+    sentCommands,
+    queryCommands,
+    assertionType,
+    trimCode,
+  } = opts
+  const apply = (rawCode: string, words: string): CardExpectedRow => {
+    const t = trimCode(rawCode)
+    return { code: t.code, ...(t.fullCode ? { fullCode: t.fullCode } : {}), words }
+  }
+
+  if (assertionType === "input_bytes") {
+    if (featureId.includes("paste")) return apply("ESC [ 200~ … ESC [ 201~", "Pasted text in bracketed markers")
+    if (featureId.includes("focus")) return apply("ESC [ O  ESC [ I", "Focus out / focus in events")
+    if (featureId.includes("mouse") || featureId.includes("click") || featureId.includes("wheel")) {
+      return apply("ESC [ <… M", "Mouse coordinates escape sequence")
+    }
+    if (featureId.includes("modify-other-keys")) return apply("ESC [ 27;… ~", "Modified key escape sequence")
+    return apply("ESC [ …", "Expected key escape sequence")
+  }
+  if (sawDecrqm) {
+    const m = decrqmMode ?? "N"
+    return apply(`ESC [ ?${m};1|2 $ y`, "“Yes, on” or “Yes, off”")
+  }
+  if (queryCommands.some((q) => /^\x1bP\$q/.test(q))) {
+    if (featureId.startsWith("sgr.")) {
+      const sgr = sgrExpectedStyleName(featureId, sentCommands)
+      return apply(sgr.code ? `ESC P 1 $ r ${sgr.code} m …` : "ESC P 1 $ r … m ESC \\", `“Style: ${sgr.label}”`)
+    }
+    return apply("ESC P 1 $ r … ESC \\", "Current setting reported")
+  }
+  if (saveRestore) {
+    const pos = savedCupPos ?? "3;5"
+    return apply(`ESC [ ${pos} R`, `“At ${pos}”`)
+  }
+  if (queryCommands.some((q) => q === "\x1b[6n")) {
+    return apply("ESC [ <row>;<col> R", "Expected cursor position")
+  }
+  if (queryCommands.some((q) => q === "\x1b[5n") || featureId === "device.status-report") {
+    return apply("ESC [ 0 n", "“Ready”")
+  }
+  if (queryCommands.some((q) => q === "\x1b[?996n") || featureId === "device.dsr-996-color-scheme") {
+    return apply("ESC [ ?997;1|2 n", "“Dark theme” or “Light theme”")
+  }
+  if (queryCommands.some((q) => /^\x1b\[>0?q$/.test(q)) || featureId === "device.xtversion") {
+    return apply("ESC P > | <name> ESC \\", "Terminal name and version")
+  }
+  if (queryCommands.some((q) => /^\x1b\[>0?c$/.test(q)) || featureId === "device.secondary-da") {
+    return apply("ESC [ >… c", "Secondary terminal ID")
+  }
+  if (queryCommands.some((q) => /^\x1b\[=0?c$/.test(q))) {
+    return apply("ESC P ! | … ESC \\", "Tertiary terminal ID")
+  }
+  if (isDa1Feature(featureId)) {
+    return apply("ESC [ ?… c", "Primary terminal ID")
+  }
+  if (queryCommands.some((q) => q === "\x1b[?u") || featureId.includes("kitty-keyboard")) {
+    return apply("ESC [ ?<flags> u", "Active keyboard flags")
+  }
+  if (queryCommands.some((q) => /^\x1b_G/.test(q)) || featureId === "extensions.kitty-graphics") {
+    return apply("ESC _ G … ;OK ESC \\", "“OK” acknowledgement")
+  }
+  if (queryCommands.some((q) => /^\x1bP\+q/.test(q))) {
+    return apply("ESC P 1 + r … ESC \\", "Capability value reported")
+  }
+  if (queryCommands.some((q) => /^\x1bP\+Q/.test(q))) {
+    return apply("ESC P 1 + R … ESC \\", "Resource value reported")
+  }
+  if (queryCommands.some((q) => /^\x1b\[[0-9;]*\*y$/.test(q))) {
+    return apply("ESC P … ! ~ <hex> ESC \\", "Rectangle checksum")
+  }
+  if (queryCommands.some((q) => /^\x1b\[\?2;1;0S$/.test(q))) {
+    return apply("ESC [ ?2;0;<w>;<h> S", "Sixel pixel dimensions")
+  }
+  if (queryCommands.some((q) => /^\x1b\[#R$/.test(q)) || featureId === "device.xtreportcolors") {
+    return apply("ESC [ ?<n>;<max> # Q", "Color stack depth")
+  }
+  const winopQ = queryCommands.find((q) => /^\x1b\[(14|16|18)(?:;\d+)*t$/.exec(q))
+  if (winopQ) {
+    const m = /^\x1b\[(14|16|18)/.exec(winopQ)!
+    if (m[1] === "14") return apply("ESC [ 4;<h>;<w> t", "Window size in pixels")
+    if (m[1] === "16") return apply("ESC [ 6;<h>;<w> t", "Cell size in pixels")
+    return apply("ESC [ 8;<rows>;<cols> t", "Terminal grid size")
+  }
+  const oscQ =
+    queryCommands.find((q) => /^\x1b\](\d+)(?:;|\x07|\x1b\\)/.test(q)) ??
+    sentCommands.find((s) => /^\x1b\](\d+)(?:;|\x07|\x1b\\)/.test(s))
+  if (oscQ) {
+    const m = /^\x1b\](\d+)(?:;|\x07|\x1b\\)/.exec(oscQ)
+    const code = m?.[1]
+    if (code === "776" || featureId === "extensions.osc776-cell-size") {
+      return apply("ESC ]776;<w>;<h> BEL", "Cell width and height")
+    }
+    if (code && /^(?:4|5|10|11|12|13|14|15|16|17|18|19|21)$/.test(code)) {
+      return apply(`ESC ]${code};rgb:… BEL`, "Current RGB color")
+    }
+    if (code === "22") return apply("ESC ]22;<shape> BEL", "Current pointer shape")
+    if (code === "52") return apply("ESC ]52;c;<data> BEL", "Clipboard text returned")
+    if (code === "99") return apply("ESC ]99;… BEL", "Notification capabilities")
+    if (code === "1337") return apply("ESC ]1337;… BEL", "iTerm2 reply value")
+    if (code) return apply(`ESC ]${code};… BEL`, `OSC ${code} reply`)
+  }
+  return apply("ESC …", "Matching reply sequence")
+}
+
+function expectedNonReplyWords(opts: {
+  featureId: string
+  featureName: string
+  assertionType?: string
+  subjectKind?: string
+  isScreen: boolean
+  isAppLog: boolean
+  expectedSentence?: string
+  sentCommands: readonly string[]
+}): string {
+  const { featureId, featureName, assertionType, subjectKind, isScreen, isAppLog, expectedSentence, sentCommands } =
+    opts
+  if (isAppLog) {
+    const osc = oscCodeForFeature(featureId, sentCommands)
+    return osc ? `Handle OSC ${osc} without an error` : "Handle command without an unhandled error"
+  }
+  if (assertionType === "process_environment") return "TERM_FEATURES environment variable set"
+  if (assertionType === "clipboard" || featureId.includes("osc52")) return "Test text placed on the clipboard"
+  if (assertionType === "notification" || featureId.includes("notif"))
+    return "Desktop notification delivered with test text"
+  if (subjectKind === "lib") {
+    if (featureId.startsWith("sgr.")) {
+      const sgr = sgrExpectedStyleName(featureId, sentCommands)
+      return `Parser cell has ${sgr.label}`
+    }
+    const clean = sanitizeCardText(expectedSentence)
+    return clean && clean.length <= 95 ? clean : `Parser records ${featureName}`
+  }
+  if (featureId === "extensions.osc7-cwd") return "Working folder updated to test path"
+  if (featureId === "device.xtwinops-22" || featureId === "device.xtwinops-23")
+    return "Saved window title pushed and restored"
+  if (featureId.includes("title") || featureId.includes("icon")) return "Window title updated to test text"
+  if (isScreen) {
+    if (featureId === "sgr.overline") return "Line drawn above the text"
+    if (featureId === "sgr.bold") return "Text drawn bold"
+    if (featureId === "sgr.faint") return "Text drawn dimmer"
+    if (featureId === "sgr.italic") return "Text drawn italic"
+    if (featureId === "sgr.strikethrough") return "Line drawn through the text"
+    if (featureId === "sgr.inverse") return "Foreground and background swapped"
+    if (featureId === "sgr.hidden") return "Text hidden on screen"
+    if (featureId.startsWith("sgr.underline")) return "Styled underline drawn under text"
+    if (featureId.startsWith("sgr.fg.") || featureId.startsWith("sgr.bg.")) return "Requested color drawn on screen"
+    if (
+      featureId === "extensions.iterm2-images" ||
+      featureId === "extensions.kitty-graphics" ||
+      featureId === "extensions.sixel"
+    ) {
+      return "Test image drawn inside the cell"
+    }
+    const clean = sanitizeCardText(expectedSentence)
+    return clean && clean.length <= 110 ? clean : `Screen shows ${featureName}`
+  }
+  const clean = sanitizeCardText(expectedSentence)
+  return clean && clean.length <= 110 ? clean : `Terminal applies ${featureName}`
+}
+
+function buildStyle5Verdict(opts: {
+  status: "supported" | "unsupported"
+  featureId: string
+  shortSubjectName?: string
+  subjectKind?: string
+  assertionType?: string
+  sawDecrqm: boolean
+  saveRestore: boolean
+  isScreen: boolean
+  isAppLog: boolean
+  hasEndMarkerProof: boolean
+  hadNullQuery: boolean
+  replyCount: number
+  sentCommands: readonly string[]
+}): CardVerdict {
+  const {
+    status,
+    featureId,
+    shortSubjectName,
+    subjectKind,
+    assertionType,
+    sawDecrqm,
+    saveRestore,
+    isScreen,
+    isAppLog,
+    hasEndMarkerProof,
+    hadNullQuery,
+    replyCount,
+    sentCommands,
+  } = opts
+  const ok = status === "supported"
+  const tone: "ok" | "no" = ok ? "ok" : "no"
+  const who = shortWhoForVerdict(shortSubjectName)
+
+  const make = (text: string): CardVerdict => {
+    const wc = countVerdictWords(text)
+    if (wc >= 3 && wc <= 6) return { tone, text }
+    return { tone, text: ok ? "Feature worked as expected" : "Feature did not work" }
+  }
+
+  if (isAppLog) {
+    const osc = oscCodeForFeature(featureId, sentCommands)
+    if (osc) return make(ok ? `${who} handled OSC ${osc}` : `${who} ignored OSC ${osc}`)
+    return make(ok ? `${who} handled this command` : `${who} ignored this command`)
+  }
+  if (subjectKind === "lib") {
+    return make(ok ? "Parser stored expected state" : "Parser missed expected state")
+  }
+  if (assertionType === "process_environment") {
+    return make(ok ? "TERM_FEATURES was set" : "TERM_FEATURES was not set")
+  }
+  if (assertionType === "clipboard") {
+    return make(ok ? "Clipboard received the text" : "Clipboard did not change")
+  }
+  if (assertionType === "notification") {
+    return make(ok ? "Desktop notification was delivered" : "No notification was delivered")
+  }
+  if (assertionType === "input_bytes") {
+    return make(ok ? "Terminal sent expected input" : "Expected input not sent")
+  }
+  if (sawDecrqm && !isScreen) {
+    return make(ok ? `${who} knows this mode` : `${who} does not support mode`)
+  }
+  if (saveRestore) {
+    return make(ok ? "Cursor returned to spot" : "Cursor did not return")
+  }
+  if (isScreen) {
+    if (featureId === "sgr.overline") return make(ok ? "Overline drawn as expected" : "Overline didn’t stick")
+    if (featureId === "sgr.bold") return make(ok ? "Bold drawn as expected" : "Text stayed plain weight")
+    if (featureId === "sgr.faint") return make(ok ? "Faint text drawn dimmer" : "Text did not dim")
+    if (featureId === "sgr.italic") return make(ok ? "Italic drawn as expected" : "Text stayed upright plain")
+    if (featureId === "sgr.strikethrough") return make(ok ? "Strikethrough drawn as expected" : "No line through text")
+    if (featureId === "sgr.inverse") return make(ok ? "Colors swapped as expected" : "Colors did not swap")
+    if (featureId === "sgr.hidden") return make(ok ? "Text hidden on screen" : "Text remained visible onscreen")
+    if (featureId.startsWith("sgr.underline")) {
+      return make(ok ? "Underline drawn as expected" : "Underline did not match")
+    }
+    if (featureId.startsWith("sgr.fg.") || featureId.startsWith("sgr.bg.")) {
+      return make(ok ? "Color drawn as expected" : "Color did not change")
+    }
+    if (
+      featureId === "extensions.iterm2-images" ||
+      featureId === "extensions.kitty-graphics" ||
+      featureId === "extensions.sixel"
+    ) {
+      return make(ok ? "Image appeared on screen" : "No image was drawn")
+    }
+    return make(ok ? "Screen matched expected output" : "Screen did not match")
+  }
+  if (!ok && (hasEndMarkerProof || (hadNullQuery && replyCount === 0))) {
+    return make(hasEndMarkerProof ? "Terminal ignored this query" : "No reply came back")
+  }
+  if (featureId === "extensions.osc7-cwd") {
+    return make(ok ? "Working folder was updated" : "Working folder stayed unchanged")
+  }
+  if (featureId.includes("title") || featureId === "device.xtwinops-22" || featureId === "device.xtwinops-23") {
+    return make(ok ? "Window title was updated" : "Window title stayed unchanged")
+  }
+  if (replyCount > 0) {
+    return make(ok ? "Terminal sent expected reply" : "Reply did not match")
+  }
+  return make(ok ? "Feature worked as expected" : "Feature did not work")
+}
+
 /**
- * Build the complete v12 card model for any decided or undecided cell.
+ * Build the complete Style 5 card model for any decided or undecided cell (#38269, card-style5-rule-0010.md).
  */
 export function buildCardModel(input: {
   readonly status: AppCellStatus | undefined
@@ -763,16 +1144,18 @@ export function buildCardModel(input: {
   readonly derived?: boolean
   readonly reason?: string
   readonly traceEvidence?: readonly string[]
+  readonly logLine?: string
   readonly exchange?: ExchangeInput
   readonly parserState?: unknown
   readonly captures?: TraceCaptures
   readonly hasExpectedPicture?: boolean
-  /** Per-context statuses when `status === "differs-by-context"` (v13/v15: one ← row per setting). */
+  /** Per-context statuses when `status === "differs-by-context"`. */
   readonly joinedFrom?: ReadonlyArray<{ readonly context: string; readonly status: string }>
 }): CardModel {
   const {
     status,
     featureId,
+    featureName,
     shortSubjectName,
     subjectKind,
     assertionType,
@@ -781,6 +1164,7 @@ export function buildCardModel(input: {
     derived,
     reason,
     traceEvidence,
+    logLine,
     exchange,
     parserState,
     captures,
@@ -788,30 +1172,56 @@ export function buildCardModel(input: {
     joinedFrom,
   } = input
 
-  const singleMark: "ok" | "no" | undefined =
-    status === "supported" ? "ok" : status === "unsupported" ? "no" : undefined
-
-  // No result yet
+  // Non-measured: No result yet
   if (status === undefined || status === "probe-todo" || status === "probe-invalid" || status === "probe-conflict") {
-    return { steps: [], readouts: [], closing: "Our test could not read a result here yet.", truncated: false }
+    return {
+      measured: false,
+      steps: [],
+      readouts: [],
+      closing: "Our test could not read a result here yet.",
+      truncated: false,
+    }
   }
 
-  // Untestable
+  // Non-measured: Untestable
   if (status === "untestable") {
     const clean = reason?.replace(/^Untestable(?:\s*\([^)]+\))?:\s*/i, "").trim()
     const ended = clean ? (/[.!?]$/.test(clean) ? clean : `${clean}.`) : "Could not be tested automatically here."
-    return { steps: [], readouts: [], closing: `${ended} Not a no.`, truncated: false }
+    return { measured: false, steps: [], readouts: [], closing: `${ended} Not a no.`, truncated: false }
   }
 
-  // Derived unsupported (no evidence block; component renders parent link sentence)
+  // Non-measured: Derived unsupported (no panel; component renders parent link sentence)
   if (status === "unsupported" && derived) {
     return {
+      measured: false,
       steps: [],
       readouts: [],
       closing: "Unsupported because its required parent feature is unsupported here.",
       truncated: false,
     }
   }
+
+  // Non-measured: Differs by context (no panel; keep one-line explanation)
+  if (status === "differs-by-context") {
+    const summary =
+      joinedFrom && joinedFrom.length > 1
+        ? joinedFrom
+            .map(
+              (e) =>
+                `${e.context}: ${e.status === "supported" ? "supported" : e.status === "unsupported" ? "unsupported" : e.status}`,
+            )
+            .join("; ") + "."
+        : "Results differed across measured settings or setups."
+    return {
+      measured: false,
+      steps: [],
+      readouts: [],
+      closing: summary,
+      truncated: false,
+    }
+  }
+
+  const singleMark: "ok" | "no" = status === "supported" ? "ok" : "no"
 
   let codeTruncated = false
   let stepsOmitted = false
@@ -824,7 +1234,7 @@ export function buildCardModel(input: {
     return { code: t.text }
   }
 
-  // Headless library result ("Library says:" + helper note; bytes col reads "read directly", v16)
+  // Measured: Headless library result (no fake bytes; words only in Expected/Received)
   if (subjectKind === "lib") {
     const seqTrim = declaredSequence ? trimCode(formatControlBytes(declaredSequence)) : undefined
     const libSteps: CardStepRow[] = seqTrim
@@ -837,45 +1247,99 @@ export function buildCardModel(input: {
           },
         ]
       : [{ num: 1, code: "", codeMuted: "no bytes", words: "Feed test input to library parser" }]
+    const libSummary =
+      sanitizeCardText(summarizeLibraryState(parserState, traceEvidence)) ?? "State recorded in parser buffer"
+    const expected: CardExpectedRow = {
+      words: expectedNonReplyWords({
+        featureId,
+        featureName,
+        assertionType,
+        subjectKind,
+        isScreen: false,
+        isAppLog: false,
+        expectedSentence,
+        sentCommands: declaredSequence ? [declaredSequence] : [],
+      }),
+    }
+    const received: CardReceivedRow = { words: capitalizeFirst(libSummary) }
+    const verdict = buildStyle5Verdict({
+      status,
+      featureId,
+      shortSubjectName,
+      subjectKind,
+      assertionType,
+      sawDecrqm: false,
+      saveRestore: false,
+      isScreen: false,
+      isAppLog: false,
+      hasEndMarkerProof: false,
+      hadNullQuery: false,
+      replyCount: 0,
+      sentCommands: declaredSequence ? [declaredSequence] : [],
+    })
     const readout: CardReadoutRow = {
       label: "Library says",
-      text: summarizeLibraryState(parserState, traceEvidence),
+      text: libSummary,
       code: "",
       codeMuted: "read directly",
-      ...(singleMark ? { mark: singleMark } : {}),
+      mark: singleMark,
     }
-    const closing =
-      status === "supported" ? "It stored the expected state." : "It did not produce the expected parser state."
     return {
+      measured: true,
       steps: libSteps,
+      expected,
+      received,
+      verdict,
       readouts: [readout],
       readout,
-      closing,
-      contextNote: "A library has no screen, so we read its cells instead of a picture.",
+      closing: verdict.text,
       truncated: codeTruncated,
     }
   }
 
-  // Process environment check (zero bytes sent; bytes col reads "read directly", v16)
+  // Measured: Process environment check (zero bytes sent; words only in Expected/Received)
   if (assertionType === "process_environment") {
-    const ev = traceEvidence?.[0] ?? (status === "supported" ? "value set" : "not set")
-    const valMatch = /TERM_FEATURES(?:=|\s+was\s+)([^\s.,]+)/i.exec(ev)
-    const readoutText = valMatch ? `“${valMatch[1]}”` : status === "supported" ? "set" : "not set"
+    const ev = sanitizeCardText(traceEvidence?.[0]) ?? (status === "supported" ? "value set" : "not set")
+    const valMatch = status === "supported" ? /TERM_FEATURES(?:=|\s+was\s+(?:set\s+to\s+)?)([^\s.,]+)/i.exec(ev) : null
+    const val = valMatch?.[1] && !/^(?:not|unset|absent)$/i.test(valMatch[1]) ? valMatch[1] : undefined
+    const receivedWords = val
+      ? `TERM_FEATURES=${val}`
+      : status === "supported"
+        ? "TERM_FEATURES was set"
+        : "TERM_FEATURES was not set"
+    const expected: CardExpectedRow = { words: "TERM_FEATURES environment variable set" }
+    const received: CardReceivedRow = { words: receivedWords }
+    const verdict = buildStyle5Verdict({
+      status,
+      featureId,
+      shortSubjectName,
+      subjectKind,
+      assertionType,
+      sawDecrqm: false,
+      saveRestore: false,
+      isScreen: false,
+      isAppLog: false,
+      hasEndMarkerProof: false,
+      hadNullQuery: false,
+      replyCount: 0,
+      sentCommands: [],
+    })
     const readout: CardReadoutRow = {
       label: "TERM_FEATURES",
-      text: readoutText,
+      text: val ? `“${val}”` : status === "supported" ? "set" : "not set",
       code: "",
       codeMuted: "read directly",
-      ...(singleMark ? { mark: singleMark } : {}),
+      mark: singleMark,
     }
     return {
+      measured: true,
       steps: [{ num: 1, code: "", codeMuted: "no bytes", words: "Read TERM_FEATURES at launch" }],
+      expected,
+      received,
+      verdict,
       readouts: [readout],
       readout,
-      closing:
-        status === "supported"
-          ? "The terminal advertised its capabilities in the environment."
-          : "TERM_FEATURES was not set in the fresh shell.",
+      closing: verdict.text,
       truncated: false,
     }
   }
@@ -897,17 +1361,30 @@ export function buildCardModel(input: {
 
   const hasCaptures = Boolean(captures?.observed || captures?.textCells)
   const isScreen = hasCaptures || assertionType === "screenshot" || assertionType === "visual"
+  const isAppLog = Boolean(logLine)
+  const hasAppLogPlumbing = isAppLog || rawSteps.some((s) => /\x1b\](?:7654|7655);/.test(s.sequence))
+  const isNonReplyStateProbe =
+    assertionType === "clipboard" || assertionType === "notification" || assertionType === "buffer_state"
   const da1Feature = isDa1Feature(featureId)
   const keepResets = featureTestsReset(featureId)
   const keepCursorMoves = featureTestsCursorPosition(featureId)
   const saveRestore = isSaveRestoreFeature(featureId)
 
   const hasScaffolding = rawSteps.some((s) => isCollectorScaffoldingWrite(s.sequence))
-  // Risk #1 invariant: never filter out any query step when trimming capture scaffolding.
-  let activeSteps = rawSteps.filter((s) => s.kind === "query" || !isCollectorScaffoldingWrite(s.sequence))
+  // Risk #1 invariant: never filter out any query step when trimming capture scaffolding (except CPR sync barriers on app-log/clipboard/state probes).
+  let activeSteps = rawSteps.filter((s) => {
+    if (
+      (hasAppLogPlumbing || isNonReplyStateProbe) &&
+      s.kind === "query" &&
+      s.sequence === "\x1b[6n" &&
+      !keepCursorMoves
+    ) {
+      return false
+    }
+    return s.kind === "query" || !isCollectorScaffoldingWrite(s.sequence)
+  })
 
-  // Multi-frame 0/1/2 visual probes (pre-edit seed -> witness 0, post-sequence target -> witness 1, expected -> witness 2):
-  // keep ONLY the post-sequence target write(s) between witness 0 and witness 1, plus ALL query steps (Risk #1).
+  // Multi-frame 0/1/2 visual probes
   const w0Idx = activeSteps.findIndex((s) => s.kind === "write" && /^\x1b\[\d+;1H0$/u.test(s.sequence))
   const w1Idx =
     w0Idx >= 0
@@ -920,16 +1397,12 @@ export function buildCardModel(input: {
       activeSteps = [...targetWindow, ...queriesOnly.filter((q) => !targetWindow.includes(q))]
     }
   } else if (hasScaffolding && activeSteps.length > 2) {
-    // SGR / single-line visual probes emit negative control (SGR 99) and positive control (SGR 7 / 4) frames alongside
-    // the feature target. Strip those control-frame writes while keeping ALL query steps intact (Risk #1).
     const isSgrControlWrite = (seq: string): boolean =>
       /AaBb 0123456789/u.test(seq) &&
       (/\x1b\[99m/.test(seq) ||
         (!featureId.includes("inverse") && /\x1b\[7m/.test(seq)) ||
         (!featureId.includes("underline") && /\x1b\[4m/.test(seq)))
     const filtered = activeSteps.filter((s) => s.kind === "query" || !isSgrControlWrite(s.sequence))
-    // If the probe wrote the styled sample for capture AND also wrote the bare SGR sequence before a DECRQSS query,
-    // keep the queries and deduplicate identical styled-sample writes cleanly.
     activeSteps = filtered.map((s) =>
       s.kind === "write" && /AaBb 0123456789/u.test(s.sequence)
         ? { ...s, sequence: s.sequence.replace(/\x1b\[0m\x1b\[2;1H\x1b\[1;1H\s*$/u, "\x1b[0m") }
@@ -937,7 +1410,7 @@ export function buildCardModel(input: {
     )
   }
 
-  // Detect no-reply-with-DA1-end-marker pattern (v12/v15 OSC 776 card)
+  // Detect no-reply-with-DA1-end-marker pattern
   const hadNullQuery = activeSteps.some((s) => s.kind === "query" && s.match === null)
   const da1FenceReply = activeSteps
     .filter((s) => s.kind === "query" && typeof s.match?.[0] === "string" && isDa1Reply(s.match[0]))
@@ -947,14 +1420,15 @@ export function buildCardModel(input: {
 
   const writeSteps: CardStepRow[] = []
   const querySteps: CardStepRow[] = []
-  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean; cupPos?: string; isTextCmd?: boolean }> =
-    []
+  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean }> = []
+  const sentCommands: string[] = []
+  const queryCommands: string[] = []
   let pendingSaveCup: string | undefined
+  let savedCupPos: string | undefined
   const replyParts: Array<{ raw: string; code: string; words: string }> = []
   let queryReplyCount = 0
   let sawDecrqm = false
   let decrqmMode: string | undefined
-  let decrpmCode: string | undefined
 
   for (const step of activeSteps) {
     const cmds = splitRawCommands(step.sequence)
@@ -962,12 +1436,10 @@ export function buildCardModel(input: {
     for (let cmdIdx = 0; cmdIdx < cmds.length; cmdIdx++) {
       const cmd = cmds[cmdIdx]
       if (!cmd) continue
-      // Drop non-DA1 trailing end marker from query/write (re-added explicitly as "End marker" when proving no-reply).
       if (!da1Feature && isDa1Fence(cmd.raw)) continue
-      // Risk #1: NEVER drop a command from a query step; only strip pure setup writes.
+      if (hasAppLogPlumbing && isAppLogCalibrationCmd(cmd.raw, featureId)) continue
       if (!isQuery) {
         if (!keepResets && isResetOrClearCommand(cmd.raw)) continue
-        // Strip leading charset-reset preamble (SI / ESC (B / ESC )B) and line-clear boilerplate before the test begins.
         if (orderedSteps.length === 0 && (cmd.raw === "\x0f" || cmd.raw === "\x1b(B" || cmd.raw === "\x1b)B")) continue
         if (!keepResets && cmd.raw === "\x1b[2K") continue
         const cupMatch = /^\x1b\[(\d+);(\d+)H$/.exec(cmd.raw)
@@ -975,11 +1447,9 @@ export function buildCardModel(input: {
           if (!keepCursorMoves) continue
           if (saveRestore && orderedSteps.length === 0 && !pendingSaveCup) {
             pendingSaveCup = `${cupMatch[1]};${cupMatch[2]}`
+            savedCupPos = pendingSaveCup
             continue
           }
-          // For multi-line visual grid probes (e.g. DECCARA), pair "Move to r;c" + immediately following text write
-          // into a single readable step ("Draw “aaaaaZ” at 1;1") so all rows fit cleanly without omitting line 3,
-          // and drop cursor-park moves that don't precede a text write or cursor-relative op.
           const nextCmd = cmds[cmdIdx + 1]
           if (nextCmd?.isText && featureId.startsWith("editing.")) {
             const textStr = nextCmd.raw.trim()
@@ -990,6 +1460,7 @@ export function buildCardModel(input: {
                 num: orderedSteps.length + 1,
                 code: trimmedPair.code,
                 ...(trimmedPair.fullCode ? { fullCode: trimmedPair.fullCode } : {}),
+                setup: true,
                 words: `Draw “${textStr}” at ${cupMatch[1]};${cupMatch[2]}`,
                 isQuery: false,
                 isSeed: true,
@@ -1000,13 +1471,14 @@ export function buildCardModel(input: {
               continue
             }
           }
-          // Drop dead cursor-park moves in editing.* visual probes (e.g. trailing ESC[4;1H after DECCARA or ESC[1;1H before DECSACE).
           if (featureId.startsWith("editing.") && (!nextCmd || !nextCmd.isText)) {
             continue
           }
         }
         if (cmd.isText && hasCaptures && featureId.startsWith("sgr.")) continue
       }
+      sentCommands.push(cmd.raw)
+      if (isQuery) queryCommands.push(cmd.raw)
       const decrqmMatch = /^\x1b\[\??(\d+)\$p$/.exec(cmd.raw)
       if (decrqmMatch) {
         sawDecrqm = true
@@ -1021,12 +1493,12 @@ export function buildCardModel(input: {
         pendingSaveCup = undefined
       }
       const trimmed = trimCode(rawCode)
-      // Deduplicate identical consecutive non-query write steps (e.g. hybrid DECRQSS + capture SGR writes).
+      // Deduplicate identical consecutive or app-log/SGR duplicate non-query write steps.
       const prev = orderedSteps[orderedSteps.length - 1]
       if (!isQuery && prev && !prev.isQuery && prev.code === trimmed.code && prev.words === words) continue
       if (
         !isQuery &&
-        featureId.startsWith("sgr.") &&
+        (featureId.startsWith("sgr.") || isAppLog) &&
         orderedSteps.some((r) => !r.isQuery && r.code === trimmed.code && r.words === words)
       ) {
         continue
@@ -1036,6 +1508,7 @@ export function buildCardModel(input: {
         num: orderedSteps.length + 1,
         code: trimmed.code,
         ...(trimmed.fullCode ? { fullCode: trimmed.fullCode } : {}),
+        ...(isSeed ? { setup: true } : {}),
         words,
         isQuery,
         isSeed,
@@ -1052,7 +1525,6 @@ export function buildCardModel(input: {
         const decrpmMatch = /^\x1b\[\??(\d+);(\d+)\$y$/.exec(part.raw)
         if (decrpmMatch) {
           decrqmMode ??= decrpmMatch[1]
-          decrpmCode = decrpmMatch[2]
         }
         const rawCode = part.isText ? part.raw : formatControlBytes(part.raw)
         if (!rawCode) continue
@@ -1067,8 +1539,6 @@ export function buildCardModel(input: {
     }
   }
 
-  // Cap very long write preambles cleanly while GUARANTEEING every deciding query step stays on the card (Risk #1)
-  // and keeping the feature's actual non-seed escape commands ahead of repetitive text/CUP seed lines.
   let keptOrdered = orderedSteps
   if (orderedSteps.length > 6) {
     const mustKeep = new Set<number>()
@@ -1084,14 +1554,16 @@ export function buildCardModel(input: {
     keptOrdered = orderedSteps.filter((_, idx) => mustKeep.has(idx))
     stepsOmitted = true
   }
+  const hasNonSeedStep = keptOrdered.some((r) => !r.isSeed)
   const shownSteps: CardStepRow[] = keptOrdered.map((r, i) => ({
     num: i + 1,
     code: r.code,
     ...(r.fullCode ? { fullCode: r.fullCode } : {}),
+    ...(r.isSeed && hasNonSeedStep ? { setup: true } : {}),
     words: r.words,
   }))
 
-  // Add non-byte action step with explicit muted "no bytes" (v13/v15)
+  // Add non-byte action step with explicit muted "no bytes"
   if (assertionType === "input_bytes") {
     shownSteps.push({
       num: shownSteps.length + 1,
@@ -1100,7 +1572,13 @@ export function buildCardModel(input: {
       words: inputProbeActionWords(featureId),
     })
   } else if (assertionType === "clipboard" && shownSteps.length > 0) {
-    shownSteps.push({ num: shownSteps.length + 1, code: "", codeMuted: "no bytes", words: "Read the clipboard" })
+    shownSteps.push({
+      num: shownSteps.length + 1,
+      code: "",
+      codeMuted: "no bytes",
+      setup: true,
+      words: "Read the clipboard",
+    })
   } else if (featureId === "extensions.osc7-cwd" && shownSteps.length === 0) {
     shownSteps.push({
       num: 1,
@@ -1108,44 +1586,83 @@ export function buildCardModel(input: {
       codeMuted: "no bytes",
       words: "Send working folder (OSC 7) and read app state",
     })
+  } else if (shownSteps.length === 0 && declaredSequence) {
+    const seqTrim = trimCode(formatControlBytes(declaredSequence))
+    shownSteps.push({
+      num: 1,
+      code: seqTrim.code,
+      ...(seqTrim.fullCode ? { fullCode: seqTrim.fullCode } : {}),
+      words: `Send ${featureName} sequence`,
+    })
   }
 
   if (hasEndMarkerProof && replyParts.length === 0) {
-    shownSteps.push({ num: shownSteps.length + 1, code: "ESC [ c", words: "End marker (always answered)" })
+    shownSteps.push({
+      num: shownSteps.length + 1,
+      code: "ESC [ c",
+      setup: true,
+      words: "End marker (always answered)",
+    })
   }
 
-  // Build blue ← readout row(s) — never an empty bytes cell (v16: bytes | "read directly" | "nothing")
+  // Reply-family detection: bytes appear ONLY for reply families (never fake bytes for screen/log/clipboard/notification/env/lib/state).
+  const isReplyFamily =
+    !isAppLog &&
+    !isNonReplyStateProbe &&
+    assertionType !== "input_bytes" &&
+    (querySteps.length > 0 ||
+      replyParts.length > 0 ||
+      hadNullQuery ||
+      hasEndMarkerProof ||
+      assertionType === "query_reply")
+
+  // Build Style 5 EXPECTED row
+  const expected: CardExpectedRow =
+    isReplyFamily || assertionType === "input_bytes"
+      ? expectedReplyForProbe({
+          featureId,
+          featureName,
+          sawDecrqm,
+          decrqmMode,
+          saveRestore,
+          savedCupPos,
+          sentCommands,
+          queryCommands,
+          assertionType,
+          trimCode,
+        })
+      : {
+          words: expectedNonReplyWords({
+            featureId,
+            featureName,
+            assertionType,
+            subjectKind,
+            isScreen,
+            isAppLog,
+            expectedSentence,
+            sentCommands,
+          }),
+        }
+
+  // Build Style 5 RECEIVED row (and legacy readouts array for any helper callers)
+  const cleanEv = sanitizeCardText(traceEvidence?.[0])
   const readouts: CardReadoutRow[] = []
-  if (status === "differs-by-context" && joinedFrom && joinedFrom.length > 1) {
-    // v13/v16 Differs: one ← row per context with its own ✓/✕ mark; never a single ≠ reply row.
-    for (const entry of joinedFrom) {
-      const ok = entry.status === "supported"
-      const no = entry.status === "unsupported"
-      readouts.push({
-        label: entry.context,
-        text: ok ? "supported" : no ? "no reply / unsupported" : entry.status,
-        code: "",
-        codeMuted: no ? "nothing" : "read directly",
-        ...(ok ? { mark: "ok" as const } : no ? { mark: "no" as const } : {}),
-      })
-    }
-  } else if (!hasCaptures || querySteps.length > 0) {
-    const label = readbackSourceLabel(featureId, assertionType)
+  let received: CardReceivedRow
+
+  if (isAppLog && logLine) {
+    received = { words: logLine, isLog: true }
+  } else if (isReplyFamily) {
     if (replyParts.length > 0) {
       const combined = trimCode(replyParts.map((r) => r.code).join("  "))
-      let combinedWords = replyParts.map((r) => r.words).join(", ")
-      if (
-        featureId === "sgr.overline" &&
-        status === "unsupported" &&
-        /Setting: plain \(default\)/i.test(combinedWords)
-      ) {
-        combinedWords = `${combinedWords} (overline did not stick)`
+      const combinedWords = replyParts.map((r) => r.words).join(", ")
+      received = {
+        code: combined.code,
+        ...(combined.fullCode ? { fullCode: combined.fullCode } : {}),
+        words: combinedWords,
       }
-      // Risk #2: if multiple separate queries replied and we cannot tell which one caused an unsupported verdict,
-      // omit the per-reply mark rather than guessing; on hybrid screen+query probes, keep the mark on the screen crop.
-      const markAllowed = !hasCaptures && singleMark !== undefined && (queryReplyCount <= 1 || status === "supported")
+      const markAllowed = !hasCaptures && (queryReplyCount <= 1 || status === "supported")
       readouts.push({
-        label,
+        label: readbackSourceLabel(featureId, assertionType),
         text: combinedWords,
         code: combined.code,
         ...(combined.fullCode ? { fullCode: combined.fullCode } : {}),
@@ -1153,146 +1670,120 @@ export function buildCardModel(input: {
       })
     } else if (hasEndMarkerProof) {
       const fenceTrim = da1FenceReply ? trimCode(formatControlBytes(da1FenceReply)) : { code: "ESC [ ? … c" }
+      received = {
+        code: fenceTrim.code,
+        ...(fenceTrim.fullCode ? { fullCode: fenceTrim.fullCode } : {}),
+        words: "Answered only the end marker",
+      }
       readouts.push({
         label: "Reply",
         text: "answered only the end marker",
         code: fenceTrim.code,
         ...(fenceTrim.fullCode ? { fullCode: fenceTrim.fullCode } : {}),
-        ...(!hasCaptures && singleMark ? { mark: singleMark } : {}),
+        ...(!hasCaptures ? { mark: singleMark } : {}),
       })
     } else if (hadNullQuery) {
+      received = { codeMuted: "nothing", words: "No reply" }
       readouts.push({
         label: "Reply",
         text: "no reply",
         code: "",
         codeMuted: "nothing",
-        ...(!hasCaptures && singleMark ? { mark: singleMark } : {}),
+        ...(!hasCaptures ? { mark: singleMark } : {}),
       })
+    } else {
+      received = {
+        ...(status === "unsupported" ? { codeMuted: "nothing" as const } : {}),
+        words: cleanEv
+          ? capitalizeFirst(cleanEv)
+          : status === "supported"
+            ? "Matched expected reply"
+            : "No matching reply",
+      }
+    }
+  } else if (isScreen) {
+    let words: string
+    if (cleanEv && !/shown below/i.test(cleanEv)) {
+      words = capitalizeFirst(cleanEv)
     } else if (
-      !hasCaptures &&
-      (assertionType === "clipboard" ||
-        assertionType === "notification" ||
-        assertionType === "buffer_state" ||
-        assertionType === "input_bytes")
+      status === "unsupported" &&
+      (featureId === "extensions.iterm2-images" ||
+        featureId === "extensions.kitty-graphics" ||
+        featureId === "extensions.sixel")
     ) {
-      const ev = traceEvidence?.[0]?.replace(/\.$/, "")
-      readouts.push({
-        label,
-        text: ev || (status === "supported" ? "matched expected state" : "did not change"),
-        code: "",
-        codeMuted: assertionType === "input_bytes" && status === "unsupported" ? "nothing" : "read directly",
-        ...(singleMark ? { mark: singleMark } : {}),
-      })
+      words = "Test cell stayed blank and unchanged"
+    } else if (featureId === "sgr.overline") {
+      words = status === "supported" ? "Line drawn above the text" : "Plain text with no line above"
+    } else {
+      words = status === "supported" ? "Screen matched expected output" : "Screen did not match expected output"
+    }
+    received = { words }
+  } else if (assertionType === "clipboard") {
+    const clipEv = cleanEv && !/sent back ESC \[ \d+;\d+ R/i.test(cleanEv) ? cleanEv : undefined
+    received = {
+      words: clipEv
+        ? capitalizeFirst(clipEv)
+        : status === "supported"
+          ? "Test text read back from clipboard"
+          : "Clipboard did not change",
+    }
+  } else if (assertionType === "notification") {
+    received = {
+      words: cleanEv
+        ? capitalizeFirst(cleanEv)
+        : status === "supported"
+          ? "Notification arrived at desktop service"
+          : "No notification arrived",
+    }
+  } else if (assertionType === "input_bytes") {
+    received = {
+      words: cleanEv
+        ? capitalizeFirst(cleanEv)
+        : status === "supported"
+          ? "Expected escape sequence received"
+          : "No matching escape sequence sent",
+    }
+  } else {
+    received = {
+      words: cleanEv
+        ? capitalizeFirst(cleanEv)
+        : status === "supported"
+          ? "Matched expected terminal state"
+          : "Terminal did not apply the change",
     }
   }
+
+  const verdict = buildStyle5Verdict({
+    status,
+    featureId,
+    shortSubjectName,
+    subjectKind,
+    assertionType,
+    sawDecrqm,
+    saveRestore,
+    isScreen,
+    isAppLog,
+    hasEndMarkerProof,
+    hadNullQuery,
+    replyCount: replyParts.length,
+    sentCommands,
+  })
 
   const readout = readouts[0]
-
-  // Closing plain sentence (no verdict pill, carries any caveat)
-  let closing: string
-  if (status === "differs-by-context") {
-    closing = "Results differed across measured settings or setups."
-  } else if (sawDecrqm && !isScreen) {
-    if (status === "supported") {
-      const who = shortSubjectName || "It"
-      const modeText = decrqmMode ? `mode ${decrqmMode}` : "this mode"
-      const replyDetail =
-        decrpmCode === "1"
-          ? ", so an app can use it (currently on)"
-          : decrpmCode === "2"
-            ? ", so an app can turn it on (it is off until one does)"
-            : decrpmCode === "3"
-              ? " (permanently on)"
-              : ", so an app can turn it on"
-      if (/mouse|1000|1002|1003|1005|1006|1015|1016/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We did not move the mouse.`
-      } else if (/focus|1004/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We did not move focus.`
-      } else if (/paste|2004/i.test(featureId)) {
-        closing = `${who} knows ${modeText}${replyDetail}. We did not paste.`
-      } else {
-        closing = `${who} knows ${modeText}${replyDetail}. Live behavior was not checked.`
-      }
-    } else if (hasEndMarkerProof) {
-      closing =
-        "ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored."
-    } else if (hadNullQuery) {
-      closing = "No reply when asked about this mode."
-    } else {
-      closing = "It reported this mode as unsupported."
-    }
-  } else if (saveRestore) {
-    closing =
-      status === "supported"
-        ? "The cursor came back. Saved colors were not checked."
-        : "The cursor did not return to the saved spot."
-  } else if (isScreen) {
-    if (featureId === "sgr.overline") {
-      closing = status === "supported" ? "Line drawn above the text." : "No line above the text."
-    } else if (featureId.startsWith("sgr.underline")) {
-      closing = status === "supported" ? "Underline drawn as expected." : "Underline was not drawn as expected."
-    } else if (featureId === "sgr.bold") {
-      closing = status === "supported" ? "Text drawn bold." : "Text was not drawn bold."
-    } else if (featureId === "sgr.faint") {
-      closing = status === "supported" ? "Text drawn dimmer." : "Text was not drawn dimmer."
-    } else if (featureId === "sgr.italic") {
-      closing = status === "supported" ? "Text drawn italic." : "Text was not drawn italic."
-    } else if (featureId === "sgr.strikethrough") {
-      closing = status === "supported" ? "Line drawn through the text." : "No line through the text."
-    } else if (featureId === "sgr.inverse") {
-      closing = status === "supported" ? "Foreground and background swapped." : "Colors did not swap."
-    } else if (featureId === "sgr.hidden") {
-      closing = status === "supported" ? "Text hidden on screen." : "Text remained visible."
-    } else if (featureId.startsWith("sgr.fg.") || featureId.startsWith("sgr.bg.")) {
-      closing = status === "supported" ? "Color drawn as requested." : "Color did not change as requested."
-    } else if (
-      featureId === "extensions.iterm2-images" ||
-      featureId === "extensions.kitty-graphics" ||
-      featureId === "extensions.sixel"
-    ) {
-      closing =
-        status === "supported"
-          ? "The expected image appeared on screen."
-          : "No image was drawn — the test cell stayed blank and did not change (a solid white block is a blank cell in a light-themed terminal like xterm)."
-    } else if (!hasExpectedPicture && expectedSentence) {
-      const outcome = status === "supported" ? "Screen matched." : "Screen did not match."
-      closing = `${outcome} Expected: ${expectedSentence}`
-    } else {
-      closing =
-        status === "supported" ? "Matched the expected screen output." : "Did not match the expected screen output."
-    }
-  } else if (hasEndMarkerProof && replyParts.length === 0) {
-    const rightAnswerHint =
-      featureId === "extensions.osc776-cell-size"
-        ? " A supporting terminal answers ESC ] 776 ; <width> ; <height> BEL first."
-        : ""
-    closing = `ESC [ c always gets an answer, so it marks the end: only that answer came back, so the question was ignored.${rightAnswerHint}`
-  } else if (hadNullQuery && replyParts.length === 0 && status === "unsupported") {
-    closing = "No reply came back."
-  } else if (assertionType === "clipboard") {
-    closing = status === "supported" ? "The text arrived on the clipboard." : "The clipboard did not change."
-  } else if (assertionType === "notification") {
-    closing = status === "supported" ? "The notification arrived." : "No notification arrived."
-  } else if (
-    traceEvidence &&
-    traceEvidence.length > 0 &&
-    !readout?.text.includes(traceEvidence[0]!.replace(/\.$/, ""))
-  ) {
-    closing = traceEvidence[0]!
-  } else {
-    closing = status === "supported" ? "Worked as expected." : "Did not work as expected."
-  }
-
   const contextNote = codeTruncated
     ? "Long data is shortened with …; Details shows all of it."
     : stepsOmitted
       ? "Extra setup steps are omitted; Details shows all of them."
       : undefined
   return {
+    measured: true,
     steps: shownSteps,
+    expected,
+    received,
+    verdict,
     readouts,
     ...(readout ? { readout } : {}),
-    closing,
+    closing: verdict.text,
     ...(contextNote ? { contextNote } : {}),
     truncated: codeTruncated,
   }

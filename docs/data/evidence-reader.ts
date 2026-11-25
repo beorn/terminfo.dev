@@ -65,6 +65,8 @@ export interface TraceCellRecord {
   queries?: TraceQuery[]
   events?: TraceEvent[]
   parserState?: unknown
+  /** Allowlisted verbatim parser/app log line for report-reader probes (Style 5, #38269). */
+  logLine?: string
   /** Cropped screen capture images emitted under /api/v3/captures/<sha256>.png (#38269). */
   captures?: TraceCaptures
   assertions: TraceAssertion[]
@@ -522,6 +524,8 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     !isRecord(cellEntry) ||
     !Array.isArray(cellEntry.assertions) ||
     !validCaptures(cellEntry.captures) ||
+    (cellEntry.logLine !== undefined &&
+      (typeof cellEntry.logLine !== "string" || cellEntry.logLine.length === 0 || cellEntry.logLine.length > 240)) ||
     (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? typeof cellEntry.status !== "string" || !evidenceFits(cellEntry.status, cellEntry.evidence)
       : typeof cellEntry.outcome !== "string" ||

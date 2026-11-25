@@ -537,6 +537,7 @@
   --rc-cell: #15171c;
   --rc-cell-fg: #f3f4f6;
   --rc-rep: #0369a1;
+  --rc-well-bg: var(--vp-c-bg-soft);
 }
 .dark {
   --rc-ok: #10b981;
@@ -553,6 +554,7 @@
   --rc-cell: #0b0c0f;
   --rc-cell-fg: #f3f4f6;
   --rc-rep: #38bdf8;
+  --rc-well-bg: rgba(255, 255, 255, 0.035);
 }
 
 .rc-card {
@@ -730,10 +732,10 @@
   text-decoration: underline;
 }
 
-/* Single surface steps with shared subgrid: col 1 = step num / ←, col 2 = bytes fit-content(15em), col 3 = words, col 4 = 22px mark pill. */
+/* Style 5 steps + borderless Expected/Received well (#38269, card-style5-final-0010.html). */
 .rc-steps {
   display: grid;
-  grid-template-columns: 16px fit-content(15em) minmax(0, 1fr) 22px;
+  grid-template-columns: 16px fit-content(15em) minmax(0, 1fr);
   column-gap: 12px;
   row-gap: 2px;
 }
@@ -743,13 +745,6 @@
   grid-template-columns: subgrid;
   align-items: baseline;
   padding: 2px 0;
-}
-.rc-st > .rc-mk {
-  grid-column: 4;
-  grid-row: 1;
-  margin: 0;
-  align-self: center;
-  justify-self: end;
 }
 .rc-st .rc-n {
   grid-column: 1;
@@ -786,8 +781,52 @@
   color: var(--vp-c-text-1);
   text-wrap: pretty;
 }
+.rc-st.rc-st--nobytes .rc-w {
+  grid-column: 2 / -1;
+}
 .result-evidence__preview .rc-st .rc-w {
   color: var(--vp-c-text-1);
+}
+.rc-st.rc-setup .rc-n,
+.rc-st.rc-setup .rc-w,
+.rc-st.rc-setup code,
+.result-evidence__preview .rc-st.rc-setup .rc-n,
+.result-evidence__preview .rc-st.rc-setup .rc-w {
+  color: var(--vp-c-text-3);
+  font-size: 0.78rem;
+}
+/* Borderless well grouping Expected, Received, pictures, and verdict (#38269 Style 5). */
+.rc-pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  row-gap: 2px;
+  margin: 8px 0 0;
+  border-radius: 10px;
+  background: var(--rc-well-bg);
+  padding: 10px 12px 12px;
+}
+.result-evidence__preview.rc-card .rc-pair {
+  margin: 8px -12px 0;
+}
+.rc-lbl {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+  margin-top: 8px;
+}
+.rc-pair > .rc-lbl:first-child {
+  margin-top: 0;
+}
+.rc-st.rc-exp .rc-n,
+.rc-st.rc-exp .rc-w,
+.rc-st.rc-exp code,
+.result-evidence__preview .rc-st.rc-exp .rc-n,
+.result-evidence__preview .rc-st.rc-exp .rc-w {
+  color: var(--vp-c-text-2);
 }
 .rc-st.rc-rep .rc-n,
 .rc-st.rc-rep .rc-w,
@@ -796,18 +835,61 @@
 .result-evidence__preview .rc-st.rc-rep .rc-w {
   color: var(--rc-rep);
 }
-.rc-st.rc-rep .rc-w b {
+.rc-st.rc-rep .rc-w--log {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+.rc-pic {
+  grid-column: 2 / -1;
+  margin: 4px 0 2px;
+}
+.rc-pic .rc-term {
+  max-width: 340px;
+  min-height: 46px;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  outline: none;
+}
+.rc-verdict {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.86rem;
   font-weight: 600;
 }
-.rc-st.rc-res {
-  display: block;
-  grid-column: 1 / -1;
-  margin-top: 4px;
-  padding-top: 7px;
-  border-top: 1px solid var(--vp-c-divider);
+.rc-verdict--ok,
+.result-evidence__preview .rc-verdict--ok .rc-vt,
+.result-evidence__preview .rc-verdict--ok .rc-vt span {
+  color: var(--rc-ok);
 }
-.rc-st.rc-res .rc-w {
-  display: block;
+.rc-verdict--no,
+.result-evidence__preview .rc-verdict--no .rc-vt,
+.result-evidence__preview .rc-verdict--no .rc-vt span {
+  color: var(--rc-no);
+}
+.rc-verdict .rc-vt {
+  grid-column: 2;
+  text-align: center;
+}
+.rc-verdict .rc-dl {
+  grid-column: 3;
+  justify-self: end;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 400;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rc-verdict .rc-dl:hover,
+.rc-verdict .rc-dl:focus-visible {
   color: var(--vp-c-text-1);
 }
 .rc-ctx,
@@ -1098,11 +1180,7 @@
 }
 @media (max-width: 420px) {
   .rc-steps {
-    grid-template-columns: 16px minmax(0, 1fr) 22px;
-  }
-  .rc-st > .rc-mk {
-    grid-column: 3;
-    grid-row: 1 / span 2;
+    grid-template-columns: 16px minmax(0, 1fr);
   }
   .rc-st code {
     grid-column: 2;
@@ -1112,7 +1190,17 @@
     grid-column: 2;
     grid-row: 2;
   }
-  .rc-shots {
-    grid-template-columns: 1fr;
+  .rc-st.rc-st--nobytes .rc-w {
+    grid-row: 1;
+  }
+  .rc-verdict {
+    grid-template-columns: 1fr auto;
+  }
+  .rc-verdict .rc-vt {
+    grid-column: 1;
+    text-align: left;
+  }
+  .rc-verdict .rc-dl {
+    grid-column: 2;
   }
 }
