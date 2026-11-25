@@ -34,9 +34,15 @@ import {
   startPeakGuard,
 } from "./build-peak-guard.ts"
 import { siteDistDir, siteProbesPath, siteTempDir } from "./site-out.ts"
+import { writeAnalysisSnapshots } from "./generate-analysis.ts"
+import { assertDeploymentLimits } from "./generate-api.ts"
 import { pinSiteWorkingRun } from "../docs/data/working-runs.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { probeStatusSummary } from "../docs/data/probe-status.ts"
+
+const cliArgs = new Set(process.argv.slice(2))
+const withAnalysis = cliArgs.has("--with-analysis")
+const checkLimits = cliArgs.has("--check-limits")
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const tempDir = siteTempDir()
@@ -126,12 +132,21 @@ function reportProbeStatus(): void {
   )
 }
 
-// #35110: bundle the working run the probe snapshot was cut from, even if a newer run completed since `bun analysis`.
-const probesPath = siteProbesPath(repoRoot)
-const probes = parseJsonStrict(probesPath, readFileSync(probesPath, "utf8")) as { workingRunId?: string | null } | null
-pinSiteWorkingRun(probes?.workingRunId ?? null)
-
 try {
+  // #38649: when invoked with --with-analysis (the default `bun run build`), run analysis in the same process so
+  // globalThis[RESULTS_CACHE] carries the verified corpus projection directly into VitePress without a second full pass.
+  if (withAnalysis) {
+    guard.phase("analysis")
+    const snapshot = await writeAnalysisSnapshots(undefined, repoRoot)
+    pinSiteWorkingRun(snapshot.workingRunId)
+  } else {
+    // #35110: bundle the working run the probe snapshot was cut from, even if a newer run completed since `bun analysis`.
+    const probesPath = siteProbesPath(repoRoot)
+    const probes = parseJsonStrict(probesPath, readFileSync(probesPath, "utf8")) as {
+      workingRunId?: string | null
+    } | null
+    pinSiteWorkingRun(probes?.workingRunId ?? null)
+  }
   await build(join(repoRoot, "docs"), {
     onAfterConfigResolve(siteConfig) {
       if (tempDir !== undefined) siteConfig.tempDir = tempDir
@@ -149,3 +164,12 @@ try {
 guard.stop()
 reportProbeStatus()
 reportPeak("done")
+if (checkLimits) {
+  const { fileCount, fileLimit, fileHeadroom, traceFiles, traceBytes, dataJsonBytes } = assertDeploymentLimits(
+    siteDistDir(repoRoot),
+  )
+  console.log(
+    `Cloudflare Pages Free-plan file count: ${fileCount}/${fileLimit} (${fileHeadroom} remaining; account tier unverified)`,
+  )
+  console.log(`Run traces: ${traceFiles} files, ${traceBytes} bytes; data.json bytes: ${JSON.stringify(dataJsonBytes)}`)
+}

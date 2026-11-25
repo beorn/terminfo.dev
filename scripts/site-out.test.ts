@@ -245,3 +245,15 @@ it("writes the marker into a state root that does not exist yet (first start, 28
     rmSync(parent, { recursive: true, force: true })
   }
 })
+
+it("bun run build runs analysis and site-build in one process sharing globalThis caches (#38649)", () => {
+  const sourceRoot = join(import.meta.dirname, "..")
+  const pkg = JSON.parse(readFileSync(join(sourceRoot, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>
+  }
+  const buildCmd = pkg.scripts?.["build"] ?? ""
+  expect(buildCmd).toContain("scripts/site-build.ts")
+  expect(buildCmd).toContain("--with-analysis")
+  expect(buildCmd).toContain("--check-limits")
+  expect(buildCmd).not.toContain("scripts/generate-analysis.ts")
+})

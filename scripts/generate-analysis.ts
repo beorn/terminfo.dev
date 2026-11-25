@@ -1367,6 +1367,81 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
   return output
 }
 
+/**
+ * Write analysis.json, probes.json, and optional lazy working-history.json into the site output root.
+ * Exported so `scripts/site-build.ts --with-analysis` (#38649) can run analysis and VitePress in one
+ * Bun process, sharing `globalThis[RESULTS_CACHE]` instead of re-reading and hashing the corpus twice.
+ */
+export async function writeAnalysisSnapshots(
+  analysis: Record<string, AnalysisEntry> = generateAnalysis(),
+  targetRoot: string = root,
+): Promise<{
+  outputPath: string
+  probesPath: string
+  workingRunId: string | null
+  entryCount: number
+  terminalCount: number
+  baselineCount: number
+  compareCount: number
+  frameworkCount: number
+  categoryCount: number
+}> {
+  const outputPath = siteAnalysisPath(targetRoot)
+  const entryCount = Object.keys(analysis).length
+  const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
+  const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
+  const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
+  const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
+  const categoryCount = Object.keys(analysis).filter(
+    (k) =>
+      !k.startsWith("terminals/") &&
+      !k.startsWith("baseline/") &&
+      !k.startsWith("compare/") &&
+      !k.startsWith("framework/") &&
+      !k.includes("/"),
+  ).length
+
+  mkdirSync(dirname(outputPath), { recursive: true })
+  if (targetRoot === root) {
+    ;(globalThis as unknown as Record<symbol, unknown>)[Symbol.for("terminfo.dev/loadAnalysis")] = analysis
+  }
+  const { loadClientProbesWithHistory } = await import("../docs/data/probes.data.ts")
+  const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+  const probesPath = siteProbesPath(targetRoot)
+  const workingRunId = selectedSiteWorkingRun()?.id ?? null
+  const probes = {
+    sourceCommit: createBuildMetadata(targetRoot).sourceCommit,
+    workingRunId,
+    data: client,
+  }
+  writeFileSync(probesPath, JSON.stringify(probes) + "\n")
+  console.log(`Generated ${probesPath}`)
+  const whPath = siteWorkingHistoryPath(targetRoot)
+  if (workingHistoryPayload !== null) {
+    writeFileSync(whPath, JSON.stringify(workingHistoryPayload) + "\n")
+    console.log(`Generated lazy ${whPath}`)
+  } else if (existsSync(whPath)) {
+    rmSync(whPath, { force: true })
+  }
+  writeFileSync(outputPath, JSON.stringify(analysis, null, 2) + "\n")
+  console.log(`Generated ${outputPath}`)
+  console.log(
+    `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
+  )
+  collectGarbage()
+  return {
+    outputPath,
+    probesPath,
+    workingRunId,
+    entryCount,
+    terminalCount,
+    baselineCount,
+    compareCount,
+    frameworkCount,
+    categoryCount,
+  }
+}
+
 // --- CLI ---
 
 if (import.meta.main) {
@@ -1376,7 +1451,6 @@ if (import.meta.main) {
 
   try {
     const analysis = generateAnalysis()
-    const result = analysis
 
     const outputPath = siteAnalysisPath(root)
     const entryCount = Object.keys(analysis).length
@@ -1466,30 +1540,7 @@ if (import.meta.main) {
       process.exit(0)
     }
 
-    // Write output
-    mkdirSync(dirname(outputPath), { recursive: true })
-    const { loadClientProbesWithHistory } = await import("../docs/data/probes.data.ts")
-    const { client, workingHistoryPayload } = loadClientProbesWithHistory()
-    const probesPath = siteProbesPath(root)
-    const probes = {
-      sourceCommit: createBuildMetadata(root).sourceCommit,
-      workingRunId: selectedSiteWorkingRun()?.id ?? null,
-      data: client,
-    }
-    writeFileSync(probesPath, JSON.stringify(probes) + "\n")
-    console.log(`Generated ${probesPath}`)
-    const whPath = siteWorkingHistoryPath(root)
-    if (workingHistoryPayload !== null) {
-      writeFileSync(whPath, JSON.stringify(workingHistoryPayload) + "\n")
-      console.log(`Generated lazy ${whPath}`)
-    } else if (existsSync(whPath)) {
-      rmSync(whPath, { force: true })
-    }
-    writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
-    console.log(`Generated ${outputPath}`)
-    console.log(
-      `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
-    )
+    await writeAnalysisSnapshots(analysis, root)
   } catch (error) {
     console.error(error instanceof Error ? error.message : error)
     process.exit(1)
