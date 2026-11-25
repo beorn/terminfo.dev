@@ -9,10 +9,14 @@
  * that feeds it are one program in the repository the corpus comes from.
  *
  * Build-if-needed: the build is skipped only when the output's own `/build.json` names the revision this checkout
- * is at. Any other state — absent, stale, unreadable — rebuilds. A build that fails exits non-zero and the process
- * never serves the previous dist: serving a corpus older than the code that produced it IS the defect this
- * program exists to remove, so there is no fallback path. Downtime is the ~60 s build; for an internal preview
- * that is accepted, and the readiness ceiling in the declaration covers it.
+ * is at. Any other state — absent, stale, unreadable — rebuilds into `<out>/staging` and swaps that in only on
+ * success (`buildLanding`, #38423). A build that fails leaves the served dist untouched: the program keeps serving
+ * the previous build and says on stderr which older landing is being shown, because a 502 from a build that merely
+ * ran out of memory is worse than a preview that names its own staleness — the health probe answers `starting` while
+ * the marker is up, so the staleness is never silent. It exits non-zero only when there is no previous build at all,
+ * where serving nothing is the honest answer. Downtime on a landing restart is that build (measured 150-210 s on a
+ * code-only corpus and ~10 min with the full hourly-run set, analysis included); the readiness window in the
+ * declaration has to cover it.
  *
  * `TERMINFO_SITE_OUT_DIR` roots every build write (see `./site-out.ts`), so this can run from a read-only landing.
  * While a rebuild runs it writes `rebuild.json` into that root, naming the revision being built TO; the health probe
