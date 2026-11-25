@@ -1063,7 +1063,7 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
   const retained = new Map<string, string>()
   const run = (app: string) =>
     runInNewContext(`(async () => {${source}\n})()`, {
-      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner", WARP_STABLE_VERSION: "v0.2026.10.14.08.27.stable_01" } },
+      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner", WARP_STABLE_VERSION: "v0.2026.11.18.08.17.stable_05" } },
       Bun: {
         spawn: (argv: string[]) => {
           launched.push(argv)
@@ -1086,8 +1086,8 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
       },
     })
   for (const [app, expectedSha256] of [
-    ["warp", "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"],
-    ["cmux", "2f4bd98df7514067408d89398f8f19059015a3bbae632d0474515d4b76d6ee36"],
+    ["warp", "56c7caf4137c41adad30229601aaacd26a19b5a6cee59f82b5ef38381fa41883"],
+    ["cmux", "18e8848e19d4e08ff0aefb30f180fdb3eafb3f32f0b361394351a58e505d397f"],
   ]) {
     await expect(run(app!)).rejects.toThrow(`expected ${expectedSha256}, actual ${actual}`)
     expect(launched.map((argv) => argv[0])).toEqual(["curl"])
@@ -1099,7 +1099,7 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
         "--fail",
         "--silent",
         "--show-error",
-        "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg",
+        "https://releases.warp.dev/stable/v0.2026.11.18.08.17.stable_05/Warp.dmg",
         "--output",
         "/runner/Warp.dmg",
       ])
@@ -1493,7 +1493,7 @@ test("hosted editor installer reports both digests before installing altered arc
         throw new Error(`Unexpected installer dependency: ${id}`)
       },
     }),
-  ).rejects.toThrow(`expected 090809041649da27b1235a7f3a9bdacdb35f20ae38fd0b6d6cf69f1918a145af, actual ${actual}`)
+  ).rejects.toThrow(`expected 2d15a19927fe11ce177c2b67fa890ec43b2950f33b6be5dce770dc4a5c1364ae, actual ${actual}`)
   expect(launched.map((argv) => argv[0])).toEqual(["curl"])
   expect(JSON.parse(retained.get("/runner/measurement-artifacts/editor-installer.json")!)).toMatchObject({
     actualSha256: actual,
@@ -1974,7 +1974,7 @@ test.each([
     cli: undefined,
     exit: 0,
     id: "warp",
-    version: "v0.2026.10.14.08.27.stable_01",
+    version: "v0.2026.11.18.08.17.stable_05",
     error: "",
   },
   {
@@ -2070,7 +2070,7 @@ test.each([
         PATH: process.env.PATH,
         APP_ID: app,
         APP_BUNDLE: bundle,
-        WARP_STABLE_VERSION: warpVersion ?? "v0.2026.10.14.08.27.stable_01",
+        WARP_STABLE_VERSION: warpVersion ?? "v0.2026.11.18.08.17.stable_05",
       },
     })
     expect(result.status, result.stderr).toBe(exit)

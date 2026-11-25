@@ -1733,11 +1733,12 @@ async function readHostedCmuxSemanticCwd(input: {
       reason: "No owned App semantic reader for this feature on macOS",
     }
   }
-  const reviewedVersion = "0.65.2"
+  const reviewedVersions = new Set(["0.65.2", "0.65.2.2"])
   const cliVersion = parseCmuxCliShortVersion(input.ownedCmuxIdentity?.historyExecutable?.version)
   const launchValid =
-    cliVersion === reviewedVersion &&
-    process.env.TERMINFO_TARGET_VERSION === reviewedVersion &&
+    cliVersion !== undefined &&
+    reviewedVersions.has(cliVersion) &&
+    process.env.TERMINFO_TARGET_VERSION === cliVersion &&
     process.env.TERMINFO_RUN_ID === input.expectedLaunchRunId &&
     input.muxAttachmentProof === undefined &&
     !process.env.TERMINFO_MUX_KIND

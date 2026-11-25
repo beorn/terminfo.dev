@@ -100,8 +100,11 @@ const declarations: readonly AppSemanticCapability[] = [
     { id: "alacritty", version: "0.17.0" },
     { id: "wezterm", version: "20240203-110809-5046fc22" },
     { id: "cursor", version: "3.25.9" },
+    { id: "cursor", version: "3.32.4" },
     { id: "com.microsoft.VSCode", version: "1.142.0" },
+    { id: "com.microsoft.VSCode", version: "1.147.0" },
     { id: "cmux", version: "0.65.2" },
+    { id: "cmux", version: "0.65.2.2" },
     { id: "terminal-app", version: "2.15" },
     { id: "iterm2", version: "3.6.11" },
   ].flatMap((subject) =>
@@ -736,54 +739,56 @@ const declarations: readonly AppSemanticCapability[] = [
     reason:
       'Untestable (no way): WezTerm 20240203-110809-5046fc22 has no OSC 633 parser, so the sequence is dropped without a target-state reading, a report or a non-debug log. Read tag 20240203-110809-5046fc22 (5046fc225992db6ba2ef8812743fadfdfe4b184a): termwiz/src/escape/osc.rs:409 is the OSC command table and carries SetHyperlink = "8" and FinalTermSemanticPrompt = "133" (:439) with no 633 entry — the file has zero occurrences of 633 — dispatched at :312,326-327 and parsed at :627-696. The macOS build runs this same termwiz parser (window/src/os/macos, all eight .rs files, carries no OSC handling of its own and names no semantic state), the mux protocol (mux/src/lib.rs, 1441 lines) has zero "semantic" and no unhandled-OSC verb, and the CLI at this tag reads no prompt state (wezterm/src/cli/get_text.rs:34,86-87 prints text or colour/style escapes only). macOS additionally offers no default-launch log surface for dropped OSCs.',
   })),
-  // 34586: cmux's six macOS prompt rows. They say only that D's exit code is parsed and never read back: the fork's
-  // stream handler (src/termio/stream_handler.zig at cb1ef709) was not read, so no claim that the status is discarded.
-  ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map((featureId) => ({
-    kind: "term" as const,
-    id: "cmux",
-    version: "0.65.2",
-    os: "macos",
-    featureId,
-    reason:
-      'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 A/B/C/P into core prompt state and no public surface reads a mark back. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists 133 in the command table and :862 dispatches it to parsers.semantic_prompt.parse, whose action set is L,A,N,P,B,I,C,D (src/terminal/osc/parsers/semantic_prompt.zig:22-31). All three complete read surfaces at that commit were enumerated and carry no mark: the control-socket read plane (Packages/macOS/CmuxControlSocket/Sources/CmuxControlSocket/Wire/ControlCommandExecutionPolicy+ReadPlane.swift enumerates every read-only method as surface.list/current/read_text/read_selection, workspace.list/current, window.list/current/displays, pane.list/surfaces and system.identify/tree/top/memory), cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events, zero case-insensitive "prompt"), and docs/cli-contract.md (read-screen returns {text} only, vt-state returns the PTY byte stream, and jump-to-last-prompt only moves focus, answering {"opened": false} when there is no prompt: ControlCommandCoordinator+SurfaceJumpToLastPrompt.swift).',
-  })),
-  ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
-    kind: "term" as const,
-    id: "cmux",
-    version: "0.65.2",
-    os: "macos",
-    featureId,
-    reason:
-      'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 D with its exit-code option and reports it nowhere, so neither the mark nor a command-exit status is observable. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc/parsers/semantic_prompt.zig:30 defines end_command for D, :105,118 carries exit_code as a typed option and :359 parses it, so the sequence is understood rather than dropped. No surface reads it back: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) exposes only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no verb returning a prompt mark or an exit status (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
-  })),
-  // 34586: no OSC 633 parser in the fork, and no Mac surface reads a mark or a command line. osc633-p is not here
-  // (34671, @cto 34586-cmux-cwd-finding-1246): workspace.current returns the focused panel's reported directory, which
-  // OSC 7 moves, so P has an observable; until a reader measures it, it stays Probe TODO.
-  ...[
-    "extensions.osc633-a",
-    "extensions.osc633-b",
-    "extensions.osc633-c",
-    "extensions.osc633-d",
-    "extensions.osc633-e",
-    "extensions.osc-633-vscode",
-  ].map((featureId) => ({
-    kind: "term" as const,
-    id: "cmux",
-    version: "0.65.2",
-    os: "macos",
-    featureId,
-    reason:
-      'Untestable (no way): cmux 0.65.2 has no OSC 633 parser — the fork OSC command table lists 133 and no 633 — so the sequence is dropped without a target-state reading or a report. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists @"133" in the command table (with @"8" at :335) and the file has zero occurrences of 633. No read surface carries a mark: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) enumerates only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no mark verb (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
-  })),
-  {
-    kind: "term" as const,
-    id: "cmux",
-    version: "0.65.2",
-    os: "macos",
-    featureId: "extensions.osc8",
-    reason:
-      "Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns a cell's link. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @\"8\" in the command table, :832 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. The text read returns text only (read-screen returns {text}: ReadScreenResult.java:13-23). The vt-state bytes cannot carry a cell's link: cmux-tui replays through the fork's VT formatter (cmux-tui server.rs:9959-9985, crates/ghostty-vt terminal.rs:4037-4065), which emits cell hyperlinks only for HTML (src/terminal/formatter.zig:1361-1366, \"We currently only emit hyperlinks for HTML\"); in VT output only an OSC 8 still open at the cursor is written (:524-526, :670-686), which is cursor state, not a cell's link. vt-state is also not a route to the app: cmux-tui serves its own PTY sessions over $TMPDIR/cmux-tui-<uid>/<session>.sock (cmux-tui/README.md:48, server.rs:1-14), while the native app's surfaces are in-process libghostty (Sources/TerminalSurface+RuntimeSurfaceCreation.swift:370). cmux-tui/spec/sdk-schema.json has no hyperlink verb.",
-  },
+  // 34586 + 38274: cmux's six macOS prompt rows. compare/v0.65.2...v0.65.2.2 has 3 commits touching only
+  // cmux-remote/src/provider/iroh.rs (relay TLS root trust store), zero changes to Ghostty VT, OSC 133/633/8,
+  // or the control-socket read plane.
+  ...["0.65.2", "0.65.2.2"].flatMap((version) => [
+    ...["extensions.osc133-a", "extensions.osc133-b", "extensions.osc133-c", "extensions.osc133-p"].map(
+      (featureId) => ({
+        kind: "term" as const,
+        id: "cmux",
+        version,
+        os: "macos",
+        featureId,
+        reason:
+          'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 A/B/C/P into core prompt state and no public surface reads a mark back. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists 133 in the command table and :862 dispatches it to parsers.semantic_prompt.parse, whose action set is L,A,N,P,B,I,C,D (src/terminal/osc/parsers/semantic_prompt.zig:22-31). All three complete read surfaces at that commit were enumerated and carry no mark: the control-socket read plane (Packages/macOS/CmuxControlSocket/Sources/CmuxControlSocket/Wire/ControlCommandExecutionPolicy+ReadPlane.swift enumerates every read-only method as surface.list/current/read_text/read_selection, workspace.list/current, window.list/current/displays, pane.list/surfaces and system.identify/tree/top/memory), cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events, zero case-insensitive "prompt"), and docs/cli-contract.md (read-screen returns {text} only, vt-state returns the PTY byte stream, and jump-to-last-prompt only moves focus, answering {"opened": false} when there is no prompt: ControlCommandCoordinator+SurfaceJumpToLastPrompt.swift).',
+      }),
+    ),
+    ...["extensions.osc133-d", "extensions.semantic-prompts"].map((featureId) => ({
+      kind: "term" as const,
+      id: "cmux",
+      version,
+      os: "macos",
+      featureId,
+      reason:
+        'Untestable (no way): cmux 0.65.2 on macOS parses OSC 133 D with its exit-code option and reports it nowhere, so neither the mark nor a command-exit status is observable. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc/parsers/semantic_prompt.zig:30 defines end_command for D, :105,118 carries exit_code as a typed option and :359 parses it, so the sequence is understood rather than dropped. No surface reads it back: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) exposes only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no verb returning a prompt mark or an exit status (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
+    })),
+    ...[
+      "extensions.osc633-a",
+      "extensions.osc633-b",
+      "extensions.osc633-c",
+      "extensions.osc633-d",
+      "extensions.osc633-e",
+      "extensions.osc-633-vscode",
+    ].map((featureId) => ({
+      kind: "term" as const,
+      id: "cmux",
+      version,
+      os: "macos",
+      featureId,
+      reason:
+        'Untestable (no way): cmux 0.65.2 has no OSC 633 parser — the fork OSC command table lists 133 and no 633 — so the sequence is dropped without a target-state reading or a report. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:371 lists @"133" in the command table (with @"8" at :335) and the file has zero occurrences of 633. No read surface carries a mark: the control-socket read plane (ControlCommandExecutionPolicy+ReadPlane.swift) enumerates only surface/workspace/window/pane/system list-and-text methods, cmux-tui/spec/sdk-schema.json (protocol 12, 118 commands, 50 events) has zero case-insensitive "prompt", and docs/cli-contract.md has no mark verb (read-screen returns {text}, vt-state returns the PTY byte stream, jump-to-last-prompt only focuses).',
+    })),
+    {
+      kind: "term" as const,
+      id: "cmux",
+      version,
+      os: "macos",
+      featureId: "extensions.osc8",
+      reason:
+        "Untestable (no way): cmux 0.65.2 parses OSC 8 hyperlinks into core state and no read surface returns a cell's link. Read tag v0.65.2 (9d01f956c51cd895e10e7d56b6dd7b5f6fcce625) and the vendored ghostty fork cb1ef7091cdef0b581ee2cbd83742b653253523e: src/terminal/osc.zig:335 lists @\"8\" in the command table, :832 dispatches it, and :101-108 define the hyperlink_start/hyperlink_end commands. The text read returns text only (read-screen returns {text}: ReadScreenResult.java:13-23). The vt-state bytes cannot carry a cell's link: cmux-tui replays through the fork's VT formatter (cmux-tui server.rs:9959-9985, crates/ghostty-vt terminal.rs:4037-4065), which emits cell hyperlinks only for HTML (src/terminal/formatter.zig:1361-1366, \"We currently only emit hyperlinks for HTML\"); in VT output only an OSC 8 still open at the cursor is written (:524-526, :670-686), which is cursor state, not a cell's link. vt-state is also not a route to the app: cmux-tui serves its own PTY sessions over $TMPDIR/cmux-tui-<uid>/<session>.sock (cmux-tui/README.md:48, server.rs:1-14), while the native app's surfaces are in-process libghostty (Sources/TerminalSurface+RuntimeSurfaceCreation.swift:370). cmux-tui/spec/sdk-schema.json has no hyperlink verb.",
+    },
+  ]),
   // 34596 (REVISION 3): 633;E has no parser and no Mac surface carries a command line.
   {
     kind: "term" as const,
@@ -2575,7 +2580,12 @@ async function createNativeEditorExchange(input: {
   const availability: { reason?: string } = {}
   const exchange = async (
     phase: string,
-    options: { expectedCwd?: string; publishAtDeadline?: boolean; awaitEvent?: "start" | "end"; deadlineMs?: number } = {},
+    options: {
+      expectedCwd?: string
+      publishAtDeadline?: boolean
+      awaitEvent?: "start" | "end"
+      deadlineMs?: number
+    } = {},
   ): Promise<NativeEditorReply> => {
     const { expectedCwd, publishAtDeadline, awaitEvent } = options
     const current = statSync(activationPath)
@@ -3107,7 +3117,11 @@ async function readNativeEditorState(input: {
     }
     const unknownBefore = await sample("unknown-before")
     input.write(
-      osc(isOsc7 ? `9999;file://localhost/terminfo-unknown-${randomUUID()}` : `9999;Cwd=/terminfo-unknown-${randomUUID()}`),
+      osc(
+        isOsc7
+          ? `9999;file://localhost/terminfo-unknown-${randomUUID()}`
+          : `9999;Cwd=/terminfo-unknown-${randomUUID()}`,
+      ),
     )
     const unknownAfter = await sample("unknown-after")
     const handledBefore = await sample("handled-before")
@@ -3127,7 +3141,8 @@ async function readNativeEditorState(input: {
       const reply = await exchange("target-after", { expectedCwd: targetExpected, publishAtDeadline: true })
       const cwd = reply.terminal.shellIntegrationCwd
       if (!cwd.present || cwd.value !== targetExpected) {
-        availability.reason = "OSC 7 did not reach shellIntegration.cwd; whether the editor tracks it elsewhere is unproven"
+        availability.reason =
+          "OSC 7 did not reach shellIntegration.cwd; whether the editor tracks it elsewhere is unproven"
         throw new Error(availability.reason)
       }
       targetAfter = cwd.value
@@ -3474,8 +3489,10 @@ export async function readAppSemanticState(
         (appId === "terminal-app" &&
           env.TERMINFO_TARGET_VERSION === "2.15" &&
           input.featureId === "extensions.osc633-p") ||
-        // 34905: cmux 0.65.2's control-socket `workspace.current` current_directory.
-        (appId === "cmux" && env.TERMINFO_TARGET_VERSION === "0.65.2" && input.featureId === "extensions.osc633-p")
+        // 34905 + 38274: cmux 0.65.2 / 0.65.2.2 control-socket `workspace.current` current_directory.
+        (appId === "cmux" &&
+          (env.TERMINFO_TARGET_VERSION === "0.65.2" || env.TERMINFO_TARGET_VERSION === "0.65.2.2") &&
+          input.featureId === "extensions.osc633-p")
       if (input.mux || !reviewed) {
         return { status: "unavailable", reason: "No reviewed owned cwd getter for this App/feature", detail }
       }

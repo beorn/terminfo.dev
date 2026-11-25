@@ -71,7 +71,7 @@ export type CmuxExecutableProof = Readonly<{
   version: string
 }>
 
-const CMUX_CLI_VERSION_SUMMARY = /^cmux (\d+\.\d+\.\d+)(?: \([0-9A-Za-z._+-]+\))?(?: \[[0-9a-f]{7,40}\])?$/u
+const CMUX_CLI_VERSION_SUMMARY = /^cmux (\d+\.\d+\.\d+(?:\.\d+)?)(?: \([0-9A-Za-z._+-]+\))?(?: \[[0-9a-f]{7,40}\])?$/u
 
 /**
  * Extract the short version from cmux's `versionSummary()` line (`CLI/cmux.swift:45701-45716`):

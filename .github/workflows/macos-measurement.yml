@@ -73,7 +73,7 @@ jobs:
       # 34672: one source for Warp's release, read by the DMG download and by the collect step's subject
       # export. Warp.app's plist says 0.2026.10.14.08.27.01 while the measured release is this channel
       # string, and capture-writer refuses an intended version that differs from the measured one.
-      WARP_STABLE_VERSION: v0.2026.10.14.08.27.stable_01
+      WARP_STABLE_VERSION: v0.2026.11.18.08.17.stable_05
       # #34899 (@cto REVISE 1): one Warp run leaves the sticky command header at stock so the frame can carry the
       # block chrome the prompt-mark criterion reads. Every other run keeps the header off; the Warp setup record
       # states which mode ran, its prior value and type, and the receipt's launch deviation names it.
@@ -213,8 +213,8 @@ jobs:
           const app = process.env.APP_ID;
           const artifacts = {
             cursor: {
-              arm64: ["https://downloads.cursor.com/production/5f54c8173e5552412beb40702adac16275677fa0/darwin/arm64/Cursor-darwin-arm64.zip", "090809041649da27b1235a7f3a9bdacdb35f20ae38fd0b6d6cf69f1918a145af"],
-              x64: ["https://downloads.cursor.com/production/5f54c8173e5552412beb40702adac16275677fa0/darwin/x64/Cursor-darwin-x64.zip", "8ea93499ba2db4f7af2efb7648a167f2351ad86534130c9fc30ae1040966fc51"]
+              arm64: ["https://downloads.cursor.com/production/0925c4b8226c56947c43f0b555fb98e187a7e029/darwin/arm64/Cursor-darwin-arm64.zip", "2d15a19927fe11ce177c2b67fa890ec43b2950f33b6be5dce770dc4a5c1364ae"],
+              x64: ["https://downloads.cursor.com/production/0925c4b8226c56947c43f0b555fb98e187a7e029/darwin/x64/Cursor-darwin-x64.zip", "74ed9166ac008bce19cb5feb5e7eda8db4df9374f0e21d0f4d7ce9c9c423f104"]
             },
             "com.microsoft.VSCode": {
               arm64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/8a14f0cc1b08d531eb83255ea3764ae22aa932b5/VSCode-darwin-arm64.zip", "149d944feb599b076b48406b174e1c3cd1d510e9d673854777a20a6f4116a59a"],
@@ -251,7 +251,7 @@ jobs:
           const url = app === "warp"
             ? "https://releases.warp.dev/stable/" + warpVersion + "/Warp.dmg"
             : app === "cmux"
-              ? "https://github.com/manaflow-ai/cmux/releases/download/v0.65.2/cmux-macos.dmg"
+              ? "https://github.com/manaflow-ai/cmux/releases/download/v0.65.2.2/cmux-macos.dmg"
               : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
           const installer = process.env.RUNNER_TEMP + "/" + name + ".dmg";
           const mountpoint = "/Volumes/" + name;
@@ -263,8 +263,8 @@ jobs:
           await run(["curl", "--location", "--fail", "--silent", "--show-error", url, "--output", installer]);
           if (app === "warp" || app === "cmux") {
             const expectedSha256 = app === "warp"
-              ? "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"
-              : "2f4bd98df7514067408d89398f8f19059015a3bbae632d0474515d4b76d6ee36";
+              ? "56c7caf4137c41adad30229601aaacd26a19b5a6cee59f82b5ef38381fa41883"
+              : "18e8848e19d4e08ff0aefb30f180fdb3eafb3f32f0b361394351a58e505d397f";
             const actualSha256 = createHash("sha256").update(new Uint8Array(await Bun.file(installer).arrayBuffer())).digest("hex");
             const out = process.env.RUNNER_TEMP + "/measurement-artifacts";
             writeFileSync(out + "/" + app + "-installer.json", JSON.stringify({ app, url, expectedSha256, actualSha256 }));
