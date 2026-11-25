@@ -1319,8 +1319,15 @@ export function readVerifiedArtifact(
   if (!/^sha256:[a-f0-9]{64}$/.test(ref)) fail(sourcePath, `invalid ${kind}Ref ${ref}`)
   const digest = ref.slice("sha256:".length)
   const artifactPath = join(contentDir, "artifacts", `${digest}.${rules.extension}`)
-  if (!existsSync(artifactPath)) fail(sourcePath, `missing ${rules.noun.toLowerCase()} artifact ${artifactPath}`)
-  const bytes = readFileSync(artifactPath)
+  let bytes: Buffer
+  try {
+    bytes = readFileSync(artifactPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+      fail(sourcePath, `missing ${rules.noun.toLowerCase()} artifact ${artifactPath}`)
+    }
+    throw error
+  }
   try {
     verifyRetainedArtifact(kind, bytes, ref, artifactPath)
   } catch (error) {

@@ -746,7 +746,10 @@ export function verifyRetainedArtifact(kind: RetainedArtifactKind, bytes: Buffer
     throw new Error(`${rules.noun} reference ${ref} at ${where} is not a sha256 digest`)
   }
   const digest = ref.slice("sha256:".length)
-  const actual = createHash("sha256").update(bytes).digest("hex")
+  const actual =
+    typeof Bun !== "undefined"
+      ? new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+      : createHash("sha256").update(bytes).digest("hex")
   if (actual !== digest) throw new Error(`${rules.noun} ${where} hashes to ${actual}, not its cited ${digest}`)
   if (rules.png && !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
     throw new Error(`${rules.noun} ${where} is not a PNG`)
