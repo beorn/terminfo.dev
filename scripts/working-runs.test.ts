@@ -51,8 +51,12 @@ import { generateApi } from "./generate-api.ts"
 import { loadRawCapture } from "../packages/admin/raw-capture.ts"
 import * as rawCaptureReader from "../packages/admin/raw-capture.ts"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
-import { loadClientProbes, loadFullProbes } from "../docs/data/probes.data.ts"
+import { loadClientProbes, loadClientProbesWithHistory, loadFullProbes } from "../docs/data/probes.data.ts"
+import { isPublishedStatus } from "../docs/data/app-cells.ts"
 import { collectGarbage } from "../packages/admin/corpus-placement.ts"
+
+const sanitizePublicStates = (states: Readonly<Record<string, string>>) =>
+  Object.fromEntries(Object.entries(states).map(([fid, status]) => [fid, isPublishedStatus(status) ? status : "no-result"]))
 
 /**
  * A rollup as the hourly tool writes it into `summary.json` (#33600): probes data through the ONE
@@ -731,7 +735,10 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       )
     const accepted = acceptedCounts()
     const page = loadFullProjectData()
-    const history = loadClientProbes().workingHistory
+    const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+    const history = workingHistoryPayload?.workingHistory
+    expect(client.hasWorkingHistory).toBe(true)
+    expect(client.workingHistory).toBeUndefined()
     expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
     expect(page.working?.run.id).toBe(PARTIAL)
     // Full preview carries receipts/counts; detail pages receive their own probe rows.
@@ -746,8 +753,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
     // A new collection completing mid-build belongs to the next build, not only some pages.
     collection(older.parent, WRITING)
-    const sameBuild = loadClientProbes()
-    expect(sameBuild.workingHistory?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    const sameBuild = loadClientProbesWithHistory()
+    expect(sameBuild.workingHistoryPayload?.workingHistory.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
   })
 
   // #33037: every hourly run repeated an identical status map per context, and the theme chunk crossed
@@ -758,11 +765,14 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(parent, PARTIAL)
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
     const server = siteWorkingHistory(liveContentRoot())!
-    const client = loadClientProbes()
-    const refs = client.workingHistory!.flatMap((view) => view.contexts.map((context) => context.statesRef))
+    const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+    expect(client.hasWorkingHistory).toBe(true)
+    const refs = workingHistoryPayload!.workingHistory.flatMap((view) =>
+      view.contexts.map((context) => context.statesRef),
+    )
     expect(refs.length).toBeGreaterThan(1)
     expect(new Set(refs)).toEqual(new Set([0]))
-    expect(client.workingStates).toEqual([server[0]!.contexts[0]!.states])
+    expect(workingHistoryPayload!.workingStates).toEqual([sanitizePublicStates(server[0]!.contexts[0]!.states!)])
   })
 
   // 33964 (@cto e8f74d99): history composition drops per-cell allocations, but must still run reviewed-cell
@@ -855,10 +865,12 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
       const retained = collection()
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", retained.parent)
-      const page = loadClientProbes()
-      expect(Object.keys(page.workingOriginals ?? {})).toEqual(Object.keys(expected))
+      const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+      expect(client.hasWorkingHistory).toBe(true)
+      expect(client).not.toHaveProperty("workingOriginals")
+      expect(Object.keys(workingHistoryPayload?.workingOriginals ?? {})).toEqual(Object.keys(expected))
       for (const [key, originals] of Object.entries(expected)) {
-        const actual = page.workingOriginals?.[key]
+        const actual = workingHistoryPayload?.workingOriginals?.[key]
         expect(actual).toHaveLength(originals.length)
         for (const original of originals) {
           const record = actual?.find((run) => run.sha256 === original.sha256)
@@ -871,7 +883,9 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
             sha256: original.sha256,
             counts: original.counts,
             score: original.score,
-            states: Object.fromEntries(original.results.map((result) => [result.featureId, result.status])),
+            states: sanitizePublicStates(
+              Object.fromEntries(original.results.map((result) => [result.featureId, result.status])),
+            ),
           })
           for (const field of ["rawReplies", "assertions", "results", "startedAt", "label", "runtimeIdentity"]) {
             expect(record).not.toHaveProperty(field)
@@ -994,10 +1008,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     const fixture = collection()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
     const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
-    const client = loadClientProbes()
-    const context = client.workingHistory?.[0]?.contexts[0]
-    expect(client.workingStates?.[context?.statesRef ?? -1]).toEqual(
-      Object.fromEntries(original.results!.map((result) => [result.featureId, result.status])),
+    const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+    expect(client.hasWorkingHistory).toBe(true)
+    const context = workingHistoryPayload?.workingHistory[0]?.contexts[0]
+    expect(workingHistoryPayload?.workingStates[context?.statesRef ?? -1]).toEqual(
+      sanitizePublicStates(Object.fromEntries(original.results!.map((result) => [result.featureId, result.status]))),
     )
     expect(context).not.toHaveProperty("states")
     expect(context).toMatchObject({
@@ -1031,7 +1046,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       collection(parent, PARTIAL)
       vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", parent)
       const page = loadFullProjectData()
-      const history = loadClientProbes().workingHistory
+      const history = loadClientProbesWithHistory().workingHistoryPayload?.workingHistory
       expect(page.working?.run.id).toBe(PARTIAL)
       expect(history?.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
       expect(history?.[0]?.unreadable?.reason).toContain(

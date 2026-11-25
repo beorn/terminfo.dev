@@ -6645,7 +6645,7 @@ test.runIf(OWNED_LAYOUT).each([
     type: "python",
     id: "sgr.overline",
     field: "overline",
-    reason: /Kitty 0\.49\.2.*no overline/,
+    reason: /Kitty 0\.51\.1.*no overline/,
   },
   {
     name: "kitty",
@@ -6653,7 +6653,7 @@ test.runIf(OWNED_LAYOUT).each([
     type: "python",
     id: "sgr.hidden",
     field: "hidden",
-    reason: /Kitty 0\.49\.2.*no hidden/,
+    reason: /Kitty 0\.51\.1.*no hidden/,
   },
   {
     name: "libvterm",
@@ -6747,7 +6747,7 @@ test.runIf(OWNED_LAYOUT).each(["kitty", "wezterm"] as const)(
         featureId: id,
         status: "untestable",
         reason: expect.stringMatching(
-          engine === "kitty" ? /Kitty 0\.49\.2.*GUI.*no keypad/ : /WezTerm.*private.*no public.*keypad/,
+          engine === "kitty" ? /Kitty 0\.51\.1.*GUI.*no keypad/ : /WezTerm.*private.*no public.*keypad/,
         ),
       },
     ])
