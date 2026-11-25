@@ -576,6 +576,114 @@ record_teardown_witness() {
   return 1
 }
 
+# #38538 (@cto d32ebff7): resolve container user identity from the daemon's declared
+# security options and verified rootless socket ownership.
+# - Rootful daemon: unchanged --user $run_uid:$run_gid, container_name=runner, rootless_host_uid="".
+# - Rootless daemon (SecurityOptions includes name=rootless): verify the Docker Unix socket lives
+#   under ${runtime_root}/${run_uid}/ and is owned by $run_uid, then select 0:0 (which rootless
+#   userns maps onto host $run_uid) and pass TERMINFO_ROOTLESS_HOST_UID=$run_uid into the container
+#   so --inside can prove /proc/self/uid_map before any probe runs.
+resolve_container_identity() {
+  local uid=${1:-$(id -u)}
+  local gid=${2:-$(id -g)}
+  local runtime_root=${3:-/run/user}
+  [[ "$uid" =~ ^[1-9][0-9]*$ ]] || {
+    echo "Refusing root run user" >&2
+    return 2
+  }
+  local sec_opts
+  sec_opts=$(docker info --format '{{.SecurityOptions}}') || {
+    echo "Failed to inspect Docker daemon SecurityOptions" >&2
+    return 2
+  }
+  local padded_sec_opts=" ${sec_opts//[\[\],]/ } "
+  if [[ "$padded_sec_opts" == *" name=rootless "* ]]; then
+    local endpoint=${DOCKER_HOST:-}
+    if [[ -z "$endpoint" ]]; then
+      endpoint=$(docker context inspect --format '{{.Endpoints.docker.Host}}') || {
+        echo "ROOTLESS_SOCKET_UNVERIFIED: rootless daemon reported without DOCKER_HOST or inspectable context endpoint" >&2
+        return 2
+      }
+    fi
+    if [[ "$endpoint" != unix://* ]]; then
+      echo "ROOTLESS_SOCKET_UNVERIFIED: expected unix:// socket under ${runtime_root}/${uid}/, observed endpoint '$endpoint'" >&2
+      return 2
+    fi
+    local socket_path=${endpoint#unix://}
+    if [[ ! -S "$socket_path" ]]; then
+      echo "ROOTLESS_SOCKET_UNVERIFIED: expected Unix socket under ${runtime_root}/${uid}/, observed non-socket '$socket_path'" >&2
+      return 2
+    fi
+    local canonical_root canonical_socket socket_owner
+    canonical_root=$(readlink -f "$runtime_root") || {
+      echo "ROOTLESS_SOCKET_UNVERIFIED: cannot resolve runtime root '$runtime_root'" >&2
+      return 2
+    }
+    canonical_socket=$(readlink -f "$socket_path") || {
+      echo "ROOTLESS_SOCKET_UNVERIFIED: cannot resolve socket path '$socket_path'" >&2
+      return 2
+    }
+    if [[ "$canonical_socket" != "${canonical_root}/${uid}/"* ]]; then
+      echo "ROOTLESS_SOCKET_UNVERIFIED: expected socket under '${canonical_root}/${uid}/', observed '$canonical_socket'" >&2
+      return 2
+    fi
+    socket_owner=$(stat -c %u "$canonical_socket") || {
+      echo "ROOTLESS_SOCKET_UNVERIFIED: cannot stat socket '$canonical_socket'" >&2
+      return 2
+    }
+    if [[ "$socket_owner" != "$uid" ]]; then
+      echo "ROOTLESS_SOCKET_UNVERIFIED: expected socket '$canonical_socket' owned by uid $uid, observed uid $socket_owner" >&2
+      return 2
+    fi
+    container_uid=0
+    container_gid=0
+    container_user="0:0"
+    container_name=root
+    rootless_host_uid=$uid
+  else
+    container_uid=$uid
+    container_gid=$gid
+    container_user="$uid:$gid"
+    container_name=runner
+    rootless_host_uid=""
+  fi
+}
+
+# #38538 (@cto d32ebff7): container-side identity proof executed before any probe starts.
+# - When TERMINFO_ROOTLESS_HOST_UID is set, the first line of /proc/self/uid_map MUST be exact
+#   `0 <TERMINFO_ROOTLESS_HOST_UID> 1`; any mismatch (including `0 0 ...`) refuses loudly with
+#   ROOTLESS_PROOF_FAILED naming both expected and observed values.
+# - When TERMINFO_ROOTLESS_HOST_UID is unset (rootful path), container uid 0 is refused.
+verify_container_identity() {
+  local uid_map_path=${1:-/proc/self/uid_map}
+  if [[ -n "${TERMINFO_ROOTLESS_HOST_UID:-}" ]]; then
+    local expected_uid=$TERMINFO_ROOTLESS_HOST_UID
+    if [[ ! "$expected_uid" =~ ^[1-9][0-9]*$ ]]; then
+      echo "ROOTLESS_PROOF_FAILED: expected non-zero numeric TERMINFO_ROOTLESS_HOST_UID, observed '$expected_uid'" >&2
+      return 2
+    fi
+    local expected_line="0 $expected_uid 1"
+    if [[ ! -r "$uid_map_path" ]]; then
+      echo "ROOTLESS_PROOF_FAILED: unreadable $uid_map_path (expected '$expected_line', observed '<unreadable>')" >&2
+      return 2
+    fi
+    local raw_line="" map_in="" map_out="" map_len="" map_extra=""
+    IFS= read -r raw_line < "$uid_map_path" || true
+    read -r map_in map_out map_len map_extra <<< "$raw_line" || true
+    local observed="${map_in}${map_out:+ $map_out}${map_len:+ $map_len}${map_extra:+ $map_extra}"
+    [[ -n "$observed" ]] || observed="<empty>"
+    if [[ "$map_in" != "0" || "$map_out" != "$expected_uid" || "$map_len" != "1" || -n "$map_extra" ]]; then
+      echo "ROOTLESS_PROOF_FAILED: uid_map first line mismatch (expected '$expected_line', observed '$observed')" >&2
+      return 2
+    fi
+    return 0
+  fi
+  [[ "$(id -u)" != 0 ]] || {
+    echo "Refusing root container user" >&2
+    return 2
+  }
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -639,6 +747,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Missing run, runner, target, preset, or clipboard profile metadata" >&2
     exit 2
   }
+  verify_container_identity || exit 2
   [[ -r /out/host-measured.json && -w /out ]] || { echo "Missing writable single-run output mount" >&2; exit 2; }
   [[ "$TERMINFO_RUN_ID" == "$(jq -er .runId /out/host-measured.json)" ]] || {
     echo "Container run ID disagrees with host receipt" >&2
@@ -1762,35 +1871,7 @@ container_shell=$(jq -er '.[0].Config.Entrypoint[0]' "$prep/image-inspect.json")
 [[ "$container_shell" == /* ]] || {
   echo "Loaded image entrypoint is not an absolute shell path: $container_shell" >&2; exit 2;
 }
-# #38428: the contract 27892 states - the bind-mounted /out is THIS host user's - is met by whichever
-# container identity the daemon maps onto that host user, and that is not always $run_uid. Rootless
-# Docker (hh.hab.tsx, 2026-11-25) maps container root to the invoking user and every other uid into
-# the hh subuid range (165536+), so `--user $run_uid` writes files the host cannot read or remove and
-# the run dies with "Missing writable single-run output mount". Probe both candidates against the
-# loaded image and refuse rather than guess: the wrong pair only surfaces later as an unreadable
-# artifact, after the measurement has been paid for.
-container_user=""
-probe_dir=$(mktemp -d "$run_dir/uidprobe.XXXXXX")
-for candidate in "$run_uid:$run_gid" "0:0"; do
-  docker run --rm --user "$candidate" --network none --read-only --entrypoint "$container_shell" \
-    --mount "type=bind,src=$probe_dir,dst=/probe" "$image_reference" -c 'touch /probe/wrote' \
-    >/dev/null 2>&1 || continue
-  [[ "$(stat -c %u "$probe_dir/wrote" 2>/dev/null)" == "$run_uid" ]] || continue
-  container_user=$candidate
-  break
-done
-rm -f "$probe_dir/wrote"
-rmdir "$probe_dir" 2>/dev/null || true
-[[ -n "$container_user" ]] || {
-  echo "No container user writes the bind-mounted /out as host uid $run_uid: the daemon maps neither uid $run_uid nor container root onto this user" >&2
-  exit 2
-}
-container_uid=${container_user%%:*}
-container_gid=${container_user##*:}
-# The passwd and group names follow the mapped uid, so a tool that special-cases root by name still
-# sees root rather than a stranger holding uid 0.
-container_name=runner
-[[ "$container_uid" != 0 ]] || container_name=root
+resolve_container_identity "$run_uid" "$run_gid" || exit 2
 printf '%s:x:%s:%s:terminfo run user:/home/runner:%s\n' "$container_name" "$container_uid" "$container_gid" "$container_shell" > "$prep/passwd"
 printf '%s:x:%s:\n' "$container_name" "$container_gid" > "$prep/group"
 chmod 0644 "$prep/passwd" "$prep/group"
@@ -1801,6 +1882,8 @@ selection_env=()
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
+rootless_env=()
+[[ -z "$rootless_host_uid" ]] || rootless_env=(--env "TERMINFO_ROOTLESS_HOST_UID=$rootless_host_uid")
 # The declared locale every collector-owned terminal launch runs under (28752): the container's
 # shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
 # rather than whatever the launching shell happened to carry. Recorded in observed.json below.
@@ -1824,7 +1907,7 @@ container_id=$(docker create --user "$container_user" --network none --read-only
   --env "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
   --env "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
   --env "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision" \
-  "${grace_env[@]}" \
+  "${grace_env[@]}" "${rootless_env[@]}" \
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"

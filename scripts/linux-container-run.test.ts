@@ -22,6 +22,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
+import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -1306,6 +1307,7 @@ fi`,
   *) exit 82;;
 esac`,
       docker: `case "$1 $2" in
+  "info --format") echo '[name=apparmor,profile=default name=seccomp,profile=builtin name=cgroupns]';;
   "load --input") echo 'Loaded image: ${freshReference}';;
   "image inspect")
     case "$3" in
@@ -2570,4 +2572,208 @@ describe("the launcher adopts the handed run identity (#34269)", () => {
       expect(result.stderr).toContain(handed)
     },
   )
+})
+
+/**
+ * @failure Under rootless Docker (#38428/#38538), `--user $run_uid:$run_gid` maps onto an unprivileged subuid
+ *   that cannot write `/out`, while blindly allowing container UID 0 without verifying the rootless socket and
+ *   `/proc/self/uid_map` would silently admit real rootful root.
+ * @level l1 — invokes `resolve_container_identity` and `verify_container_identity` in `scripts/linux-container-run.sh`
+ *   with owned Unix socket fixtures, stub `docker` / `id` binaries, and fixture `uid_map` files.
+ * @consumer scripts/linux-container-run.sh host rootless detection and `--inside` uid_map proof (#38538, @cto d32ebff7)
+ */
+describe("rootless Docker identity resolution and uid_map proof (#38538)", () => {
+  async function withUnixSocket<T>(socketPath: string, fn: () => Promise<T> | T): Promise<T> {
+    const server = createServer()
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(socketPath, () => resolve())
+    })
+    try {
+      return await fn()
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }
+
+  function makeDockerStub(binDir: string, securityOptions: string, contextHost = "unix:///var/run/docker.sock") {
+    const stub = join(binDir, "docker")
+    writeFileSync(
+      stub,
+      `#!/usr/bin/env bash
+if [[ "$1" == "info" ]]; then
+  printf '%s\\n' ${JSON.stringify(securityOptions)}
+  exit 0
+fi
+if [[ "$1" == "context" && "$2" == "inspect" ]]; then
+  printf '%s\\n' ${JSON.stringify(contextHost)}
+  exit 0
+fi
+echo "unexpected docker args: $*" >&2
+exit 2
+`,
+      { mode: 0o755 },
+    )
+  }
+
+  it("selects 0:0 and exports TERMINFO_ROOTLESS_HOST_UID when daemon is rootless and socket under /run/user/<uid> belongs to host uid", async () => {
+    const uid = String(process.getuid!())
+    const gid = String(process.getgid!())
+    const bin = join(dir, "bin")
+    const runtimeRoot = join(dir, "run-user")
+    const userRuntime = join(runtimeRoot, uid)
+    mkdirSync(bin)
+    mkdirSync(userRuntime, { recursive: true })
+    makeDockerStub(bin, "[name=seccomp,profile=builtin name=rootless name=cgroupns]")
+    const sockPath = join(userRuntime, "docker.sock")
+
+    await withUnixSocket(sockPath, () => {
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          'source "$1"; resolve_container_identity "$2" "$3" "$4"; printf "%s|%s|%s|%s|%s" "$container_user" "$container_uid" "$container_gid" "$container_name" "$rootless_host_uid"',
+          "_",
+          launcher,
+          uid,
+          gid,
+          runtimeRoot,
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH ?? ""}`,
+            DOCKER_HOST: `unix://${sockPath}`,
+          },
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toBe(`0:0|0|0|root|${uid}`)
+    })
+  })
+
+  it("refuses rootless mode loudly when DOCKER_HOST socket is outside /run/user/<uid> or not a socket", () => {
+    const uid = String(process.getuid!())
+    const gid = String(process.getgid!())
+    const bin = join(dir, "bin")
+    const runtimeRoot = join(dir, "run-user")
+    mkdirSync(bin)
+    mkdirSync(join(runtimeRoot, uid), { recursive: true })
+    makeDockerStub(bin, "[name=seccomp,profile=builtin name=rootless name=cgroupns]")
+    const notASocket = join(runtimeRoot, uid, "plain-file")
+    writeFileSync(notASocket, "nope")
+
+    const result = spawnSync(
+      "bash",
+      ["-c", 'source "$1"; resolve_container_identity "$2" "$3" "$4"', "_", launcher, uid, gid, runtimeRoot],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          DOCKER_HOST: `unix://${notASocket}`,
+        },
+      },
+    )
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("ROOTLESS_SOCKET_UNVERIFIED")
+  })
+
+  it("keeps the rootful path unchanged ($uid:$gid, runner, no TERMINFO_ROOTLESS_HOST_UID) and still refuses host uid 0", () => {
+    const uid = String(process.getuid!())
+    const gid = String(process.getgid!())
+    const bin = join(dir, "bin")
+    mkdirSync(bin)
+    makeDockerStub(bin, "[name=apparmor,profile=default name=seccomp,profile=builtin name=cgroupns]")
+
+    const rootful = spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; resolve_container_identity "$2" "$3"; printf "%s|%s|%s|%s|%s" "$container_user" "$container_uid" "$container_gid" "$container_name" "$rootless_host_uid"',
+        "_",
+        launcher,
+        uid,
+        gid,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+      },
+    )
+    expect(rootful.status, rootful.stderr).toBe(0)
+    expect(rootful.stdout).toBe(`${uid}:${gid}|${uid}|${gid}|runner|`)
+
+    const rootHost = spawnSync("bash", ["-c", 'source "$1"; resolve_container_identity 0 0', "_", launcher], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+    })
+    expect(rootHost.status).toBe(2)
+    expect(rootHost.stderr).toContain("Refusing root run user")
+  })
+
+  it("accepts matching rootless /proc/self/uid_map and refuses mismatched uid_map with ROOTLESS_PROOF_FAILED before any probe starts", () => {
+    const validMap = join(dir, "uid_map.valid")
+    writeFileSync(validMap, "         0       3001          1\n         1     165536      65536\n")
+    const pass = spawnSync("bash", ["-c", 'source "$1"; verify_container_identity "$2"', "_", launcher, validMap], {
+      encoding: "utf8",
+      env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: "3001" },
+    })
+    expect(pass.status, pass.stderr).toBe(0)
+
+    const cases: Array<{ name: string; content: string; expectedUid: string; observedSnippet: string }> = [
+      {
+        name: "rootful identity map (0 0 4294967295)",
+        content: "         0          0 4294967295\n",
+        expectedUid: "3001",
+        observedSnippet: "0 0 4294967295",
+      },
+      {
+        name: "wrong host uid",
+        content: "         0       9999          1\n",
+        expectedUid: "3001",
+        observedSnippet: "0 9999 1",
+      },
+      {
+        name: "length != 1",
+        content: "         0       3001          2\n",
+        expectedUid: "3001",
+        observedSnippet: "0 3001 2",
+      },
+      {
+        name: "empty uid_map",
+        content: "",
+        expectedUid: "3001",
+        observedSnippet: "<empty>",
+      },
+    ]
+
+    for (const tc of cases) {
+      const mapPath = join(dir, `uid_map.${tc.name.replaceAll(/[^a-z0-9]+/gi, "_")}`)
+      writeFileSync(mapPath, tc.content)
+      const fail = spawnSync("bash", ["-c", 'source "$1"; verify_container_identity "$2"', "_", launcher, mapPath], {
+        encoding: "utf8",
+        env: { ...process.env, TERMINFO_ROOTLESS_HOST_UID: tc.expectedUid },
+      })
+      expect(fail.status, tc.name).toBe(2)
+      expect(fail.stderr, tc.name).toContain("ROOTLESS_PROOF_FAILED")
+      expect(fail.stderr, tc.name).toContain(`0 ${tc.expectedUid} 1`)
+      expect(fail.stderr, tc.name).toContain(tc.observedSnippet)
+    }
+  })
+
+  it("restores the rootful container uid 0 refusal when TERMINFO_ROOTLESS_HOST_UID is unset", () => {
+    const bin = join(dir, "bin")
+    mkdirSync(bin)
+    writeFileSync(join(bin, "id"), "#!/usr/bin/env bash\necho 0\n", { mode: 0o755 })
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` }
+    delete env.TERMINFO_ROOTLESS_HOST_UID
+    const result = spawnSync("bash", ["-c", 'source "$1"; verify_container_identity', "_", launcher], {
+      encoding: "utf8",
+      env,
+    })
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Refusing root container user")
+  })
 })
