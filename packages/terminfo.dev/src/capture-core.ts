@@ -449,10 +449,18 @@ export interface NamedTextOrigin {
   witness?: NonNullable<PixelCellCrop["witness"]>
   /**
    * Pixels that changed between the pre-paint frame and the frame this origin was derived from
-   * WITHOUT carrying the sentinel colour. A held viewport moved by whole rows shows as a delta on a
-   * quiet frame; a re-anchored viewport shows here as a large number (34163).
+   * WITHOUT carrying the sentinel colour. Under a proven row move (`acceptedRowMove`), counts only
+   * pixels inside the moved grid's rectangle (`y >= derived.y` and within its columns), while
+   * `changedOutsideGrid` records changed pixels outside that moved grid. With no proven row move,
+   * keeps its whole-frame meaning (34163, #37701).
    */
   changedOutside?: number
+  /**
+   * Non-sentinel pixels that changed outside the moved grid's rectangle under a proven whole-row
+   * move (#37701, @cto 548edef1). Present only when a proven row move scoped `changedOutside` to
+   * the moved grid's rectangle, so chrome activity outside the grid stays visible.
+   */
+  changedOutsideGrid?: number
   /**
    * Where a DECLARED viewport hold put the painted pair, in rows off the settled origin (34163).
    * Present only when the probe declared the hold, and an observation only: no grade or published
@@ -975,6 +983,7 @@ export async function finishCapture(input: {
       // field, but the crop record never filled it, so every retained frame dropped the one number
       // the row-move measurement needs. Absent, never 0, when the origin carried none.
       ...(placement.changedOutside !== undefined ? { changedOutside: placement.changedOutside } : {}),
+      ...(placement.changedOutsideGrid !== undefined ? { changedOutsideGrid: placement.changedOutsideGrid } : {}),
       ...(placement.scrolledRows !== undefined ? { scrolledRows: placement.scrolledRows } : {}),
       // 33982: an accepted whole-row move travels with the frame as data, so the record can count
       // accepted moves instead of parsing a sentence, and its prose goes beside `basis` rather than

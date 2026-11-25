@@ -1212,9 +1212,9 @@ test("refuses by name when the frame moved out from under the cells it chose, an
   // One whole row (6 px) of displacement: past the 2 px blend slack, and inside the 30 px frame.
   const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
   // The shipped bound is 0 (@cto, d1a8cb1c), so a moved frame with a quiet surface is ACCEPTED now.
-  // One non-sentinel pixel in the far corner — outside the digested cells and both poses — keeps this
-  // a refusal fixture instead, which is what its message and evidence are about.
-  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
+  // One non-sentinel pixel in the far corner of the moved grid — outside the digested cells and both
+  // poses — keeps this a refusal fixture instead, which is what its message and evidence are about.
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (geometry.textWidth - 1)) * 4)
   const writes = source()
   const read = () =>
     readThroughSentinel({
@@ -1249,7 +1249,7 @@ test("a moved read carries the count it measured and names a whole-row shift in 
   const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
   // Same one-pixel noise as the refusal above: at the shipped bound of 0 this read must still refuse
   // for its evidence to exist at all (33982, @cto's d1a8cb1c).
-  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (geometry.textWidth - 1)) * 4)
   const writes = source()
   const error = await readThroughSentinel({
     source: writes.source,
@@ -1339,9 +1339,9 @@ test("one changed pixel outside the pair still refuses at the shipped bound of 0
   const geometry = { cellWidth: 2, cellHeight: 6, textWidth: 12, textHeight: 24 }
   const painted = pairOnBlankFrame(grid, [cells], cell)
   const moved = heldWindow({ origin: { x: 0, y: 0 }, shift: { y: 6 }, cell, size, pair: painted })
-  // The far corner: outside the digested cells, outside both painted cells at either pose. The
-  // pre-paint fixture leaves it black, and this is not the sentinel colour, so it counts as noise.
-  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (size.width - 1)) * 4)
+  // The far corner of the moved grid: outside the digested cells, outside both painted cells at either
+  // pose. The pre-paint fixture leaves it black, and this is not the sentinel colour, so it counts as noise.
+  moved.rgba.set([0, 0, 255, 255], ((size.height - 1) * size.width + (geometry.textWidth - 1)) * 4)
   const writes = source()
   const error = await readThroughSentinel({
     source: writes.source,
@@ -1760,7 +1760,6 @@ test("a frame dominated by an unobserved colour (including an unobserved R=1 tri
   expect(writes.writes).toEqual([])
 })
 
-
 test("landing-pose pairClearBeforePaint accepts calibrated dithered background and refuses an unobserved R=1 pixel at the landing pose (34480)", () => {
   const { paintClasses, makeFrame } = buildDitheredSentinelFixture()
   const cellSize = { width: 2, height: 6 }
@@ -1828,7 +1827,6 @@ test("readThroughSentinel refuses by name before choose when settled origin omit
   expect(writes.writes).toEqual([])
 })
 
-
 test("readThroughSentinel without settled origin qualifies dithered blank-cell failure with missing paintClasses diagnostic (34505)", async () => {
   const { sentinelSpec, makeFrame } = buildDitheredSentinelFixture()
   const origin = { x: 2, y: 2 }
@@ -1870,7 +1868,13 @@ test("readThroughSentinel chooseOrigin recovers Warp +0,+560 px paint-witness re
     background: { anchor: bg, members: new Set([pack(bg)]) },
     sentinel: { anchor: sentinelRgb, members: new Set([pack(sentinelRgb)]) },
   }
-  const paintCell = (rgba: Uint8Array, origin: { x: number; y: number }, r: number, c: number, rgb: readonly [number, number, number]) => {
+  const paintCell = (
+    rgba: Uint8Array,
+    origin: { x: number; y: number },
+    r: number,
+    c: number,
+    rgb: readonly [number, number, number],
+  ) => {
     const x0 = origin.x + (c - 1) * cell.width
     const y0 = origin.y + (r - 1) * cell.height
     for (let y = y0; y < y0 + cell.height; y++) {
@@ -1954,7 +1958,7 @@ test("readThroughSentinel chooseOrigin recovers Warp +0,+560 px paint-witness re
     expect(accepted.changedOutside, rowId).toBe(0)
   }
 
-  // Full resolve() checks remain enforced even with chooseOrigin: a 1 px change outside the pair still refuses.
+  // Full resolve() checks remain enforced even with chooseOrigin: a 1 px change inside the moved grid still refuses.
   const noisyPre = blankFrame()
   paintCell(noisyPre, movedOrigin, 1, 1, fg)
   const writes: string[] = []
@@ -1974,7 +1978,8 @@ test("readThroughSentinel chooseOrigin recovers Warp +0,+560 px paint-witness re
         const painted = parsePaintedCells(writes[0] ?? "")
         const afterRgba = new Uint8Array(noisyPre)
         for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
-        afterRgba[0] = 99
+        const inGridOffset = ((movedOrigin.y + 3 * cell.height) * width + movedOrigin.x) * 4
+        afterRgba[inGridOffset] = 99
         return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
       },
       label: "sgr.bg.default: expected frame — paint witness",
@@ -1986,4 +1991,242 @@ test("readThroughSentinel chooseOrigin recovers Warp +0,+560 px paint-witness re
       deadline: Date.now() + 1_000,
     }),
   ).rejects.toThrow(SentinelFrameMoved)
+})
+
+test("under a proven row move, changedOutside counts only pixels inside the moved grid while changedOutsideGrid records app chrome above the grid across all 5 Warp field reads (#37701, @cto 548edef1)", async () => {
+  // Exact Warp stable_05 run 45526885127 (a975f203999d956a66e1cd54eaaf0ecd) geometry:
+  // 1280x760 window, 109x39 grid of 8x16 cells (872x624 text area), calibrated origin (17,46),
+  // post-RIS moved origin (17,606) = +35 rows (+560 px), block-header 1 Hz clock bbox x=355..362, y=565..575.
+  const cell = { width: 8, height: 16 }
+  const cols = 109
+  const rows = 39
+  const width = 420
+  const height = 680
+  const calibratedOrigin = { x: 17, y: 46 }
+  const movedOrigin = { x: 17, y: 606 }
+  const warpGeom = { cellWidth: 8, cellHeight: 16, textWidth: cols * 8, textHeight: rows * 16 }
+  const bg: [number, number, number] = [5, 5, 5]
+  const fg: [number, number, number] = [230, 230, 230]
+  const clockRgb: [number, number, number] = [180, 180, 180]
+  const sentinelRgb: [number, number, number] = [255, 143, 253]
+  const pack = ([r, g, b]: readonly [number, number, number]) => (r << 16) | (g << 8) | b
+  const paintClasses = {
+    background: { anchor: bg, members: new Set([pack(bg)]) },
+    sentinel: { anchor: sentinelRgb, members: new Set([pack(sentinelRgb)]) },
+  }
+  const paintCell = (
+    rgba: Uint8Array,
+    origin: { x: number; y: number },
+    r: number,
+    c: number,
+    rgb: readonly [number, number, number],
+  ) => {
+    const x0 = origin.x + (c - 1) * cell.width
+    const y0 = origin.y + (r - 1) * cell.height
+    for (let y = y0; y < y0 + cell.height; y++) {
+      for (let x = x0; x < x0 + cell.width; x++) {
+        const offset = (y * width + x) * 4
+        rgba[offset] = rgb[0]
+        rgba[offset + 1] = rgb[1]
+        rgba[offset + 2] = rgb[2]
+        rgba[offset + 3] = 255
+      }
+    }
+  }
+  const blankFrame = () => {
+    const rgba = new Uint8Array(width * height * 4)
+    for (let offset = 0; offset < rgba.length; offset += 4) {
+      rgba[offset] = bg[0]
+      rgba[offset + 1] = bg[1]
+      rgba[offset + 2] = bg[2]
+      rgba[offset + 3] = 255
+    }
+    return rgba
+  }
+  // Paint `count` changed pixels inside the field-measured Warp block-header clock bbox (x=355..362, y=565..575, 8x11 = 88 px capacity).
+  const paintHeaderClockTick = (rgba: Uint8Array, count: number) => {
+    let remaining = count
+    for (let y = 565; y <= 575 && remaining > 0; y++) {
+      for (let x = 355; x <= 362 && remaining > 0; x++) {
+        const offset = (y * width + x) * 4
+        rgba[offset] = clockRgb[0]
+        rgba[offset + 1] = clockRgb[1]
+        rgba[offset + 2] = clockRgb[2]
+        rgba[offset + 3] = 255
+        remaining--
+      }
+    }
+  }
+  const parsePaintedCells = (write: string) =>
+    [...write.matchAll(/\x1b\[(\d+);(\d+)H(?:\x1b\[0m)?\x1b\[45m /g)].map((m) => ({
+      row: Number(m[1]),
+      col: Number(m[2]),
+    }))
+
+  // The 5 field reads from Warp run 45526885127 (a975f203999d956a66e1cd54eaaf0ecd):
+  const fieldReads = [
+    {
+      label: "sgr.fg.default: expected frame — baseline",
+      chooseOrigin: undefined,
+      regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+      headerClockPixels: 74,
+      witnessPainted: false,
+    },
+    {
+      label: "sgr.bg.default: expected frame",
+      chooseOrigin: movedOrigin,
+      regions: [
+        { top: 3, left: 5, bottom: 3, right: 6 },
+        { top: 1, left: 1, bottom: 2, right: 3 },
+      ],
+      headerClockPixels: 74,
+      witnessPainted: true,
+    },
+    {
+      label: "sgr.selective-reset.underline: expected frame — baseline",
+      chooseOrigin: undefined,
+      regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+      headerClockPixels: 69,
+      witnessPainted: false,
+    },
+    {
+      label: "sgr.selective-reset.italic: expected frame",
+      chooseOrigin: movedOrigin,
+      regions: [
+        { top: 3, left: 5, bottom: 3, right: 6 },
+        { top: 1, left: 1, bottom: 2, right: 3 },
+      ],
+      headerClockPixels: 73,
+      witnessPainted: true,
+    },
+    {
+      label: "sgr.selective-reset.inverse: expected frame",
+      chooseOrigin: movedOrigin,
+      regions: [
+        { top: 3, left: 5, bottom: 3, right: 6 },
+        { top: 1, left: 1, bottom: 2, right: 3 },
+      ],
+      headerClockPixels: 68,
+      witnessPainted: true,
+    },
+  ] as const
+
+  for (const fixture of fieldReads) {
+    const preRgba = blankFrame()
+    if (fixture.witnessPainted) {
+      paintCell(preRgba, movedOrigin, 1, 1, fg)
+      paintCell(preRgba, movedOrigin, 3, 3, fg)
+      paintCell(preRgba, movedOrigin, 3, 4, fg)
+      paintCell(preRgba, movedOrigin, 3, 5, fg)
+      paintCell(preRgba, movedOrigin, 3, 6, fg)
+    }
+    const writes: string[] = []
+    const src = { rows, cols, write: (text: string) => writes.push(text) } as unknown as TermProbeSource
+    const accepted = await readThroughSentinel({
+      source: src,
+      settled: {
+        origin: calibratedOrigin,
+        basis: "collector complete witnessed raster",
+        basisKind: "calibration witnessed raster",
+        pixelGeometry: warpGeom,
+        paintClasses,
+      },
+      prePaint: async () => ({ width, height, rgba: preRgba }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(writes[0] ?? "")
+        const afterRgba = new Uint8Array(preRgba)
+        for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+        paintHeaderClockTick(afterRgba, fixture.headerClockPixels)
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: fixture.label,
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: fixture.regions,
+      reading: calibratedOrigin,
+      ...(fixture.chooseOrigin !== undefined ? { chooseOrigin: fixture.chooseOrigin } : {}),
+      cell,
+      deadline: Date.now() + 1_000,
+    })
+    expect(accepted.origin, fixture.label).toEqual(movedOrigin)
+    expect(accepted.acceptedRowMove, fixture.label).toEqual({ rows: 35, px: 560 })
+    expect(accepted.changedOutside, fixture.label).toBe(0)
+    expect(accepted.changedOutsideGrid, fixture.label).toBe(fixture.headerClockPixels)
+  }
+
+  // Condition 3: a fixture with one changed pixel INSIDE the moved grid still fails with SentinelFrameMoved (changedOutside: 1).
+  {
+    const preRgba = blankFrame()
+    const writes: string[] = []
+    const src = { rows, cols, write: (text: string) => writes.push(text) } as unknown as TermProbeSource
+    const error = await readThroughSentinel({
+      source: src,
+      settled: {
+        origin: calibratedOrigin,
+        basis: "collector complete witnessed raster",
+        basisKind: "calibration witnessed raster",
+        pixelGeometry: warpGeom,
+        paintClasses,
+      },
+      prePaint: async () => ({ width, height, rgba: preRgba }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(writes[0] ?? "")
+        const afterRgba = new Uint8Array(preRgba)
+        for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+        paintHeaderClockTick(afterRgba, 74)
+        // One non-sentinel changed pixel inside the moved grid (row 4, col 10 at y = 606 + 3*16 = 654, x = 17 + 9*8 = 89).
+        const inGridOffset = ((movedOrigin.y + 3 * cell.height) * width + (movedOrigin.x + 9 * cell.width)) * 4
+        afterRgba[inGridOffset] = 123
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: "sgr.fg.default: expected frame — baseline (1 px in-grid change)",
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+      reading: calibratedOrigin,
+      cell,
+      deadline: Date.now() + 1_000,
+    }).catch((failure: unknown) => failure as SentinelFrameMoved)
+    expect(error).toBeInstanceOf(SentinelFrameMoved)
+    if (!(error instanceof SentinelFrameMoved)) throw new Error("unreachable: the read did not refuse by name")
+    expect(error.changedOutside).toBe(1)
+    expect(error.changedOutsideGrid).toBe(74)
+    expect(error.rowShift).toEqual({ rows: 35, px: 560 })
+  }
+
+  // Condition 1: when the row move is NOT proven (e.g. landing pose is not clear before paint),
+  // changedOutside keeps its whole-frame meaning (74) and changedOutsideGrid is absent.
+  {
+    const preRgba = blankFrame()
+    // Put ink at cell (1,2) of the moved grid so pairClearBeforePaint is false when chosen against blank (17,46).
+    paintCell(preRgba, movedOrigin, 1, 2, fg)
+    const writes: string[] = []
+    const src = { rows, cols, write: (text: string) => writes.push(text) } as unknown as TermProbeSource
+    const error = await readThroughSentinel({
+      source: src,
+      settled: {
+        origin: calibratedOrigin,
+        basis: "collector complete witnessed raster",
+        basisKind: "calibration witnessed raster",
+        pixelGeometry: warpGeom,
+        paintClasses,
+      },
+      prePaint: async () => ({ width, height, rgba: preRgba }),
+      capture: async (resolve) => {
+        const painted = parsePaintedCells(writes[0] ?? "")
+        const afterRgba = new Uint8Array(preRgba)
+        for (const pos of painted) paintCell(afterRgba, movedOrigin, pos.row, pos.col, sentinelRgb)
+        paintHeaderClockTick(afterRgba, 74)
+        return resolve({ frame: { width, height, rgba: afterRgba }, pixelGeometry: warpGeom })
+      },
+      label: "sgr.fg.default: unproven row move keeps whole-frame changedOutside",
+      sentinel: { form: "basic", rgb: sentinelRgb },
+      regions: [{ top: 1, left: 1, bottom: 1, right: 1 }],
+      reading: calibratedOrigin,
+      cell,
+      deadline: Date.now() + 1_000,
+    }).catch((failure: unknown) => failure as SentinelFrameMoved)
+    expect(error).toBeInstanceOf(SentinelFrameMoved)
+    if (!(error instanceof SentinelFrameMoved)) throw new Error("unreachable: the read did not refuse by name")
+    expect(error.changedOutside).toBe(74)
+    expect(error.changedOutsideGrid).toBeUndefined()
+  }
 })

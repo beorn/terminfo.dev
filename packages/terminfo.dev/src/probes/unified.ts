@@ -2297,6 +2297,7 @@ async function runProbeBatchInRun(
             ? {
                 evidence: {
                   changedOutside: error.changedOutside,
+                  ...(error.changedOutsideGrid !== undefined ? { changedOutsideGrid: error.changedOutsideGrid } : {}),
                   ...(error.rowShift !== undefined ? { rowShift: error.rowShift } : {}),
                 },
               }

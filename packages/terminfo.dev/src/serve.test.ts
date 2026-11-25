@@ -779,12 +779,9 @@ it.each(["absent", "failed to load", "inconclusive", "source-capable"])(
         },
         capture: async (checkpoint, origin) => {
           assert.equal(calibrationFailure, undefined, "graded captures require successful current calibration")
-          assert.ok(
-            grantedReadings.includes(origin) || origin.screenMode === "alternate-1049",
-            "every graded capture receives a reading this run installed",
-          )
+          assert.ok(grantedReadings.includes(origin), "every graded capture receives a reading this run installed")
           assert.strictEqual(origin.pixelGeometry, pixelGeometry)
-          capturedCheckpoints.push({ ...checkpoint, origin })
+          capturedCheckpoints.push(checkpoint)
           return { frame: { role: checkpoint.role, label: checkpoint.label, capturedAt: 2,
             ref: "sha256:" + (capturedCheckpoints.length === 1 ? "a" : "b").repeat(64) }, trace: {} }
         }
@@ -1543,7 +1540,6 @@ for (const [id, expected] of [["sgr.fg.default", 57], ["sgr.bg.default", 597]]) 
   expect(result.error, result.stderr).toBeUndefined()
   expect(result.status, result.stderr).toBe(0)
 })
-
 
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
