@@ -8214,6 +8214,43 @@ it("admits non-disposable cells on a window basis without refusing them as unlis
   }
 })
 
+// @failure `windowRefusal` runs before `basisScopeAdmits` in `runProbeBatchInRun`, so a disposable cell
+//   whose declared footprint is `app-instance` (`extensions.osc113/114/117/119`) or `machine`
+//   (`modes.bracketed-paste`) is looked up in `window-basis-table.ts` (derived only for `window` cells)
+//   and refuses with "appears in no window-basis table entry... run bun scripts/generate-window-basis-table.ts"
+//   while `basisScopeRefusal` is unreachable dead code (#31743, Terminal.app 2.15 run 38ef25c8).
+// @level l1
+// @consumer A window-scoped batch's footprint-scope check before `windowBasisAdmission`.
+it("refuses app-instance and machine footprint cells on a window basis via basisScopeRefusal rather than as unlisted window-basis table entries (#31743)", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const nonWindow = [
+    ["extensions.osc113-reset-pointer-fg", "app-instance"],
+    ["extensions.osc114-reset-pointer-bg", "app-instance"],
+    ["extensions.osc117-reset-highlight-bg", "app-instance"],
+    ["extensions.osc119-reset-highlight-fg", "app-instance"],
+    ["modes.bracketed-paste", "machine"],
+  ] as const
+  const batch = await runProbeBatch({
+    ids: nonWindow.map(([id]) => id),
+    subject: { kind: "term", id: "terminal-app", os: "darwin" },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    witnessWindow: { app: "terminal-app", read: async () => "2" },
+  })
+  for (const [id, footprint] of nonWindow) {
+    const row = batch.results.find((result) => result.featureId === id)
+    expect(row?.reason, `${id} names its declared footprint and basis scope`).toBe(
+      `Required grant missing: ${id} declares footprint ${footprint}; a window-scoped owner basis does not cover it`,
+    )
+    expect(row?.reason).not.toContain("generate-window-basis-table.ts")
+    expect(row?.tests?.[0]?.status).toBe("probe-todo")
+    expect((JSON.parse(batch.rawReplies[id] ?? "{}") as { writes?: unknown }).writes).toEqual([])
+  }
+})
+
 // @failure A cell whose probe resets its attribute to the DEFAULT is graded on a terminal that already
 //   holds the non-default value: pre is 1 and post is 2, the ledger throws, and one cell kills the rest
 //   of the run (@dev/brain e1b6910e1 review 1).
