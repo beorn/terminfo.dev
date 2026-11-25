@@ -426,22 +426,39 @@ export function classifyDevelopmentRun(run: LoadedRun): {
 }
 
 /**
- * The frozen runner's own build hash changes with every suite (its bundle embeds the suite), so the
- * same row measured on a later suite would otherwise land in a NEW context and never supersede the run
- * it replaces (27929 D5: three xterm/linux runs differed ONLY in this path). Mask it wherever a
- * config string enters a context key — it is apparatus, not a difference in how the row was measured.
- * The same normalization is used for original and working subject configurations.
- *
- * A unix socket address given to `--listen-on` is apparatus in the same way (#33543, @cto 22819c2f): the container
- * runner names Kitty's socket after the run id, so each run opened a new context. That a terminal listens on a unix
- * socket stays in the key (it changes behaviour); where it listens does not. A `tcp:` address is left as recorded.
+ * One Nix store-path matcher for build-provenance hashes that never change terminal configuration:
+ * - the frozen runner's own build hash (`terminfo-linux-runner/index.js`, 27929 D5), which changes with every suite;
+ * - a terminal binary's 32-character Nix store hash (`/nix/store/<hash>-<drv>/bin/<exe>`, #38544, @cto d394f157),
+ *   which changes on nixpkgs rebuilds of the exact same app version while package name, version, `/bin/<exe>`,
+ *   and every terminal flag stay identical (raw runs and binary sha256 retain full provenance).
  */
-export function maskRunnerStorePath(config: string | null): string | null
-export function maskRunnerStorePath(config: unknown): unknown
-export function maskRunnerStorePath(config: unknown): unknown {
+const NIX_STORE_HASH_RE =
+  /\/nix\/store\/([a-z0-9]+)-(?:(terminfo-linux-runner\/index\.js)|([A-Za-z0-9._+-]+\/bin\/[A-Za-z0-9._+-]+))/g
+
+function binaryStoreHash(config: string | null | undefined): string {
+  if (typeof config !== "string") return ""
+  for (const match of config.matchAll(NIX_STORE_HASH_RE)) {
+    const [, hash, runner, binary] = match
+    if (!runner && binary && hash && hash.length === 32) return hash
+  }
+  return ""
+}
+
+/**
+ * Strip apparatus and Nix build-provenance hashes wherever a config string enters a context key
+ * (#27929 D5, #33543 @cto 22819c2f, #38544 @cto d394f157). Keeps package name, version, `/bin/<exe>`,
+ * every terminal flag, and `tcp:` addresses intact; normalizes historical `app:`/`headless:` prefixes.
+ */
+export function maskStoreHashes(config: string | null): string | null
+export function maskStoreHashes(config: unknown): unknown
+export function maskStoreHashes(config: unknown): unknown {
   return typeof config === "string"
     ? config
-        .replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+        .replace(NIX_STORE_HASH_RE, (match, hash: string, runner: string | undefined, binary: string | undefined) => {
+          if (runner) return "<terminfo-linux-runner>"
+          if (binary && hash.length === 32) return `/nix/store/<hash>-${binary}`
+          return match
+        })
         .replace(/(--listen-on[ =]unix:)\S+/g, "$1<socket>")
         // Only the kind positions of an actual reviewed context key are historical vocabulary.
         .replace(/^(app|headless):([^@]+)@\["\1",/, (_prefix, kind: string, id: string) => {
@@ -452,16 +469,7 @@ export function maskRunnerStorePath(config: unknown): unknown {
 }
 
 const contextKey = (t: ProbeSubject): string =>
-  JSON.stringify([
-    t.kind,
-    t.id,
-    t.os,
-    t.osVersion,
-    t.outerTerminal,
-    t.mux,
-    maskRunnerStorePath(t.config),
-    t.permissions,
-  ])
+  JSON.stringify([t.kind, t.id, t.os, t.osVersion, t.outerTerminal, t.mux, maskStoreHashes(t.config), t.permissions])
 
 /**
  * Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by.
@@ -953,7 +961,7 @@ function composeContextSummaries(
       {
         version: string
         suite: string | null
-        probes: Map<ProbeMethod | null, { run: ProjectionRun; result: ProbeResult }>
+        probes: Map<string, { method: ProbeMethod | null; run: ProjectionRun; result: ProbeResult }>
       }
     >()
     const decided = DECIDED_STATUSES
@@ -1025,16 +1033,23 @@ function composeContextSummaries(
         prior?.version === run.subject.version &&
         prior.suite === run.probeHash &&
         method !== null &&
-        !prior.probes.has(null)
+        ![...prior.probes.values()].some((entry) => entry.method === null)
           ? prior.probes
-          : new Map<ProbeMethod | null, { run: ProjectionRun; result: ProbeResult }>()
-      probes.set(method, { run, result })
+          : new Map<string, { method: ProbeMethod | null; run: ProjectionRun; result: ProbeResult }>()
+      // #38544 (@cto d394f157): distinct Nix binary store hashes merged into one context stay
+      // distinct entries within the same suite so a grade disagreement surfaces as probe-conflict.
+      const rebuildHash = binaryStoreHash(run.subject.config)
+      probes.set(`${method ?? "unobserved"}@${rebuildHash}`, { method, run, result })
       currentMethods.set(result.featureId, { version: run.subject.version, suite: run.probeHash, probes })
-      const currentProbes = [...probes].map(([probeMethod, probe]) => ({
-        ...probe,
-        probeId: `${result.featureId}:${probeMethod ?? "unobserved"}`,
-        method: probeMethod,
-      }))
+      const distinctHashes = new Set([...probes.values()].map((entry) => binaryStoreHash(entry.run.subject.config)))
+      const currentProbes = [...probes.values()].map((probe) => {
+        const hash = binaryStoreHash(probe.run.subject.config)
+        const suffix = distinctHashes.size > 1 && hash ? `@${hash.slice(0, 8)}` : ""
+        return {
+          ...probe,
+          probeId: `${result.featureId}:${probe.method ?? "unobserved"}${suffix}`,
+        }
+      })
       const featureResult = computeFeatureResults(
         currentProbes.map((probe) => ({
           featureId: result.featureId,
@@ -1150,7 +1165,7 @@ function composeContextSummaries(
           osVersion: candidates[0].subject.osVersion,
           outerTerminal: candidates[0].subject.outerTerminal,
           mux: candidates[0].subject.mux,
-          config: maskRunnerStorePath(candidates[0].subject.config),
+          config: maskStoreHashes(candidates[0].subject.config),
           permissions: candidates[0].subject.permissions,
         },
       }),
