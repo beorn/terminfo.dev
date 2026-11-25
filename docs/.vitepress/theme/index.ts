@@ -1,6 +1,8 @@
 import DefaultTheme from "vitepress/theme"
 import type { Theme } from "vitepress"
 import ResultEvidenceCell from "./ResultEvidenceCell.vue"
+import DelegatedMatrix from "./DelegatedMatrix.vue"
+import MatrixBody from "./MatrixBody"
 import RunHistory from "./RunHistory.vue"
 import TermRow from "./TermRow.vue"
 import SupportBar from "./SupportBar.vue"
@@ -18,6 +20,8 @@ export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component("ResultEvidenceCell", ResultEvidenceCell)
+    app.component("DelegatedMatrix", DelegatedMatrix)
+    app.component("MatrixBody", MatrixBody)
     app.component("RunHistory", RunHistory)
     // #37761: one component per pattern, for every page.
     app.component("TermRow", TermRow)

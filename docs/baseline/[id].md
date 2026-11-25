@@ -12,7 +12,7 @@ import { baselineReadout } from '../data/baseline-readouts.ts'
 import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 import { platformIcon } from '../.vitepress/theme/platform-icons.ts'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
-import { featureAnchorId } from '../.vitepress/theme/bar-layout.ts'
+import { renderFlatMatrixBodyHtml } from '../.vitepress/theme/matrix-cells.ts'
 const { params } = useData()
 const p = params.value
 
@@ -47,6 +47,45 @@ function shareRow(s) {
 function platformIcons(b) {
   if (!b.platforms?.length) return ''
   return b.platforms.map(p => platformIcon(p)).filter(Boolean).join(' ')
+}
+
+const selectionFor = (name) => data.selectedByBackend[name]?.selected
+const featureById = new Map(features.map((f) => [f.id, f]))
+const backendLabelByName = new Map(backends.map((b) => [b.name, b.label]))
+const matrixFeatureRows = features.map((f) => ({
+  id: f.id,
+  name: f.name,
+  category: f.category,
+  slug: f.slug,
+  tooltip: featureTooltip(f),
+}))
+const renderAppMatrixBody = () =>
+  renderFlatMatrixBodyHtml({
+    features: matrixFeatureRows,
+    backends: appBackends,
+    selectionFor,
+    includeAnchors: true,
+    tooltipAttr: 'data-tooltip',
+  })
+const renderHeadlessMatrixBody = () =>
+  renderFlatMatrixBodyHtml({
+    features: matrixFeatureRows,
+    backends: headlessBackends,
+    selectionFor,
+    tooltipAttr: 'data-tooltip',
+  })
+function resolveMatrixCell(featureId, backendName) {
+  const feature = featureById.get(featureId)
+  if (!feature) return undefined
+  const version = selectionFor(backendName)
+  return {
+    featureId,
+    featureName: feature.name,
+    probeGuidance: data.featureDescriptions[featureId]?.probe,
+    subjectName: backendLabelByName.get(backendName) ?? backendName,
+    version,
+    cell: publicResultFor(version, featureId),
+  }
 }
 
 </script>
@@ -122,7 +161,8 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 
 ### Terminal Applications
 
-<div v-if="appBackends.length > 0" class="matrix-wrapper">
+<DelegatedMatrix v-if="appBackends.length > 0" :resolve-cell="resolveMatrixCell">
+<div class="matrix-wrapper">
 <table class="matrix">
   <thead>
     <tr>
@@ -133,19 +173,10 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
       </th>
     </tr>
   </thead>
-  <tbody>
-    <tr v-for="f in features" :key="f.id" :id="featureAnchorId(f.id)">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
-        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-      </td>
-      <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody :id="'baseline-' + p.id + '-app'" :render-html="renderAppMatrixBody" />
 </table>
 </div>
+</DelegatedMatrix>
 <p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
 
 <div v-if="headlessBackends.length > 0">
@@ -154,6 +185,7 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
 
 <p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
+<DelegatedMatrix :resolve-cell="resolveMatrixCell">
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">
   <thead>
@@ -164,19 +196,10 @@ Untestable reasons name the cause: **passed to the app**, **no way**, **no setup
       </th>
     </tr>
   </thead>
-  <tbody>
-    <tr v-for="f in features" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
-        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-      </td>
-      <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody :id="'baseline-' + p.id + '-headless'" :render-html="renderHeadlessMatrixBody" />
 </table>
 </div>
+</DelegatedMatrix>
 
 </div>
 

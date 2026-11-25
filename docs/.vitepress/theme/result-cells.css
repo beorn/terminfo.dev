@@ -57,6 +57,12 @@
   background: rgba(245, 158, 11, 0.04);
 }
 
+/* Defer off-screen layout/paint for large feature matrices (#38451). */
+.delegated-matrix > .matrix-wrapper {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
 /* One result control across matrix, feature, terminal, comparison and baseline tables. */
 .result-evidence {
   display: inline-flex;

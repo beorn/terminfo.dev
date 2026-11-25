@@ -520,6 +520,11 @@ export function loadClientProbesWithHistory(): {
   // Normalize undecided internal statuses ("probe-todo", "probe-invalid", "probe-conflict") to "no-result"
   // so no public JSON file carries internal undecided statuses (@cpo/term f16a5a52 Q4, check-private-leak).
   const sanitizeStatus = <T extends string>(status: T): T => (isPublishedStatus(status) ? status : "no-result") as T
+  const sanitizeChange = (text: string): string =>
+    text
+      .replaceAll("probe-todo", "no-result")
+      .replaceAll("probe-invalid", "no-result")
+      .replaceAll("probe-conflict", "no-result")
   const workingOriginals = Object.fromEntries(
     Object.entries(selected.history).map(([key, originals]) => [
       key,
@@ -530,13 +535,30 @@ export function loadClientProbesWithHistory(): {
     ]),
   )
   const shared = shareStates(workingHistory)
+  const sanitizedWorkingHistory = (shared.workingHistory ?? []).map((view) => ({
+    ...view,
+    contexts: view.contexts.map((context) => {
+      const { "probe-todo": _t, "probe-invalid": _i, "probe-conflict": _c, ...publicCounts } = context.counts
+      return {
+        ...context,
+        counts: publicCounts as typeof context.counts,
+        ...(context.changes
+          ? {
+              changes: Object.fromEntries(
+                Object.entries(context.changes).map(([fid, note]) => [fid, sanitizeChange(note)]),
+              ),
+            }
+          : {}),
+      }
+    }),
+  }))
   const sanitizedWorkingStates = (shared.workingStates ?? []).map((states) =>
     Object.fromEntries(Object.entries(states).map(([fid, st]) => [fid, sanitizeStatus(st)])),
   )
   return {
     client: { ...compactClient, hasWorkingHistory: true },
     workingHistoryPayload: {
-      workingHistory: shared.workingHistory ?? [],
+      workingHistory: sanitizedWorkingHistory,
       workingStates: sanitizedWorkingStates,
       workingOriginals,
     },

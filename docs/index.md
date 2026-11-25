@@ -17,19 +17,23 @@ hero:
 ---
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { displayMeasuredDate } from './.vitepress/theme/display-version.ts'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 import { baselineReadout } from './data/baseline-readouts.ts'
 import { platformIcon } from './.vitepress/theme/platform-icons.ts'
 import { rowFacts } from './.vitepress/theme/row-facts.ts'
-import { featureAnchorId } from './.vitepress/theme/bar-layout.ts'
+import { renderGroupedMatrixBodyHtml } from './.vitepress/theme/matrix-cells.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
 const baselineFilter = ref('all')
 const platformFilter = ref('all')
+const matrixFiltered = ref(false)
+watch([filter, categoryFilter, baselineFilter, platformFilter], () => {
+  matrixFiltered.value = true
+})
 
 // Display composed current contexts; a historical-only target has no row.
 const displayedSelections = { ...data.selectedByBackend }
@@ -221,6 +225,62 @@ function backendTooltip(name) {
   if (meta?.url) parts.push(meta.url)
   return parts.join('\n')
 }
+
+const featureById = new Map(data.features.map((f) => [f.id, f]))
+const selectionFor = (name) => displayedSelections[name]?.selected
+
+const matrixGroups = computed(() =>
+  filteredCategories.value.map((cat) => ({
+    id: cat,
+    label: catLabel(cat),
+    features: filteredFeatures(cat).map((f) => ({
+      id: f.id,
+      name: f.name,
+      category: f.category,
+      slug: featureSlug(f.id),
+      tooltip: featureTooltip(f),
+    })),
+  })),
+)
+
+const renderAppMatrixBody = () =>
+  renderGroupedMatrixBodyHtml({
+    groups: matrixGroups.value,
+    backends: appBackends.value.map((b) => ({ name: b.name, label: backendLabel(b.name) })),
+    selectionFor,
+    includeAnchors: true,
+    linkClass: 'hover-link',
+  })
+
+const renderHeadlessMatrixBody = () =>
+  renderGroupedMatrixBodyHtml({
+    groups: matrixGroups.value,
+    backends: headlessBackends.value.map((b) => ({ name: b.name, label: backendLabel(b.name) })),
+    selectionFor,
+    linkClass: 'hover-link',
+  })
+
+const renderMuxMatrixBody = () =>
+  renderGroupedMatrixBodyHtml({
+    groups: matrixGroups.value,
+    backends: muxBackends.value.map((b) => ({ name: b.name, label: backendLabel(b.name) })),
+    selectionFor,
+    linkClass: 'hover-link',
+  })
+
+function resolveMatrixCell(featureId, backendName) {
+  const feature = featureById.get(featureId)
+  if (!feature) return undefined
+  const version = selectionFor(backendName)
+  return {
+    featureId,
+    featureName: feature.name,
+    probeGuidance: data.featureDescriptions[featureId]?.probe,
+    subjectName: backendLabel(backendName),
+    version,
+    cell: publicResultFor(version, featureId),
+  }
+}
 </script>
 
 <main v-if="sortedBackends.length === 0" class="no-data">
@@ -283,7 +343,8 @@ function backendTooltip(name) {
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
-<div v-if="appBackends.length > 0" class="matrix-wrapper" tabindex="0" role="region" aria-label="Terminal application feature matrix">
+<DelegatedMatrix v-if="appBackends.length > 0" :resolve-cell="resolveMatrixCell">
+<div class="matrix-wrapper" tabindex="0" role="region" aria-label="Terminal application feature matrix">
 <table class="matrix">
   <thead>
     <tr>
@@ -295,24 +356,10 @@ function backendTooltip(name) {
       </th>
     </tr>
   </thead>
-  <tbody v-for="cat in filteredCategories" :key="cat">
-    <tr class="category-row">
-      <td :colspan="appBackends.length + 1" class="category-header">
-        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
-      </td>
-    </tr>
-    <tr v-for="f in filteredFeatures(cat)" :key="f.id" :id="featureAnchorId(f.id)">
-      <td class="feature-name" :title="featureTooltip(f)">
-        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
-      </td>
-      <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
-          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody id="home-app" :render-html="renderAppMatrixBody" :dynamic="matrixFiltered" />
 </table>
 </div>
+</DelegatedMatrix>
 
 <div v-if="headlessBackends.length > 0">
 
@@ -347,6 +394,7 @@ function backendTooltip(name) {
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
+<DelegatedMatrix :resolve-cell="resolveMatrixCell">
 <div class="matrix-wrapper" tabindex="0" role="region" aria-label="Headless backend feature matrix">
 <table class="matrix matrix-muted">
   <thead>
@@ -358,24 +406,10 @@ function backendTooltip(name) {
       </th>
     </tr>
   </thead>
-  <tbody v-for="cat in filteredCategories" :key="cat">
-    <tr class="category-row">
-      <td :colspan="headlessBackends.length + 1" class="category-header">
-        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
-      </td>
-    </tr>
-    <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :title="featureTooltip(f)">
-        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
-      </td>
-      <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
-          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody id="home-headless" :render-html="renderHeadlessMatrixBody" :dynamic="matrixFiltered" />
 </table>
 </div>
+</DelegatedMatrix>
 
 </div>
 
@@ -391,6 +425,7 @@ function backendTooltip(name) {
 </div>
 
 <p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
+<DelegatedMatrix :resolve-cell="resolveMatrixCell">
 <div class="matrix-wrapper" tabindex="0" role="region" aria-label="Multiplexer feature matrix">
 <table class="matrix matrix-muted">
   <thead>
@@ -402,24 +437,10 @@ function backendTooltip(name) {
       </th>
     </tr>
   </thead>
-  <tbody v-for="cat in filteredCategories" :key="cat">
-    <tr class="category-row">
-      <td :colspan="muxBackends.length + 1" class="category-header">
-        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
-      </td>
-    </tr>
-    <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :title="featureTooltip(f)">
-        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
-      </td>
-      <td v-for="b in muxBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
-          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody id="home-mux" :render-html="renderMuxMatrixBody" :dynamic="matrixFiltered" />
 </table>
 </div>
+</DelegatedMatrix>
 
 </div>
 

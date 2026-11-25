@@ -54,8 +54,8 @@ const effectiveStates = computed(() => props.states ?? loaded.value?.workingStat
 const effectiveOriginals = computed(() => props.originals ?? loaded.value?.workingOriginals)
 
 // #37341 Q1: the working view prints a status in the cell's own words; an undecided one reads "No result yet".
-const statusWords = (featureId: string, status: FeatureResultStatus) =>
-  evidenceStatusWords(evidenceStatus(featureId, status))
+const statusWords = (featureId: string, status: FeatureResultStatus | "no-result") =>
+  evidenceStatusWords(evidenceStatus(featureId, status === "no-result" ? undefined : status))
 const matches = (row: Pick<WorkingContext, "engine" | "kind">) =>
   !props.subjects || props.subjects.some((subject) => subject.engine === row.engine && subject.kind === row.kind)
 const originalEntries = computed(() =>

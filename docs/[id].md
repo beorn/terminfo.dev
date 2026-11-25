@@ -9,6 +9,7 @@ import { publicResultFor } from './data/release-scope'
 import { useData } from 'vitepress'
 import { data } from './data/probes.data'
 import { platformIcon } from './.vitepress/theme/platform-icons.ts'
+import { renderFlatMatrixBodyHtml } from './.vitepress/theme/matrix-cells.ts'
 const { params } = useData()
 const p = params.value
 
@@ -55,6 +56,42 @@ function platformIcons(b) {
   if (!b.platforms?.length) return ''
   return b.platforms.map(p => platformIcon(p)).filter(Boolean).join(' ')
 }
+
+const selectionFor = (name) => data.selectedByBackend[name]?.selected
+const featureById = new Map(features.map((f) => [f.id, f]))
+const backendLabelByName = new Map(backends.map((b) => [b.name, b.label]))
+const matrixFeatureRows = features.map((f) => ({
+  id: f.id,
+  name: f.name,
+  category: f.category,
+  slug: f.slug,
+  tooltip: featureTooltip(f),
+}))
+const renderAppMatrixBody = () =>
+  renderFlatMatrixBodyHtml({
+    features: matrixFeatureRows,
+    backends: appBackends,
+    selectionFor,
+  })
+const renderHeadlessMatrixBody = () =>
+  renderFlatMatrixBodyHtml({
+    features: matrixFeatureRows,
+    backends: headlessBackends,
+    selectionFor,
+  })
+function resolveMatrixCell(featureId, backendName) {
+  const feature = featureById.get(featureId)
+  if (!feature) return undefined
+  const version = selectionFor(backendName)
+  return {
+    featureId,
+    featureName: feature.name,
+    probeGuidance: data.featureDescriptions[featureId]?.probe,
+    subjectName: backendLabelByName.get(backendName) ?? backendName,
+    version,
+    cell: publicResultFor(version, featureId),
+  }
+}
 </script>
 
 <div class="category-page">
@@ -96,7 +133,8 @@ function platformIcons(b) {
 
 ## Terminal Applications
 
-<div v-if="appBackends.length > 0" class="matrix-wrapper">
+<DelegatedMatrix v-if="appBackends.length > 0" :resolve-cell="resolveMatrixCell">
+<div class="matrix-wrapper">
 <table class="matrix">
   <thead>
     <tr>
@@ -107,19 +145,10 @@ function platformIcons(b) {
       </th>
     </tr>
   </thead>
-  <tbody>
-    <tr v-for="f in features" :key="f.id">
-      <td class="feature-name" :title="featureTooltip(f)">
-        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-      </td>
-      <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody :id="'cat-' + p.id + '-app'" :render-html="renderAppMatrixBody" />
 </table>
 </div>
+</DelegatedMatrix>
 <p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
 
 <div v-if="headlessBackends.length > 0">
@@ -128,6 +157,7 @@ function platformIcons(b) {
 
 <p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
+<DelegatedMatrix :resolve-cell="resolveMatrixCell">
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">
   <thead>
@@ -138,19 +168,10 @@ function platformIcons(b) {
       </th>
     </tr>
   </thead>
-  <tbody>
-    <tr v-for="f in features" :key="f.id">
-      <td class="feature-name" :title="featureTooltip(f)">
-        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
-      </td>
-      <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
-      </td>
-    </tr>
-  </tbody>
+  <MatrixBody :id="'cat-' + p.id + '-headless'" :render-html="renderHeadlessMatrixBody" />
 </table>
 </div>
+</DelegatedMatrix>
 
 </div>
 
