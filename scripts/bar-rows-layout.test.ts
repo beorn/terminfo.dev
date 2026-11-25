@@ -178,15 +178,46 @@ describe("layout, hover, and single-system CSS/component contracts (#37631 fixes
     expect(featureMd).toContain("termAnchorId")
   })
 
-  it("renders ResultEvidenceCell with v12 single-surface layout (top-right pill, bytes left / words right, blue ← reply, top-aligned shots, Details disclosure) (#38269)", () => {
+  it("renders ResultEvidenceCell with Style 5 single-surface layout (top-right pill, bytes left / words right, blue ← reply, pair shots, Details disclosure) (#38269)", () => {
     expect(resultCardVue).toContain("rc-top")
     expect(resultCardVue).toContain("rc-steps")
+    expect(resultCardVue).toContain("rc-pair")
     expect(resultCardVue).toContain("rc-rep")
     expect(resultCardVue).toContain("rc-mk")
-    expect(resultCardVue).toContain("rc-shots")
+    expect(resultCardVue).toContain("rc-pic")
     expect(resultCardVue).toContain("detailsSummaryLabel")
     expect(resultCardVue).not.toContain("No test sequence declared.")
     expect(resultCardVue).not.toContain("tracePaneCopy.expected.behavior")
+  })
+
+  it("groups feature-page results by verdict with a compact summary, keeps 390px sub-feature tables horizontally scrollable inside their box, and wires keyboard focus + SR labels on hover cards and result panes (#38266)", () => {
+    // AC1: compact verdict summary strip + grouped verdict sections leading to inline full card drill-down.
+    expect(featureMd).toContain("feature-verdict-summary")
+    expect(featureMd).toContain("feature-verdict-groups")
+    expect(featureMd).toContain("appVerdictGroups")
+    expect(featureMd).toContain("RESULT_CATEGORIES")
+
+    // AC2: wide sub-feature tables scroll inside their own region without page-wide overflow; touch-action on segments & triggers.
+    expect(featureMd).toContain("sub-features-wrapper")
+    expect(featureMd).toMatch(/\.sub-features-wrapper\s*\{[^}]*overflow-x:\s*auto/s)
+    expect(featureMd).toMatch(/\.sub-features-wrapper\s+\.sub-features-table[\s\S]*?width:\s*max-content/s)
+    expect(barCss).toMatch(/\.support-bar-seg\s*\{[^}]*touch-action:\s*manipulation/s)
+
+    // AC3: keyboard focus order & screen-reader labels on SupportBar popover, cascading pane, and ResultEvidenceCell.
+    expect(supportBarVue).toContain('aria-haspopup="dialog"')
+    expect(supportBarVue).toContain(':aria-controls="open ? popId : undefined"')
+    expect(supportBarVue).toContain(':aria-labelledby="tabId(tab)"')
+    expect(supportBarVue).toContain("onTriggerKeydown")
+    expect(supportBarVue).toContain("onTabKeydown")
+    expect(supportBarVue).toContain("onPopKeydown")
+    expect(supportBarVue).toContain("focusTriggerWithoutReopen")
+    expect(supportBarVue).toContain("feature support breakdown")
+    expect(supportBarVue).toContain("result categories")
+    expect(resultCardVue).toContain("result for ${subjectName}")
+    expect(resultCardVue).toContain("onTriggerKeydown")
+    expect(resultCardVue).toContain("onPreviewKeydown")
+    expect(resultCardVue).toContain("onTriggerFocus")
+    expect(resultCardVue).not.toContain('aria-label="Result preview"')
   })
 
   it("omits Technical details when nothing adds to Test sequence + Expected + Observed, and keeps genuinely new detail (#37631)", () => {

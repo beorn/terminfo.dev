@@ -7,6 +7,7 @@ next: false
 <script setup>
 import { ref, watch } from 'vue'
 import { publicResultFor } from '../data/release-scope'
+import { RESULT_CATEGORIES } from '../data/result-categories'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
@@ -39,6 +40,8 @@ const subFeatures = JSON.parse(p.subFeatures || '[]')
 const backendNames = JSON.parse(p.backendNames || '[]')
 const appResults = backendResults.filter(r => r.type === 'term')
 const headlessResults = backendResults.filter(r => r.type === 'lib')
+// #38266: group feature-page results by verdict (Supported / Unsupported / Differs by context / Untestable / No result yet)
+// reading directly from RESULT_CATEGORIES (#37761) so marks, labels, and tones stay single-sourced.
 // #37761: one result row per terminal. The mark is this terminal's category for the feature, read from its bar's own
 // fold; the short name sits beside its platform icon (two Ghostty rows read apart); the row links to the terminal and
 // the evidence cell stays at the row's end.
@@ -54,10 +57,12 @@ function resultRows(rows) {
     const base = facts.name(r.name)
     const platform = facts.platform(r.name)
     const shortOs = platform === 'macOS' ? 'Mac' : platform
-    const displayName = shortOs && (baseNameCounts.get(base) ?? 0) > 1 ? `${base} (${shortOs})` : base
+    const hasPlatformTwin = Boolean(shortOs && (baseNameCounts.get(base) ?? 0) > 1)
+    const displayName = hasPlatformTwin ? `${base} (${shortOs})` : base
     return {
       id: r.name,
-      anchor: termAnchorId(r.slug),
+      categoryId: category.id,
+      anchor: termAnchorId(hasPlatformTwin ? `${r.slug}-${platform}` : r.slug),
       name: displayName,
       href: '/terminals/' + r.slug,
       mark: category.mark,
@@ -68,6 +73,20 @@ function resultRows(rows) {
     }
   })
 }
+function groupByVerdict(rows) {
+  const formatted = resultRows(rows)
+  return RESULT_CATEGORIES
+    .map(group => ({
+      id: group.id,
+      label: group.label,
+      mark: group.mark,
+      tone: group.style,
+      items: formatted.filter(item => item.categoryId === group.id),
+    }))
+    .filter(group => group.items.length > 0)
+}
+const appVerdictGroups = groupByVerdict(appResults)
+const headlessVerdictGroups = groupByVerdict(headlessResults)
 const appBackends = backendNames.filter(b => b.type === 'term')
 const headlessBackends = backendNames.filter(b => b.type === 'lib')
 
@@ -134,40 +153,72 @@ function termTooltip(r) {
 </p>
 <p v-else class="feature-score">No results yet for this feature.</p>
 
+<nav v-if="appVerdictGroups.length > 0" class="feature-verdict-summary" aria-label="Terminal application verdict summary">
+  <a
+    v-for="group in appVerdictGroups"
+    :key="group.id"
+    :href="'#verdict-' + group.id"
+    class="feature-verdict-chip"
+    :class="'feature-verdict-chip--' + group.tone"
+  >
+    <span class="result-mark" aria-hidden="true">{{ group.mark }}</span>
+    <span class="feature-verdict-chip-label">{{ group.label }}</span>
+    <span class="feature-verdict-chip-count">{{ group.items.length }}</span>
+  </a>
+</nav>
+
 ## Terminal Applications
 
-<ResultList v-if="appResults.length > 0" :items="resultRows(appResults)" :active-id="openBackendId" class="feature-results" technical-notes>
-  <template #after="{ item }">
-    <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
-  </template>
-  <template #detail="{ item }">
-    <div class="feature-detail-card">
-      <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-        :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
-    </div>
-  </template>
-</ResultList>
+<div v-if="appVerdictGroups.length > 0" class="feature-verdict-groups">
+  <section v-for="group in appVerdictGroups" :key="group.id" :id="'verdict-' + group.id" class="feature-verdict-group">
+    <h3 class="feature-verdict-heading" :class="'feature-verdict-heading--' + group.tone">
+      <span class="result-mark" aria-hidden="true">{{ group.mark }}</span>
+      <span>{{ group.label }}</span>
+      <span class="feature-verdict-count">{{ group.items.length }}</span>
+    </h3>
+    <ResultList :items="group.items" :active-id="openBackendId" class="feature-results" technical-notes>
+      <template #after="{ item }">
+        <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+          :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
+      </template>
+      <template #detail="{ item }">
+        <div class="feature-detail-card">
+          <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+            :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
+        </div>
+      </template>
+    </ResultList>
+  </section>
+</div>
 <p v-else class="no-data-inline">No app results yet.</p>
 
-<div v-if="headlessResults.length > 0">
+<div v-if="headlessVerdictGroups.length > 0">
 
 ## Headless Backends
 
 <p class="headless-note">Parser backends tested without a GUI; select any result to see what was sent and observed.</p>
 
-<ResultList :items="resultRows(headlessResults)" :active-id="openBackendId" class="feature-results result-list-muted" technical-notes>
-  <template #after="{ item }">
-    <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-      :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
-  </template>
-  <template #detail="{ item }">
-    <div class="feature-detail-card">
-      <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
-        :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
-    </div>
-  </template>
-</ResultList>
+<div class="feature-verdict-groups">
+  <section v-for="group in headlessVerdictGroups" :key="group.id" :id="'headless-verdict-' + group.id" class="feature-verdict-group">
+    <h3 class="feature-verdict-heading" :class="'feature-verdict-heading--' + group.tone">
+      <span class="result-mark" aria-hidden="true">{{ group.mark }}</span>
+      <span>{{ group.label }}</span>
+      <span class="feature-verdict-count">{{ group.items.length }}</span>
+    </h3>
+    <ResultList :items="group.items" :active-id="openBackendId" class="feature-results result-list-muted" technical-notes>
+      <template #after="{ item }">
+        <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+          :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" display="label" emit-select :active="openBackendId === item.id" @select="toggleBackendCard(item.id)" />
+      </template>
+      <template #detail="{ item }">
+        <div class="feature-detail-card">
+          <ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="item.name"
+            :version="data.selectedByBackend[item.id]?.selected" :cell="publicResultFor(data.selectedByBackend[item.id]?.selected, p.featureId)" inline closable @close="closeBackendCard" />
+        </div>
+      </template>
+    </ResultList>
+  </section>
+</div>
 
 </div>
 
@@ -177,7 +228,7 @@ function termTooltip(r) {
 
 <p class="sub-features-note">This feature has {{ subFeatures.length }} individually testable sub-features.</p>
 
-<div class="matrix-wrapper">
+<div class="matrix-wrapper sub-features-wrapper" tabindex="0" role="region" aria-label="Sub-features support matrix">
 <table class="support-table sub-features-table">
   <thead>
     <tr>
@@ -225,6 +276,9 @@ function termTooltip(r) {
 }
 
 .feature-sequence code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
   font-family: var(--vp-font-family-mono);
   font-size: 1.1em;
   padding: 6px 12px;
@@ -455,11 +509,92 @@ function termTooltip(r) {
 }
 
 .feature-detail-card {
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 16px 18px 14px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 12px;
   background: var(--vp-c-bg-elv);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+
+.feature-verdict-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0.6em 0 1.2em;
+}
+
+.feature-verdict-chip,
+.vp-doc a.feature-verdict-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  font-size: 0.85em;
+  font-weight: 500;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.feature-verdict-chip:hover,
+.feature-verdict-chip:focus-visible {
+  border-color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.feature-verdict-chip--yes .result-mark,
+.feature-verdict-heading--yes .result-mark { color: #10b981; }
+.feature-verdict-chip--fail .result-mark,
+.feature-verdict-heading--fail .result-mark { color: #dc2626; }
+.dark .feature-verdict-chip--fail .result-mark,
+.dark .feature-verdict-heading--fail .result-mark { color: #f87171; }
+.feature-verdict-chip--differs .result-mark,
+.feature-verdict-heading--differs .result-mark { color: #6366f1; }
+.feature-verdict-chip--partial .result-mark,
+.feature-verdict-heading--partial .result-mark { color: #d97706; }
+.feature-verdict-chip--none .result-mark,
+.feature-verdict-heading--none .result-mark { color: var(--vp-c-text-3); }
+
+.feature-verdict-chip-count,
+.feature-verdict-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-text-3);
+  font-weight: 600;
+}
+
+.feature-verdict-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0.4em 0 1.2em;
+}
+
+.feature-verdict-group {
+  scroll-margin-top: 84px;
+}
+
+.feature-verdict-heading,
+.vp-doc h3.feature-verdict-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  font-size: 0.88em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--vp-c-text-2);
+}
+
+.feature-verdict-group .feature-results,
+.vp-doc .feature-verdict-group .feature-results {
+  margin: 2px 0 0;
 }
 
 @media (max-width: 640px) {
@@ -489,19 +624,77 @@ function termTooltip(r) {
   margin-top: -0.5em;
 }
 
+.sub-features-wrapper {
+  margin: 1em 0;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+.sub-features-wrapper:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+.sub-features-wrapper .sub-features-table,
+.vp-doc .sub-features-wrapper .sub-features-table {
+  display: table;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+  margin: 0;
+  border: 0;
+}
+
+.sub-features-table th:nth-child(n),
+.sub-features-table td:nth-child(n) {
+  width: auto;
+}
+
+.sub-features-table th:first-child,
+.sub-features-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 140px;
+  max-width: 220px;
+  background: var(--vp-c-bg);
+  box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.14);
+}
+
+.sub-features-table tbody tr:nth-child(2n) td:first-child {
+  background: var(--vp-c-bg-soft);
+}
+
+.sub-features-table th:first-child {
+  z-index: 2;
+  background: var(--vp-c-bg-soft);
+}
+
+@media (max-width: 640px) {
+  .sub-features-table th:first-child,
+  .sub-features-table td:first-child {
+    min-width: 132px;
+    max-width: 168px;
+  }
+}
+
 .sub-features-table .backend-col {
   font-size: 0.8em;
   text-align: center;
   white-space: nowrap;
-  max-width: 80px;
+  min-width: 56px;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .sub-features-table .result-cell {
   text-align: center;
-  width: 40px;
-  min-width: 40px;
+  width: 44px;
+  min-width: 44px;
   padding: 4px 6px;
   font-size: 0.9em;
 }
