@@ -186,11 +186,35 @@ it("the rebuild marker names the target revision and clears only via the returne
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
       schema: "terminfo-site-rebuild/1",
       target: "a".repeat(40),
+      // The default is the strict reading: a code build withholds the landing's code until it lands.
+      kind: "code",
     })
     clear?.()
     expect(existsSync(path)).toBe(false)
     // Clearing twice is a no-op, never a throw: the caller may exit between the two.
     expect(() => clear?.()).not.toThrow()
+  } finally {
+    // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+    // unavailable; `root` is this test's own mkdtemp scratch root
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it("records which kind of build wrote the marker, so a run leftover never pages as a stale code build (#38595)", () => {
+  // A run rebuild keeps the previous dist serving the landing's code for its whole duration, so the probe must be
+  // able to tell its leftover from a code build's: only the latter means the preview withholds the landing.
+  const root = mkdtempSync(join(tmpdir(), "terminfo-site-marker-kind-"))
+  try {
+    const env: NodeJS.ProcessEnv = { TERMINFO_SITE_OUT_DIR: root }
+    const clear = writeSiteRebuildMarker("c".repeat(40), env, "run")
+    const path = join(root, "rebuild.json")
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      schema: "terminfo-site-rebuild/1",
+      target: "c".repeat(40),
+      kind: "run",
+    })
+    clear?.()
+    expect(existsSync(path)).toBe(false)
   } finally {
     // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
     // unavailable; `root` is this test's own mkdtemp scratch root

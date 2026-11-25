@@ -245,7 +245,7 @@ export async function rebuildForRun(args: {
   console.log(
     `terminfo-site: hourly run ${args.runId} is newer than the served ${previous} — rebuilding into ${staging}`,
   )
-  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot })
+  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot }, "run")
   claimStaging(staging, { target: args.target, runId: args.runId })
   const status = await (args.runBuild ?? siteBuild)({
     ...process.env,
@@ -331,7 +331,7 @@ export async function buildLanding(
   // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker` for why it
   // is cleared only once the outcome is known: on success because the build landed, on a kept previous build because
   // this program has stopped rebuilding and is serving again.
-  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot })
+  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot }, "code")
   claimStaging(staging, { target: args.target, runId: null }, now)
   // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
   // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
