@@ -43,7 +43,8 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     terminal: "herdr",
     subjectKind: "mux",
     da1Pattern: /^\x1b\[\?62;22c$/,
-    da2Pattern: /^\x1b\[>1;0;0c$/,
+    // The collector's DA1 sentinel answer follows the DA2 reply, as on Screen and kitty.
+    da2Pattern: /^\x1b\[>1;0;0c(?:\x1b\[\?[0-9;]+c)?$/,
     xtversionPattern: /^libghostty$/,
     requireXtversion: true,
   },
@@ -55,7 +56,7 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     terminal: "zellij",
     subjectKind: "mux",
     da1Pattern: /^\x1b\[\?62;(?:4;)?52c$/,
-    da2Pattern: /^\x1b\[>0;\d+;1c$/,
+    da2Pattern: /^\x1b\[>0;\d+;1c(?:\x1b\[\?[0-9;]+c)?$/,
     xtversionPattern: /^Zellij\(\d+\)$/,
     requireXtversion: true,
   },
