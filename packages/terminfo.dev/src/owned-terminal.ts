@@ -2205,13 +2205,16 @@ export async function createOwnedTerminal(options: {
         appComm: TERMINAL_APP_HOSTED.comm,
         appId: TERMINAL_APP_HOSTED.id,
         ownedHost: true,
-        assertOwned: async () => {
-          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
-          assertOwnedTerminalWindow(
-            { provider: "terminal-app", windowId: ownedShell.windowId, tty: ownedShell.tabTty },
-            process.pid,
-          )
-        },
+        // Synchronous checks; the executor turns a throw into the rejection the adapter awaits.
+        assertOwned: () =>
+          new Promise<void>((resolve) => {
+            if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
+            assertOwnedTerminalWindow(
+              { provider: "terminal-app", windowId: ownedShell.windowId, tty: ownedShell.tabTty },
+              process.pid,
+            )
+            resolve()
+          }),
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
