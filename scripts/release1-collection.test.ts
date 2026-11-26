@@ -143,8 +143,9 @@ const specimen = {
     engineVersion: "6.0.0",
   },
 } as const
-const currentManifestPath = join(CONTENT, "suites", "4b01b0117e18.json")
-const currentManifest = parseSuiteManifest(currentManifestPath, readFileSync(currentManifestPath, "utf8"))
+const currentManifest = versions.derivedSuiteManifest()
+const frozenManifestPath = join(CONTENT, "suites", "4b01b0117e18.json")
+const frozenManifest = parseSuiteManifest(frozenManifestPath, readFileSync(frozenManifestPath, "utf8"))
 if (currentManifest.schemaVersion !== 4 || !currentManifest.catalogIds) {
   throw new Error("Collection fixture requires the committed schema-4 catalogue")
 }
@@ -264,7 +265,7 @@ it.each([
     const draft = initializeRunDraft({
       runId: "foreign-retained-attempt",
       sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim(),
-      manifest: { ...currentManifest, schemaVersion: 4 },
+      manifest: { ...(suite === "different" ? frozenManifest : currentManifest), schemaVersion: 4 },
       source: { kind: "live" },
       intendedSubject: { kind: "lib", id: "xtermjs" },
     })

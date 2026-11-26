@@ -122,8 +122,20 @@ function fixture(alacritty = false) {
       ...launch,
       ...(alacritty ? { mesaRenderer: structuredClone(alacrittyLaunch.mesaRenderer) } : {}),
     }
+  const recorded = new Set(decoded.run.results.map((result) => result.featureId))
+  const catalogue = Object.keys(JSON.parse(readFileSync(join(root, "content/features.json"), "utf8")) as object)
+  const added = catalogue
+    .filter((id) => id !== "$comment" && !recorded.has(id))
+    .map((featureId) => ({
+      featureId,
+      status: "test-todo" as const,
+      attempt: { scope: "none" as const },
+      tests: [],
+      reason: "Required probe test has not started",
+    }))
   const run = {
     ...decoded.run,
+    results: [...decoded.run.results, ...added] as typeof decoded.run.results,
     probeHash: manifest.probeHash,
     suiteId: manifest.probeHash,
     origin: {
