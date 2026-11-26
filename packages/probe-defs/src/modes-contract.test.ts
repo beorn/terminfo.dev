@@ -27,16 +27,32 @@ import {
 
 /** The 29 Modes features of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
 const MODES_CONTRACT: GroupContract = [
-  { id: "modes.alt-screen.enter", expected: "decided", claim: "DECRPM 1049 recognizes alt-screen enter" },
+  {
+    id: "modes.alt-screen.enter",
+    expected: "decided",
+    claim: "The alternate-buffer marker read decides; DECRPM 1049 alone reads Recognized",
+  },
   {
     id: "modes.alt-screen.exit",
     expected: "inconclusive",
     claim: "Alt-screen exit buffer restore needs pixel review; CPR after exit does not measure the buffer",
   },
-  { id: "modes.bracketed-paste", expected: "decided", claim: "DECRPM 2004 recognizes bracketed paste" },
-  { id: "modes.application-cursor", expected: "decided", claim: "DECRPM 1 recognizes application cursor keys" },
-  { id: "modes.auto-wrap", expected: "decided", claim: "DECRPM 7 recognizes auto-wrap" },
-  { id: "modes.mouse-tracking", expected: "decided", claim: "DECRPM 1000 recognizes mouse tracking" },
+  {
+    id: "modes.bracketed-paste",
+    expected: "decided",
+    claim: "The paste-delimiter read decides; DECRPM 2004 alone reads Recognized",
+  },
+  {
+    id: "modes.application-cursor",
+    expected: "decided",
+    claim: "The Up-key encoding read decides; DECRPM 1 alone reads Recognized",
+  },
+  { id: "modes.auto-wrap", expected: "decided", claim: "The wrap cursor read decides; DECRPM 7 alone never passes" },
+  {
+    id: "modes.mouse-tracking",
+    expected: "decided",
+    claim: "The click-report read decides; DECRPM 1000 alone reads Recognized",
+  },
   {
     id: "modes.focus-tracking",
     expected: "inconclusive",
@@ -54,8 +70,16 @@ const MODES_CONTRACT: GroupContract = [
     expected: "inconclusive",
     claim: "Insert/replace mode needs a measured cell-shift fixture, not DECRPM alone",
   },
-  { id: "modes.mouse-sgr", expected: "decided", claim: "DECRPM 1006 recognizes SGR mouse" },
-  { id: "modes.mouse-all", expected: "decided", claim: "DECRPM 1003 recognizes all-motion mouse" },
+  {
+    id: "modes.mouse-sgr",
+    expected: "decided",
+    claim: "The SGR click-encoding read decides; DECRPM 1006 alone reads Recognized",
+  },
+  {
+    id: "modes.mouse-all",
+    expected: "decided",
+    claim: "The buttonless-motion read decides; DECRPM 1003 alone reads Recognized",
+  },
   {
     id: "modes.application-keypad",
     expected: "decided",
