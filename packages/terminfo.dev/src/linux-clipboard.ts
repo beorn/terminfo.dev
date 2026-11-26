@@ -603,6 +603,44 @@ export function muxTitleCommand(
   }
 }
 
+/**
+ * The socket inodes a mux process holds, read from its fd links (#38759). A descriptor that closed between the listing
+ * and its readlink (ENOENT) is skipped: it cannot be the socket the attachment proof needs, and the connected-socket
+ * check still refuses if that socket is gone. Any other unreadable descriptor refuses. Run ea7fd487 put 181 rows in
+ * invalid on that race.
+ */
+export function fdSocketInodes(
+  pid: number,
+  name: string,
+  io: { readdir: (path: string) => string[]; readlink: (path: string) => string } = {
+    readdir: (path) => readdirSync(path),
+    readlink: (path) => readlinkSync(path),
+  },
+): Set<string> {
+  const directory = `/proc/${pid}/fd`
+  const inodes = new Set<string>()
+  let descriptors: string[]
+  try {
+    descriptors = io.readdir(directory)
+  } catch (cause) {
+    throw new Error(`Owned mux ${name} fd directory ${directory} cannot be read`, { cause })
+  }
+  for (const fd of descriptors) {
+    let link: string
+    try {
+      link = io.readlink(`${directory}/${fd}`)
+    } catch (cause) {
+      // silent-fallback-allow: a descriptor that closed after the listing is not the attachment socket, and the
+      // connected-socket check refuses by name if that socket is gone
+      if ((cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT") continue
+      throw new Error(`Owned mux ${name} fd link ${directory}/${fd} cannot be read`, { cause })
+    }
+    const match = /^socket:\[(\d+)\]$/.exec(link)
+    if (match?.[1]) inodes.add(match[1])
+  }
+  return inodes
+}
+
 export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid owned clipboard receipt")
   const r = value as Partial<ClipboardReceipt>
@@ -921,29 +959,8 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         throw new Error(`Owned mux ${name} requires exactly one attached client; found ${clients.length}`)
       }
       client = processIdentity(clientPid)
-      const socketInodes = (pid: number): Set<string> => {
-        const directory = `/proc/${pid}/fd`
-        const inodes = new Set<string>()
-        let descriptors: string[]
-        try {
-          descriptors = readdirSync(directory)
-        } catch (cause) {
-          throw new Error(`Owned mux ${name} fd directory ${directory} cannot be read`, { cause })
-        }
-        for (const fd of descriptors) {
-          let link: string
-          try {
-            link = readlinkSync(`${directory}/${fd}`)
-          } catch (cause) {
-            throw new Error(`Owned mux ${name} fd link ${directory}/${fd} cannot be read`, { cause })
-          }
-          const match = /^socket:\[(\d+)\]$/.exec(link)
-          if (match?.[1]) inodes.add(match[1])
-        }
-        return inodes
-      }
-      const clientSockets = socketInodes(client.pid)
-      const serverSockets = socketInodes(server.pid)
+      const clientSockets = fdSocketInodes(client.pid, name)
+      const serverSockets = fdSocketInodes(server.pid, name)
       // ss -xnH: Netid State Recv-Q Send-Q Local-Address Local-Port(inode) Peer-Address Peer-Port(inode).
       const rows = (await command("ss", ["-xnH"]))
         .trim()

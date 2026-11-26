@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { muxTitleCommand } from "./linux-clipboard.ts"
+import { fdSocketInodes, muxTitleCommand } from "./linux-clipboard.ts"
 
 const target = (mux: "tmux" | "screen" | "herdr" | "zellij") => ({
   mux,
@@ -43,5 +43,35 @@ describe("the command that reads a mux pane's title (#38759)", () => {
   it("is none for herdr and Zellij, which have no reviewed title reader", () => {
     expect(muxTitleCommand(target("herdr"))).toBeUndefined()
     expect(muxTitleCommand(target("zellij"))).toBeUndefined()
+  })
+})
+
+describe("the socket inodes a mux process holds (#38759)", () => {
+  const enoent = Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" })
+  const eacces = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })
+  const links: Record<string, string | Error> = {
+    "/proc/7/fd/0": "/dev/pts/3",
+    "/proc/7/fd/3": "socket:[4242]",
+    "/proc/7/fd/9": enoent,
+    "/proc/7/fd/11": "socket:[4343]",
+  }
+  const io = (overrides: Record<string, string | Error> = {}) => ({
+    readdir: () => Object.keys({ ...links, ...overrides }).map((path) => path.slice("/proc/7/fd/".length)),
+    readlink: (path: string) => {
+      const link = { ...links, ...overrides }[path]
+      if (link instanceof Error) throw link
+      if (link === undefined) throw new Error(`fixture has no ${path}`)
+      return link
+    },
+  })
+
+  it("skips a descriptor that closed between the listing and its readlink (run ea7fd487: 181 rows invalid)", () => {
+    expect([...fdSocketInodes(7, "Zellij", io())].sort()).toEqual(["4242", "4343"])
+  })
+
+  it("still refuses a descriptor it cannot read for any other reason", () => {
+    expect(() => fdSocketInodes(7, "Zellij", io({ "/proc/7/fd/3": eacces }))).toThrow(
+      "Owned mux Zellij fd link /proc/7/fd/3 cannot be read",
+    )
   })
 })
