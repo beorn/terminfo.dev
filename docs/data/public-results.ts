@@ -12,6 +12,7 @@ import type {
 import { classifyProjectionSetups, type CurrentResult } from "./current-results.ts"
 import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
 import type { SetupStanding } from "./run-selection.ts"
+import type { AnalysisProgressReporter } from "./analysis-progress.ts"
 import { isPublishedStatus, standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
 import type { FeatureResult, RollupCounts } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
@@ -411,9 +412,15 @@ export function publicResults(
   joined?: ReadonlyMap<string, JoinedApp>,
   /** The history the setup order reads; a fixture passes a stub rather than a repository. */
   history: Pick<SourceHistory, "isAncestor"> = gitSourceHistory(),
+  progress?: AnalysisProgressReporter,
 ) {
   const setups = classifyProjectionSetups(projection, history)
   const traced = new Set(Object.values(projection.contexts).flatMap((context) => context.contributingRunIds))
+  const totalRuns = new Set([
+    ...traced,
+    ...Object.values(projection.history).flatMap((versions) => versions.map((version) => version.runId)),
+  ]).size
+  progress?.phase("public-results", totalRuns)
   const documents: PublicDocuments = new Map()
   const captures = new Map<string, string>()
   // #37341 Q4: a result's undecided tests, and the words they recorded, are never published (@cto 760e9219). A
@@ -469,6 +476,7 @@ export function publicResults(
       results: mappedResults,
     }
     mappedRuns.set(version.runId, mapped)
+    progress?.tick(mappedRuns.size, totalRuns)
     return mapped
   }
   /** #37341 Q4, D6: a published run carries its decided results only. */

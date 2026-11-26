@@ -43,6 +43,7 @@ import { siteAnalysisPath, siteProbesPath, siteWorkingHistoryPath } from "./site
 import { createBuildMetadata } from "./build-metadata.ts"
 import { selectedSiteWorkingRun } from "../docs/data/working-runs.ts"
 import { publicFeatures } from "../docs/data/public-features.ts"
+import { createAnalysisProgress, type AnalysisProgressReporter } from "../docs/data/analysis-progress.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -224,12 +225,14 @@ function joinedStatus(app: JoinedApp, featureId: string, key: string): FeatureRe
   return cell.status
 }
 
-function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
-  const { projection } = loadCurrentResults(contentDir)
+function buildTerminalResultMap(progress?: AnalysisProgressReporter): Map<string, SelectedAnalysisInput> {
+  const { projection } = loadCurrentResults(contentDir, progress ? { progress } : undefined)
+  progress?.phase("build-result-map")
   const selected = compatibilitySubjects(projection, contentDir)
   // The page header counts the app's joined cells (33587), so the prose under it reads the same cells (33994).
   const joined = joinedAppCells(projection, selected, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
+  let count = 0
   for (const [key, { contextKey, selected: version, routeKey, os }] of selected) {
     if (!version.subject) throw new Error(`Analysis context ${key} has no physical subject`)
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
@@ -278,6 +281,8 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
       type: version.subject.kind,
       sources,
     })
+    count += 1
+    progress?.tick(count, selected.size)
   }
   return resultMap
 }
@@ -1194,7 +1199,7 @@ function escapeHtmlAttr(s: string): string {
 
 // --- Main ---
 
-function loadAllData() {
+function loadAllData(progress?: AnalysisProgressReporter) {
   const catalog = loadFeatures()
   // Q2: the analysis counts, lists and links the public catalogue; the cross-check below reads the whole one.
   const features = publicFeatures(catalog)
@@ -1206,7 +1211,7 @@ function loadAllData() {
   const frameworks = loadFrameworks()
   const glossary = loadGlossary()
 
-  const resultMap = buildTerminalResultMap()
+  const resultMap = buildTerminalResultMap(progress)
 
   // Cross-validate
   crossValidate(catalog, terminals, resultMap)
@@ -1214,11 +1219,13 @@ function loadAllData() {
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }
 
-export function generateAnalysis(): Record<string, AnalysisEntry> {
-  const { features, terminals, categories, standards, baselines, frameworks, glossary, resultMap } = loadAllData()
+export function generateAnalysis(progress?: AnalysisProgressReporter): Record<string, AnalysisEntry> {
+  const { features, terminals, categories, standards, baselines, frameworks, glossary, resultMap } =
+    loadAllData(progress)
   const baselineFeatures = buildBaselineFeatureMap(features)
   const output: Record<string, AnalysisEntry> = {}
 
+  progress?.phase("compute-stats", resultMap.size)
   // Compute stats for all terminals that have results
   const allStats = new Map<string, TerminalStats>()
   const systemCounts = new Map<string, number>()
@@ -1237,6 +1244,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
         : meta.label
     const stats = computeTerminalStats(termId, { ...meta, label }, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
+    progress?.tick(allStats.size, resultMap.size)
   }
 
   const ranks = rankTerminals(allStats)
@@ -1246,6 +1254,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
   // Deduplicate terminals by slug (e.g., multiple cursor entries)
   const slugSeen = new Set<string>()
+  progress?.phase("generate-entries")
 
   // 1. Terminal pages
   for (const [termId, stats] of allStats) {
@@ -1262,6 +1271,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     validateNumbersInAnalysis(key, entry.analysis, stats)
 
     output[key] = entry
+    progress?.tick()
   }
 
   // 1b. Historical terminal pages (no probe data)
@@ -1275,6 +1285,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateHistoricalAnalysis(termId, meta)
     validateHtml(entry.analysis, key)
     output[key] = entry
+    progress?.tick()
   }
 
   // 2. Baseline pages
@@ -1283,6 +1294,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateBaselineAnalysis(baselineId, baselineMeta, allStats, features)
     validateHtml(entry.analysis, key)
     output[key] = entry
+    progress?.tick()
   }
 
   // 3. Category pages
@@ -1291,6 +1303,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateCategoryAnalysis(catId, catMeta, allStats, features)
     validateHtml(entry.analysis, key)
     output[key] = entry
+    progress?.tick()
   }
 
   // 4. Standard pages
@@ -1300,6 +1313,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateStandardAnalysis(stdId, stdMeta, allStats, features)
     validateHtml(entry.analysis, key)
     output[key] = entry
+    progress?.tick()
   }
 
   // 5. Feature pages
@@ -1311,6 +1325,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (entry.analysis) {
       validateHtml(entry.analysis, key)
       output[key] = entry
+      progress?.tick()
     }
   }
 
@@ -1321,6 +1336,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (entry.analysis) {
       validateHtml(entry.analysis, key)
       output[key] = entry
+      progress?.tick()
     }
   }
 
@@ -1329,6 +1345,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateStandardsIndexAnalysis(standards, allStats, features)
     validateHtml(entry.analysis, "standards-index")
     output["standards-index"] = entry
+    progress?.tick()
   }
 
   // 9. Features index page
@@ -1336,6 +1353,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateFeaturesIndexAnalysis(categories, allStats, features)
     validateHtml(entry.analysis, "features-index")
     output["features-index"] = entry
+    progress?.tick()
   }
 
   // Post-process: auto-link entity mentions in all analysis text
@@ -1360,8 +1378,13 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       }
     }
   }
-  for (const entry of Object.values(output)) {
+  const entries = Object.values(output)
+  progress?.phase("linkify", entries.length)
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index]
+    if (!entry) continue
     entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines, glossary)
+    progress?.tick(index + 1, entries.length)
   }
   collectGarbage()
   return output
@@ -1373,8 +1396,9 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
  * Bun process, sharing `globalThis[RESULTS_CACHE]` instead of re-reading and hashing the corpus twice.
  */
 export async function writeAnalysisSnapshots(
-  analysis: Record<string, AnalysisEntry> = generateAnalysis(),
+  analysisInput?: Record<string, AnalysisEntry>,
   targetRoot: string = root,
+  progressInput?: AnalysisProgressReporter,
 ): Promise<{
   outputPath: string
   probesPath: string
@@ -1386,6 +1410,9 @@ export async function writeAnalysisSnapshots(
   frameworkCount: number
   categoryCount: number
 }> {
+  const ownsProgress = progressInput === undefined
+  const progress = progressInput ?? createAnalysisProgress()
+  const analysis = analysisInput ?? generateAnalysis(progress)
   const outputPath = siteAnalysisPath(targetRoot)
   const entryCount = Object.keys(analysis).length
   const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
@@ -1406,7 +1433,8 @@ export async function writeAnalysisSnapshots(
     ;(globalThis as unknown as Record<symbol, unknown>)[Symbol.for("terminfo.dev/loadAnalysis")] = analysis
   }
   const { loadClientProbesWithHistory } = await import("../docs/data/probes.data.ts")
-  const { client, workingHistoryPayload } = loadClientProbesWithHistory()
+  const { client, workingHistoryPayload } = loadClientProbesWithHistory(progress)
+  progress.phase("write-snapshots", workingHistoryPayload !== null ? 3 : 2)
   const probesPath = siteProbesPath(targetRoot)
   const workingRunId = selectedSiteWorkingRun()?.id ?? null
   const probes = {
@@ -1415,20 +1443,27 @@ export async function writeAnalysisSnapshots(
     data: client,
   }
   writeFileSync(probesPath, JSON.stringify(probes) + "\n")
+  progress.tick()
   console.log(`Generated ${probesPath}`)
   const whPath = siteWorkingHistoryPath(targetRoot)
   if (workingHistoryPayload !== null) {
     writeFileSync(whPath, JSON.stringify(workingHistoryPayload) + "\n")
+    progress.tick()
     console.log(`Generated lazy ${whPath}`)
   } else if (existsSync(whPath)) {
     rmSync(whPath, { force: true })
   }
   writeFileSync(outputPath, JSON.stringify(analysis, null, 2) + "\n")
+  progress.tick()
   console.log(`Generated ${outputPath}`)
   console.log(
     `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
   )
   collectGarbage()
+  if (ownsProgress) {
+    progress.finish()
+    console.error(progress.formatSummary())
+  }
   return {
     outputPath,
     probesPath,
@@ -1450,7 +1485,8 @@ if (import.meta.main) {
   const isValidate = args.includes("--validate")
 
   try {
-    const analysis = generateAnalysis()
+    const progress = createAnalysisProgress()
+    const analysis = generateAnalysis(progress)
 
     const outputPath = siteAnalysisPath(root)
     const entryCount = Object.keys(analysis).length
@@ -1468,6 +1504,8 @@ if (import.meta.main) {
     ).length
 
     if (isValidate) {
+      progress.finish()
+      console.error(progress.formatSummary())
       // Validate existing analysis.json against current data
       if (!existsSync(outputPath)) {
         console.error("No existing analysis.json to validate")
@@ -1525,6 +1563,8 @@ if (import.meta.main) {
     }
 
     if (isDryRun) {
+      progress.finish()
+      console.error(progress.formatSummary())
       console.log(`Would generate ${entryCount} entries:`)
       console.log(`  ${terminalCount} terminal pages`)
       console.log(`  ${baselineCount} baseline pages`)
@@ -1540,7 +1580,9 @@ if (import.meta.main) {
       process.exit(0)
     }
 
-    await writeAnalysisSnapshots(analysis, root)
+    await writeAnalysisSnapshots(analysis, root, progress)
+    progress.finish()
+    console.error(progress.formatSummary())
   } catch (error) {
     console.error(error instanceof Error ? error.message : error)
     process.exit(1)
