@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { checkStoredRunSourceHistory, isSiteBuildInput, runTerminfoMergeCheck, siteBuildInputs, type ExecFn } from "./check-merge.ts"
+import {
+  checkStoredRunSourceHistory,
+  isSiteBuildInput,
+  runTerminfoMergeCheck,
+  siteBuildInputs,
+  type ExecFn,
+} from "./check-merge.ts"
 
 const tempDirs: string[] = []
 function makeTempDir(prefix: string): string {
@@ -150,14 +156,23 @@ describe("terminfo check:merge build scope (@cto 31e669f6 a)", () => {
     }
     mkdirSync(join(superRoot, "tools"), { recursive: true })
     writeFileSync(join(superRoot, "tools", "gate-task-guard.ts"), "// stub")
-    put("package.json", JSON.stringify({ workspaces: ["packages/*"], scripts: { build: "bun scripts/site-build.ts --with-analysis" } }))
-    put("scripts/site-build.ts", 'import { parse } from "@terminfo/run-parser"\nimport { helper } from "./site-helper.ts"\n')
+    put(
+      "package.json",
+      JSON.stringify({ workspaces: ["packages/*"], scripts: { build: "bun scripts/site-build.ts --with-analysis" } }),
+    )
+    put(
+      "scripts/site-build.ts",
+      'import { parse } from "@terminfo/run-parser"\nimport { helper } from "./site-helper.ts"\n',
+    )
     put("scripts/site-helper.ts", "export const helper = 1\n")
     put("scripts/check-merge.ts", "// not imported by the build\n")
     put("docs/index.md", "# terminfo.dev\n")
     put("content/features.json", "{}")
     const pkg = (dir: string, name: string, deps: string[]) =>
-      put(`packages/${dir}/package.json`, JSON.stringify({ name, dependencies: Object.fromEntries(deps.map((d) => [d, "workspace:*"])) }))
+      put(
+        `packages/${dir}/package.json`,
+        JSON.stringify({ name, dependencies: Object.fromEntries(deps.map((d) => [d, "workspace:*"])) }),
+      )
     pkg("run-parser", "@terminfo/run-parser", ["@terminfo/probe-defs"])
     pkg("probe-defs", "@terminfo/probe-defs", [])
     pkg("probes", "@terminfo/probes", ["@terminfo/probe-defs"])
@@ -217,7 +232,12 @@ describe("terminfo check:merge build scope (@cto 31e669f6 a)", () => {
     const terminfoRoot = join(import.meta.dirname, "..")
     const inputs = siteBuildInputs(terminfoRoot)
     expect(inputs.files.has("scripts/site-build.ts")).toBe(true)
-    for (const path of ["packages/probe-defs/src/types.ts", "packages/run-parser/package.json", "content/features.json", "docs/index.md"]) {
+    for (const path of [
+      "packages/probe-defs/src/types.ts",
+      "packages/run-parser/package.json",
+      "content/features.json",
+      "docs/index.md",
+    ]) {
       expect(isSiteBuildInput(path, inputs), path).toBe(true)
     }
     expect(isSiteBuildInput("scripts/check-merge.ts", inputs)).toBe(false)

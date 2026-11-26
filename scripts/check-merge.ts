@@ -139,9 +139,13 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
   }
   const buildScript = manifest.scripts?.["build"]
   if (buildScript === undefined) throw new Error("terminfo check:merge: package.json declares no build script")
-  const entries = [...buildScript.matchAll(/\b(scripts\/[\w./-]+\.[cm]?ts)\b/gu)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
+  const entries = [...buildScript.matchAll(/\b(scripts\/[\w./-]+\.[cm]?ts)\b/gu)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  )
   if (entries.length === 0) {
-    throw new Error(`terminfo check:merge: the build script names no scripts/ entry file: ${JSON.stringify(buildScript)}`)
+    throw new Error(
+      `terminfo check:merge: the build script names no scripts/ entry file: ${JSON.stringify(buildScript)}`,
+    )
   }
 
   // Workspace packages by name and by directory, with their declared workspace dependencies.
@@ -188,7 +192,9 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
     const base = join(dirname(from), specifier)
     for (const suffix of RESOLVE_SUFFIXES) {
       const candidate = `${base}${suffix}`
-      if (existsSync(join(terminfoRoot, candidate)) && statSync(join(terminfoRoot, candidate)).isFile()) return candidate
+      if (existsSync(join(terminfoRoot, candidate)) && statSync(join(terminfoRoot, candidate)).isFile()) {
+        return candidate
+      }
     }
     return null
   }
@@ -206,14 +212,15 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
         if (resolved !== null && !resolved.startsWith("..")) visit(resolved)
         continue
       }
-      const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : (specifier.split("/")[0] ?? specifier)
+      const name = specifier.startsWith("@")
+        ? specifier.split("/").slice(0, 2).join("/")
+        : (specifier.split("/")[0] ?? specifier)
       if (packageDirByName.has(name)) reachPackage(name)
     }
   }
   const roots = [...PAGE_AND_DATA_ROOTS, ...[...reachedPackages].flatMap((name) => packages.get(name)?.dir ?? [])]
   return { roots, files }
 }
-
 
 function listSourceFiles(terminfoRoot: string, dir: string): string[] {
   const out: string[] = []
@@ -246,11 +253,17 @@ export function chooseBuildScope(
   }
   const [from, to] = [gitlink(baseSha), gitlink(candidateSha)]
   if (from === "" || to === "") {
-    return { scope: "full", why: `full build: changed files unknown (no vendor/terminfo.dev gitlink at ${from === "" ? baseSha : candidateSha})` }
+    return {
+      scope: "full",
+      why: `full build: changed files unknown (no vendor/terminfo.dev gitlink at ${from === "" ? baseSha : candidateSha})`,
+    }
   }
   const diff = exec("git", ["-C", options.terminfoRoot, "diff", "--name-only", from, to], {})
   if (diff.status !== 0) {
-    return { scope: "full", why: `full build: changed files unknown (git diff ${from.slice(0, 12)} ${to.slice(0, 12)}: ${(diff.stderr || diff.stdout).trim()})` }
+    return {
+      scope: "full",
+      why: `full build: changed files unknown (git diff ${from.slice(0, 12)} ${to.slice(0, 12)}: ${(diff.stderr || diff.stdout).trim()})`,
+    }
   }
   const changed = diff.stdout.split("\n").filter((line) => line.length > 0)
   const inputs = siteBuildInputs(options.terminfoRoot)
@@ -258,7 +271,10 @@ export function chooseBuildScope(
   const described = `inputs: ${inputs.roots.join(", ")} and ${inputs.files.size} script file(s) from the build's graph`
   if (hit !== undefined) {
     const count = changed.filter((path) => isSiteBuildInput(path, inputs)).length
-    return { scope: "full", why: `full build: ${hit} is a site build input (${count} of ${changed.length} changed file(s) are; ${described})` }
+    return {
+      scope: "full",
+      why: `full build: ${hit} is a site build input (${count} of ${changed.length} changed file(s) are; ${described})`,
+    }
   }
   return {
     scope: "cheap",
