@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { readTerminalChildEnvironment } from "../terminfo.dev/src/terminal-child-environment.ts"
 import { extensionsProbes } from "../probe-defs/src/extensions.ts"
 import { recordExecutedProbe } from "../probe-defs/src/helpers.ts"
+import { validateCurrentAssertions } from "../run-parser/src/observations.ts"
 import type { LibProbeSource, ProgramResumeTokenReading, TermProbeSource } from "@terminfo/probe-defs"
 
 const RUN = "a".repeat(32)
@@ -174,6 +175,17 @@ test.each(["extensions.osc7577-silent", "extensions.osc88-silent"])(
       expect(leaked.note).toContain("visible")
       const blind = await run("dead")
       expect(blind.observation, `${arm} dead`).toBeUndefined()
+      // The run parser admits both outcomes: a JSON state snapshot that is the retained response.
+      for (const result of [consumed, leaked]) {
+        const assertions = (result.assertions ?? []).map((assertion) => ({
+          ...assertion,
+          featureId: id,
+          rawReplyRef: id,
+        }))
+        expect(() =>
+          validateCurrentAssertions(assertions, { [id]: result.response! }, [], arm, `${arm} ${id}`),
+        ).not.toThrow()
+      }
     }
     expect(JSON.stringify(definitionText(id))).toContain(id.includes("7577") ? "revision 0.5" : "osc-88")
   },

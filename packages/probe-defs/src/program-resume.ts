@@ -106,17 +106,21 @@ function silentResult(
   const note = supported
     ? `${name}: every report left the screen unchanged after a printed control moved it`
     : `${name}: visible output after ${visible.map((reading) => reading.label).join(" and ")}`
+  // A buffer_state assertion observes a JSON state snapshot, and a library arm's must equal its retained response.
+  const response = JSON.stringify({ control, readings })
   return {
     pass: supported,
     note,
-    response: JSON.stringify({ control, readings }),
+    response,
     observation: { outcome: supported ? "supported" : "unsupported", assertionType, note },
-    assertions: readings.map((reading) => ({
-      assertionType,
-      kind: reading.shown === expected ? ("positive" as const) : ("negative" as const),
-      expected: `${reading.label} leaves ${expected}`,
-      observed: reading.shown,
-    })),
+    assertions: [
+      {
+        assertionType,
+        kind: supported ? "positive" : "negative",
+        expected: `every report leaves ${expected}`,
+        observed: response,
+      },
+    ],
   }
 }
 
