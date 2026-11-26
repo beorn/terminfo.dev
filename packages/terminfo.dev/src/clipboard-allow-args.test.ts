@@ -15,6 +15,7 @@ import {
   clipboardReadDefault,
   clipboardReadProfile,
   CLIPBOARD_ALLOW_ARGS,
+  CLIPBOARD_READ_DEFAULTS,
   type ClipboardApp,
 } from "./linux-clipboard.ts"
 
@@ -106,8 +107,12 @@ test("a cited default reaches only a run that measured its version; a mismatch n
   expect(clipboardReadDefault("kitty", "default", "0.49.2")).toEqual({
     readDefault: { posture: "ask", source: expect.stringContaining("kitty v0.49.2") },
   })
+  // The cited list grows as the corpus does (kitty now cites 0.49.2 or 0.51.1), so the expectation is built from
+  // the citation table: a hardcoded list would fail the day another version is read, not the day the join changes.
+  const citedKitty = (CLIPBOARD_READ_DEFAULTS.kitty ?? []).map((citation) => citation.version).join(" or ")
+  expect(citedKitty.length).toBeGreaterThan(0)
   expect(clipboardReadDefault("kitty", "default", "0.49.1")).toEqual({
-    readDefaultRefusal: "default not established: this tree cites kitty 0.49.2, this run measured 0.49.1",
+    readDefaultRefusal: `default not established: this tree cites kitty ${citedKitty}, this run measured 0.49.1`,
   })
   expect(clipboardReadDefault("alacritty", "default", "0.16.1").readDefault).toBeUndefined()
   expect(clipboardReadDefault("alacritty", "default", "0.16.1").readDefaultRefusal).toContain(
