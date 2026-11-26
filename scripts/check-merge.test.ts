@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { checkStoredRunSourceHistory, runTerminfoMergeCheck, type ExecFn } from "./check-merge.ts"
+import { checkStoredRunSourceHistory, isSiteBuildInput, runTerminfoMergeCheck, siteBuildInputs, type ExecFn } from "./check-merge.ts"
 
 const tempDirs: string[] = []
 function makeTempDir(prefix: string): string {
@@ -45,7 +45,7 @@ describe("terminfo check:merge pre-merge gate (@cto 9768f1cf)", () => {
       exec: spy,
       log: (l) => logs.push(l),
     })
-    expect(res).toEqual({ skipped: true, checkedRuns: 0 })
+    expect(res).toEqual({ skipped: true, scope: "skipped", checkedRuns: 0 })
     expect(spy).toHaveBeenCalledTimes(1)
     expect(logs.some((l) => l.includes("unchanged; skipping"))).toBe(true)
   })
@@ -136,5 +136,91 @@ describe("terminfo check:merge pre-merge gate (@cto 9768f1cf)", () => {
       expect(source).not.toContain("file://${process.argv[1]}")
       expect(source).toContain("import.meta.main")
     }
+  })
+})
+
+describe("terminfo check:merge build scope (@cto 31e669f6 a)", () => {
+  /** A terminfo tree whose build reaches run-parser and, through it, probe-defs; admin and probes are unreached. */
+  function fixtureTree(): { superRoot: string; terminfoRoot: string } {
+    const superRoot = makeTempDir("terminfo-scope-")
+    const terminfoRoot = join(superRoot, "vendor", "terminfo.dev")
+    const put = (rel: string, text: string) => {
+      mkdirSync(join(terminfoRoot, rel, ".."), { recursive: true })
+      writeFileSync(join(terminfoRoot, rel), text)
+    }
+    mkdirSync(join(superRoot, "tools"), { recursive: true })
+    writeFileSync(join(superRoot, "tools", "gate-task-guard.ts"), "// stub")
+    put("package.json", JSON.stringify({ workspaces: ["packages/*"], scripts: { build: "bun scripts/site-build.ts --with-analysis" } }))
+    put("scripts/site-build.ts", 'import { parse } from "@terminfo/run-parser"\nimport { helper } from "./site-helper.ts"\n')
+    put("scripts/site-helper.ts", "export const helper = 1\n")
+    put("scripts/check-merge.ts", "// not imported by the build\n")
+    put("docs/index.md", "# terminfo.dev\n")
+    put("content/features.json", "{}")
+    const pkg = (dir: string, name: string, deps: string[]) =>
+      put(`packages/${dir}/package.json`, JSON.stringify({ name, dependencies: Object.fromEntries(deps.map((d) => [d, "workspace:*"])) }))
+    pkg("run-parser", "@terminfo/run-parser", ["@terminfo/probe-defs"])
+    pkg("probe-defs", "@terminfo/probe-defs", [])
+    pkg("probes", "@terminfo/probes", ["@terminfo/probe-defs"])
+    pkg("admin", "@terminfo/admin", ["@terminfo/probe-defs"])
+    put("packages/run-parser/src/index.ts", "export const parse = 1\n")
+    put("packages/probe-defs/src/types.ts", "export type Status = string\n")
+    put("packages/probes/src/run.ts", "export const run = 1\n")
+    put("packages/admin/src/report.ts", "export const report = 1\n")
+    return { superRoot, terminfoRoot }
+  }
+
+  function run(changed: readonly string[]) {
+    const { superRoot, terminfoRoot } = fixtureTree()
+    const logs: string[] = []
+    let built = false
+    const exec: ExecFn = (cmd, args) => {
+      if (cmd === "git" && args.includes("rev-parse")) {
+        return { status: 0, stdout: `${String(args.at(-1)).startsWith("aaa") ? "1111" : "2222"}\n`, stderr: "" }
+      }
+      if (cmd === "git" && args.includes("diff") && args.includes(superRoot)) {
+        return { status: 0, stdout: "vendor/terminfo.dev\n", stderr: "" }
+      }
+      if (cmd === "git" && args.includes("diff")) return { status: 0, stdout: `${changed.join("\n")}\n`, stderr: "" }
+      if (cmd === "bun" && args.includes("terminfo-merge-build")) built = true
+      return { status: 0, stdout: "", stderr: "" }
+    }
+    const result = runTerminfoMergeCheck({
+      terminfoRoot,
+      superRoot,
+      env: { YRD_BASE_SHA: "aaa", YRD_CANDIDATE_SHA: "bbb" },
+      exec,
+      log: (line) => logs.push(line),
+    })
+    return { result, logs, built }
+  }
+
+  it("takes the cheap scope when no changed file is a site build input, and says why", () => {
+    const { result, logs, built } = run([
+      "tools/probe-runner.ts",
+      "scripts/check-merge.ts",
+      "packages/admin/src/report.ts",
+      "packages/probe-defs/src/types.test.ts",
+    ])
+    expect(built).toBe(false)
+    expect(result.scope).toBe("cheap")
+    expect(logs.join("\n")).toMatch(/cheap scope \(no site build\): none of 4 changed file\(s\) is a site build input/)
+  })
+
+  it("runs the full build when a probe package the site imports changed, and names the file", () => {
+    const { result, logs, built } = run(["packages/admin/src/report.ts", "packages/probe-defs/src/types.ts"])
+    expect(built).toBe(true)
+    expect(result.scope).toBe("full")
+    expect(logs.join("\n")).toContain("full build: packages/probe-defs/src/types.ts is a site build input")
+  })
+
+  it("derives the real site's inputs from its graph: the build entry, the probe packages it imports, not this gate", () => {
+    const terminfoRoot = join(import.meta.dirname, "..")
+    const inputs = siteBuildInputs(terminfoRoot)
+    expect(inputs.files.has("scripts/site-build.ts")).toBe(true)
+    for (const path of ["packages/probe-defs/src/types.ts", "packages/run-parser/package.json", "content/features.json", "docs/index.md"]) {
+      expect(isSiteBuildInput(path, inputs), path).toBe(true)
+    }
+    expect(isSiteBuildInput("scripts/check-merge.ts", inputs)).toBe(false)
+    expect(isSiteBuildInput("packages/probe-defs/src/types.test.ts", inputs)).toBe(false)
   })
 })
