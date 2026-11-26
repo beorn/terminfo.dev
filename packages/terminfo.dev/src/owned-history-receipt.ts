@@ -10,7 +10,7 @@ export type OwnedHistoryIdentity = Readonly<{
   readonly surface: OwnedHistorySurface
   /** The pane, window or surface id this run read, as its own CLI named it. */
   readonly pane: string | null
-  /** The tty the terminal lists for that pane, by name (`ttys004`, never `/dev/ttys004`). */
+  /** The tty the terminal lists for that pane, by name (`ttys004` or `pts/3`, never `/dev/ttys004` or `/dev/pts/3`). */
   readonly listedTty: string | null
   /** The tty this run measured for itself, by name. */
   readonly measuredTty: string | null
@@ -30,13 +30,14 @@ export type OwnedHistoryReceipt =
   | Readonly<{ status: "refused"; reason: string }>
 
 const separator = /[\\/]/u
+const linuxPtsTty = /^pts\/[0-9]+$/u
 
 const trimmed = (value: string | undefined): string | null => {
   const text = (value ?? "").trim()
   return text === "" ? null : text
 }
 
-/** `/dev/ttys004` and `ttys004` name the same tty; the record keeps the name, never the device path. */
+/** `/dev/ttys004` and `ttys004` (or `/dev/pts/3` and `pts/3`) name the same tty; the record keeps the name, never the device path. */
 export const ttyName = (value: string | undefined): string | null => {
   const name = trimmed(value)
   return name === null ? null : name.replace(/^\/dev\//u, "")
@@ -69,10 +70,15 @@ export function ownedHistoryReceipt(fields: {
     socketPresent: fields.socketPresent === undefined ? null : fields.socketPresent,
     executable: executableName(fields.executable),
   } as const satisfies OwnedHistoryIdentity
-  // The reduction above is total for the inputs we build; a separator that survives it means a value we do
-  // not understand reached the record, so the count goes unread rather than published with a path in it.
+  // The reduction above is total for the inputs we build; a separator that survives it outside the closed
+  // Linux `pts/<digits>` kernel namespace (@cto 53fa361e) means a value we do not understand reached the
+  // record, so the count goes unread rather than published with a path in it.
   for (const [field, value] of Object.entries(identity)) {
-    if (typeof value === "string" && separator.test(value)) {
+    if (
+      typeof value === "string" &&
+      separator.test(value) &&
+      !((field === "listedTty" || field === "measuredTty") && linuxPtsTty.test(value))
+    ) {
       return {
         status: "refused",
         reason: `owned history receipt field ${field} still carries a path separator, so the count it names is not publishable`,
