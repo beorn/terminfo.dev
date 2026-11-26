@@ -228,6 +228,13 @@ const cardModel = computed(() => {
   })
 })
 
+/**
+ * A captured expected frame that only repaints the color under test shows the requested color instead (#38777):
+ * the card model names the specimen, and the repaint is not shown as Expected.
+ */
+const expectedCapture = computed(() => (cardModel.value.expectedPicture ? undefined : captures.value?.expected))
+const expectedSpecimen = computed(() => cardModel.value.expectedPicture ?? expectedVisual.value)
+
 const tracePaneCopy = computed(() => {
   if (!cellTrace.value) return undefined
   return describeTracePanes(cellTrace.value, {
@@ -749,14 +756,14 @@ onBeforeUnmount(() => {
               "
             >
               <img
-                v-if="captures?.expected"
-                :src="withBase(captures.expected.url)"
-                :width="captures.expected.width"
-                :height="captures.expected.height"
-                :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                v-if="expectedCapture"
+                :src="withBase(expectedCapture.url)"
+                :width="expectedCapture.width"
+                :height="expectedCapture.height"
+                :class="{ 'rc-term-img--small': isSmallCrop(expectedCapture) }"
                 alt="Expected terminal rendering"
               />
-              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
               <img
                 v-else-if="expectedIllustration"
                 :src="expectedIllustration"
@@ -905,13 +912,13 @@ onBeforeUnmount(() => {
             <span class="rc-bytes-label">Expected</span>
             <div class="rc-term rc-term--enlarged">
               <img
-                v-if="captures?.expected"
-                :src="withBase(captures.expected.url)"
-                :width="captures.expected.width"
-                :height="captures.expected.height"
+                v-if="expectedCapture"
+                :src="withBase(expectedCapture.url)"
+                :width="expectedCapture.width"
+                :height="expectedCapture.height"
                 alt="Expected terminal rendering (enlarged)"
               />
-              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
               <img
                 v-else-if="expectedIllustration"
                 :src="expectedIllustration"
@@ -1075,14 +1082,14 @@ onBeforeUnmount(() => {
                   "
                 >
                   <img
-                    v-if="captures?.expected"
-                    :src="withBase(captures.expected.url)"
-                    :width="captures.expected.width"
-                    :height="captures.expected.height"
-                    :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                    v-if="expectedCapture"
+                    :src="withBase(expectedCapture.url)"
+                    :width="expectedCapture.width"
+                    :height="expectedCapture.height"
+                    :class="{ 'rc-term-img--small': isSmallCrop(expectedCapture) }"
                     alt="Expected terminal rendering"
                   />
-                  <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                  <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
                   <img
                     v-else-if="expectedIllustration"
                     :src="expectedIllustration"
@@ -1236,13 +1243,13 @@ onBeforeUnmount(() => {
               <span class="rc-bytes-label">Expected</span>
               <div class="rc-term rc-term--enlarged">
                 <img
-                  v-if="captures?.expected"
-                  :src="withBase(captures.expected.url)"
-                  :width="captures.expected.width"
-                  :height="captures.expected.height"
+                  v-if="expectedCapture"
+                  :src="withBase(expectedCapture.url)"
+                  :width="expectedCapture.width"
+                  :height="expectedCapture.height"
                   alt="Expected terminal rendering (enlarged)"
                 />
-                <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
                 <img
                   v-else-if="expectedIllustration"
                   :src="expectedIllustration"
