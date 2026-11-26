@@ -13,7 +13,7 @@
  */
 import { createHash } from "node:crypto"
 import type { ProbeStatus, ReplyFailureEvidence, ReplyFailureMatchState } from "../../packages/probe-defs/src/types.ts"
-import { ENVIRONMENT_READS, formatControlBytes } from "./evidence-reader.ts"
+import { ENVIRONMENT_READS, describeOsc7501DetectionReply, formatControlBytes } from "./evidence-reader.ts"
 
 /** The closed set of evidence kinds. Each has exactly one template in `TEMPLATES`. */
 export const EVIDENCE_KINDS = [
@@ -281,6 +281,11 @@ const SHAPES = {
     const found = /^\x1b\]99;i=([0-9a-f-]{1,64}):p=\?;[a-z0-9=,:;?]{0,300}(?:\x07|\x1b\\)$/.exec(reply)
     return found && wroteIt(`i=${found[1]}`, stored) ? { shown: formatControlBytes(reply) } : undefined
   },
+  /** OSC 7501 capability report: states and kinds supported, saying "all five states" / "all three kinds" when omitted. */
+  osc7501: (reply) => {
+    const summary = describeOsc7501DetectionReply(reply)
+    return summary ? { shown: `${formatControlBytes(reply)} (${summary})` } : undefined
+  },
   /** A title or icon reply: shown only when it is text this probe wrote. */
   "probe-text": (reply, stored) => {
     const title = /^\x1b\][lL]([ -~]*)\x1b\\$/.exec(reply)?.[1]
@@ -540,9 +545,10 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
       "extensions.osc112-reset-cursor",
       "extensions.osc113-reset-pointer-fg",
       "extensions.osc114-reset-pointer-bg",
-      // #38699: the silent rows read back the cursor with a position report (CPR).
+      // #38699, #38743: the silent rows read back the cursor with a position report (CPR).
       "extensions.osc7577-silent",
       "extensions.osc88-silent",
+      "extensions.osc7501-silent",
     ],
   ),
   "device.xtversion": ["xtversion"],
@@ -563,6 +569,7 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
   "extensions.clipboard-paste": ["pasted-nonce", "control"],
   "modes.bracketed-paste": ["pasted-nonce", "control"],
   "extensions.osc99-kitty-notify": ["kitty-notify"],
+  "extensions.osc7501-query": ["osc7501", "control"],
   "device.xtwinops-20": ["probe-text"],
   "extensions.osc0-icon-title": ["probe-text"],
   "extensions.osc1-icon": ["probe-text"],
@@ -700,6 +707,7 @@ export const APP_STATE_READS: Readonly<Record<string, readonly AppStateRead[]>> 
   ],
   "extensions.osc7577-silent": [{ read: "cursor", command: "OSC 7577 program-resume report" }],
   "extensions.osc88-silent": [{ read: "cursor", command: "OSC 88 resume command" }],
+  "extensions.osc7501-silent": [{ read: "cursor", command: "OSC 7501 program-status report" }],
   "extensions.osc22-pointer": [
     { read: "outer-log", command: "The pointer-shape command", control: "the title change sent after it" },
   ],

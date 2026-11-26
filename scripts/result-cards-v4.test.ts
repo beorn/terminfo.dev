@@ -387,6 +387,80 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(osc776NoSemi.expected).toEqual({ code: "ESC ]776;<w>;<h> BEL", words: "Cell width and height" })
     expect(validateMeasuredCard(osc776NoSemi, "osc776-no-semi")).toEqual([])
 
+    // #38743: OSC 7501 detection query card says "all five states" when states is absent and "all three kinds" when kinds is absent,
+    // and the silent row renders its cursor read without throwing.
+    const osc7501Full = buildCardModel({
+      status: "supported",
+      featureId: "extensions.osc7501-query",
+      featureName: "Program status detection query (OSC 7501)",
+      assertionType: "query_reply",
+      declaredSequence: "ESC ] 7501 ; ? ST, then CSI c",
+      exchange: {
+        events: [
+          {
+            kind: "write",
+            sequence:
+              "\x1b]7501;state=working:id=terminfo-osc7501-nonce:title=dGVybWluZm8tb3NjNzUwMS1ub25jZQ==:msg=dGVybWluZm8tb3NjNzUwMS1ub25jZQ==\x1b\\",
+          },
+          { kind: "query", sequence: "\x1b]7501;?\x1b\\\x1b[c", match: ["\x1b]7501;?\x1b\\"] },
+        ],
+      },
+    })
+    expect(osc7501Full.received?.words).toContain("all five states")
+    expect(osc7501Full.received?.words).toContain("all three kinds")
+    expect(
+      validateMeasuredCard(osc7501Full, "osc7501-full", {
+        featureId: "extensions.osc7501-query",
+        assertionType: "query_reply",
+      }),
+    ).toEqual([])
+
+    const osc7501Subset = buildCardModel({
+      status: "supported",
+      featureId: "extensions.osc7501-query",
+      featureName: "Program status detection query (OSC 7501)",
+      assertionType: "query_reply",
+      declaredSequence: "ESC ] 7501 ; ? ST, then CSI c",
+      exchange: {
+        events: [
+          {
+            kind: "query",
+            sequence: "\x1b]7501;?\x1b\\\x1b[c",
+            match: ["\x1b]7501;?:states=working,done,error:kinds=permission\x1b\\"],
+          },
+        ],
+      },
+    })
+    expect(osc7501Subset.received?.words).toContain("states: working, done, error")
+    expect(osc7501Subset.received?.words).toContain("kinds: permission")
+    expect(
+      validateMeasuredCard(osc7501Subset, "osc7501-subset", {
+        featureId: "extensions.osc7501-query",
+        assertionType: "query_reply",
+      }),
+    ).toEqual([])
+
+    const osc7501Silent = buildCardModel({
+      status: "supported",
+      featureId: "extensions.osc7501-silent",
+      featureName: "Program status reports print nothing (OSC 7501)",
+      assertionType: "buffer_state",
+      declaredSequence: "ESC ] 7501 ; state=… ST",
+      traceEvidence: [
+        "Printed two letters, which moved the cursor to row 1 col 3; then sent each OSC 7501 program-status report form, 4 reports in all.",
+        "None of them moved the cursor, so none was shown on screen.",
+      ],
+    })
+    expect(osc7501Silent.received?.words).toBe("None of them moved the cursor, so none was shown on screen")
+    expect(
+      validateMeasuredCard(osc7501Silent, "osc7501-silent", {
+        featureId: "extensions.osc7501-silent",
+        assertionType: "buffer_state",
+      }),
+    ).toEqual([])
+    expect(vendorExtensionOrigin("extensions.osc7501-query", ["osc"])).toBeUndefined()
+    expect(vendorExtensionOrigin("extensions.osc7501-silent", ["osc"])).toBeUndefined()
+
     // Rule 2: Pixel mouse 1016 (FAIL) explains cells vs pixels, puts 14t/16t/18t replies on setup rows, never in Received
     const pixelMouseFail = buildCardModel({
       status: "unsupported",

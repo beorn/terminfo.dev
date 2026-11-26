@@ -18,6 +18,7 @@
 import type { AppCellStatus } from "../../data/app-cells.ts"
 import {
   ENVIRONMENT_READS,
+  describeOsc7501DetectionReply,
   formatControlBytes,
   type TraceAssertion,
   type TraceCaptures,
@@ -849,6 +850,12 @@ export function explainSentCommand(
     if (code === "777") return { words: "Send notification (OSC 777)", fallback: false }
     if (code === "1337") return { words: "Send iTerm2 command", fallback: false }
     if (code === "3008") return { words: "Send shell context (OSC 3008)", fallback: false }
+    if (code === "7501") {
+      return {
+        words: arg === "?" ? "Ask program status support (OSC 7501)" : "Send program status report (OSC 7501)",
+        fallback: false,
+      }
+    }
     if (code === "7654") return { words: "Send unknown OSC control (negative check)", fallback: false }
     if (code === "30001") return { words: "Push color stack (OSC 30001)", fallback: false }
     if (code === "30101") return { words: "Pop color stack (OSC 30101)", fallback: false }
@@ -928,6 +935,13 @@ export function explainReplyCommand(raw: string): { words: string; fallback: boo
   if (/^\x1b\]776;/.test(raw)) return { words: "reported cell size", fallback: false }
   if (/^\x1b\]1337;/.test(raw)) return { words: "reported capability", fallback: false }
   if (/^\x1b\]52;/.test(raw)) return { words: "returned clipboard text", fallback: false }
+  if (/^\x1b\]7501;\?/.test(raw)) {
+    const summary = describeOsc7501DetectionReply(raw)
+    return {
+      words: summary ? `Reported OSC 7501 (${summary})` : "reported program status capabilities",
+      fallback: false,
+    }
+  }
   const winSize = /^\x1b\[([468]);(\d+);(\d+)t$/.exec(raw)
   if (winSize) {
     if (winSize[1] === "4") return { words: `window ${winSize[3]}×${winSize[2]} px`, fallback: false }
@@ -1235,7 +1249,7 @@ function sgrExpectedStyleName(featureId: string, sentCommands: readonly string[]
 }
 
 const METHOD_DESCRIPTION_RE =
-  /(?:\bfrom the terminal's own text snapshot\b|\bfrom the console host's buffer\b|\bnot from its pixels\b|^Read rows?\b|^Compared rows?\b|^Checked (?:rows?|the screen)\b|^Sampled (?:rows?|the)\b|^Compared the\b|^Captured the\b|^Resized the terminal\b|^Scrolled into history\b|^Read the (?:app's own record|outer terminal's own log)\b|^Set the (?:window title|working directory)\b|^Read the (?:icon name|window title)\b|^The terminal sent back \d+ replies:|^The terminal sent back ESC \[)/i
+  /(?:\bfrom the terminal's own text snapshot\b|\bfrom the console host's buffer\b|\bnot from its pixels\b|^Read rows?\b|^Compared rows?\b|^Checked (?:rows?|the screen)\b|^Sampled (?:rows?|the)\b|^Compared the\b|^Captured the\b|^Resized the terminal\b|^Scrolled into history\b|^Read the (?:app's own record|outer terminal's own log)\b|^Set the (?:window title|working directory)\b|^Read the (?:icon name|window title)\b|^Printed two letters\b|^The terminal sent back \d+ replies:|^The terminal sent back ESC \[)/i
 
 function isMethodDescription(text: string | undefined): boolean {
   return Boolean(text && METHOD_DESCRIPTION_RE.test(text.trim()))
@@ -1606,6 +1620,9 @@ function expectedReplyForProbe(opts: {
     if (code === "52") return apply("ESC ]52;c;<data> BEL", "Clipboard text returned")
     if (code === "99") return apply("ESC ]99;… BEL", "Notification capabilities")
     if (code === "1337") return apply("ESC ]1337;… BEL", "iTerm2 reply value")
+    if (code === "7501" || featureId === "extensions.osc7501-query") {
+      return apply("ESC ]7501;?… ESC \\", "Program status capabilities (OSC 7501)")
+    }
     if (code) return apply(`ESC ]${code};… BEL`, `OSC ${code} reply`)
   }
   return apply("ESC …", "Matching reply sequence")

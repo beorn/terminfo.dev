@@ -143,7 +143,7 @@ const specimen = {
     engineVersion: "6.0.0",
   },
 } as const
-// The suite this tree's writer derives, so a catalogue change (#38699 added three rows) cannot leave the specimen
+// The suite this tree's writer derives, so a catalogue change (#38699 added three rows; #38743 added two rows) cannot leave the specimen
 // draft on a frozen suite the collector no longer writes.
 const currentManifest = versions.derivedSuiteManifest()
 // A frozen suite this tree no longer derives, for the cases that must start from a different suite.

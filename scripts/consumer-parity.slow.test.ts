@@ -530,8 +530,8 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.ok(analysis,key+" has no analysis entry citing its joined runs "+appSources);
         assert.deepEqual(analysis[1].score,app.score,analysis[0]+" analysis score");
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
-        // analysis row agree on 267 while the run still records all 276 positions. A library context's App-only
-        // cells stand outside every denominator (#38772), so a library row publishes fewer than the 267.
+        // analysis row agree on 269 while the run still records all 278 positions. A library context's App-only
+        // cells stand outside every denominator (#38772), so a library row publishes fewer than the 269.
         const appOnly=new Set(selected.appOnlyIds);
         assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).filter(id=>!appOnly.has(id)).length);
         const matchingPages=pages.filter(page=>JSON.parse(page.params.osBackends||"[]").includes(key));
@@ -1174,11 +1174,11 @@ describe("selected-run consumer parity", () => {
       }
       expect(site.stats.kitty).toMatchObject({
         // D132 B (#30917): the nine environment positions are recorded but never graded.
-        score: { all: 267, supported: 1 },
-        counts: { supported: 1, unsupported: 1, "probe-todo": 265 },
+        score: { all: 269, supported: 1 },
+        counts: { supported: 1, unsupported: 1, "probe-todo": 267 },
         complete: false,
       })
-      expect(terminal?.params).toMatchObject({ total: "267", yes: "1", no: "1" })
+      expect(terminal?.params).toMatchObject({ total: "269", yes: "1", no: "1" })
       // Raw history names declared physical subjects without entering these reviewed counts.
       expect(JSON.parse(terminal?.params.historySubjects ?? "[]")).toEqual([
         { engine: "kitty", kind: "term" },
@@ -1206,7 +1206,7 @@ describe("selected-run consumer parity", () => {
       expect(analysis).toMatchObject({
         sources: [expect.objectContaining({ sha256: fixture.runSha256, measuredAt: fixture.measuredAt })],
         versions: [fixture.selected.subject.version],
-        score: { supported: 1, all: 267 },
+        score: { supported: 1, all: 269 },
       })
       expect(analyses["features-index"]?.analysis).toContain("recorded support")
       expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 3")
@@ -1289,17 +1289,17 @@ describe("selected-run consumer parity", () => {
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
-      score: { all: 267, supported: 0 },
-      counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 266, "probe-invalid": 0 },
+      score: { all: 269, supported: 0 },
+      counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 268, "probe-invalid": 0 },
       complete: false,
     })
     // #37341 D2: the bar width still reads Supported of graded; the page prints the two counts, never a percentage.
     expect(site.stats.screen?.pct).toBe(0)
-    expect(terminal?.params).toMatchObject({ readout: "0 supported · 1 of 267 tested" })
+    expect(terminal?.params).toMatchObject({ readout: "0 supported · 1 of 269 tested" })
     expect(terminal?.params).not.toHaveProperty("pct")
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      { version: fixture.screen.subject.version, total: 267, yes: 0, suiteFreshness: "tree suite current" },
-      { version: "4.9", total: 267, yes: 1, suiteFreshness: "older suite older-suite" },
+      { version: fixture.screen.subject.version, total: 269, yes: 0, suiteFreshness: "tree suite current" },
+      { version: "4.9", total: 269, yes: 1, suiteFreshness: "older suite older-suite" },
     ])
     const screen = loadProbes().selectedByBackend.screen!.selected
     const olderRunId = "screen-older-reviewed-sealed-cccccccc"
@@ -1339,7 +1339,7 @@ describe("selected-run consumer parity", () => {
       )
     // #37341 D2: the comparison card prints the same two-count readout as the terminal page.
     expect(comparison?.params[comparison.params.termAId === "screen" ? "termAReadout" : "termBReadout"]).toBe(
-      "0 supported · 1 of 267 tested",
+      "0 supported · 1 of 269 tested",
     )
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")

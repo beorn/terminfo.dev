@@ -20,6 +20,49 @@ export const ENVIRONMENT_READS: Readonly<
   "extensions.osc7577-token": { variable: "OSC7577_TOKEN", secret: true },
 }
 
+const OSC7501_ECHO_NONCE = "terminfo-osc7501-nonce"
+const OSC7501_ECHO_NONCE_B64 = "dGVybWluZm8tb3NjNzUwMS1ub25jZQ=="
+
+/**
+ * Summarize an OSC 7501 `?` detection reply for evidence sentences and result cards (#38743):
+ * lists the `states` and `kinds` the reply carried, saying "all five states" when `states` is absent and
+ * "all three kinds" when `kinds` is absent, ignoring unknown keys and skipping malformed pairs.
+ * Returns undefined if the string is not a valid detection reply or contains the probe's echo nonce.
+ */
+export function describeOsc7501DetectionReply(reply: string): string | undefined {
+  if (reply.includes(OSC7501_ECHO_NONCE) || reply.includes(OSC7501_ECHO_NONCE_B64)) return undefined
+  const match = /^\x1b\]7501;\?(?::([^\x07\x1b]*))?(?:\x07|\x1b\\)$/.exec(reply)
+  if (!match) return undefined
+  const pairs = new Map<string, string>()
+  const tail = match[1]
+  if (tail !== undefined) {
+    for (const segment of tail.split(":")) {
+      const eq = segment.indexOf("=")
+      if (eq <= 0) continue
+      const key = segment.slice(0, eq).trim()
+      const value = segment.slice(eq + 1).trim()
+      if (!/^[a-z]+$/.test(key) || !/^[A-Za-z0-9_.,+/= \t-]*$/.test(value)) continue
+      pairs.set(key, value)
+    }
+  }
+  const listOf = (key: string): string[] | undefined => {
+    const raw = pairs.get(key)
+    if (raw === undefined) return undefined
+    const items = raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    return items.length > 0 ? items : []
+  }
+  const states = listOf("states")
+  const kinds = listOf("kinds")
+  const statesWords =
+    states === undefined ? "all five states" : states.length > 0 ? `states: ${states.join(", ")}` : "states: none"
+  const kindsWords =
+    kinds === undefined ? "all three kinds" : kinds.length > 0 ? `kinds: ${kinds.join(", ")}` : "kinds: none"
+  return `${statesWords}; ${kindsWords}`
+}
+
 export type LoadedCellEvidence = HistoricalCellEvidence & { version: 2; runId: string; runSha256: string }
 export interface CellEvidenceExpectation {
   schemaVersion: 1 | 2

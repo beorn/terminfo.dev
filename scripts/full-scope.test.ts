@@ -70,9 +70,9 @@ describe("current full-catalogue scope arithmetic", () => {
       expect(value.complete).toBe(false)
     },
   )
-  it("keeps all 276 catalogue rows while the graded denominator is the 267 capabilities (D132 B)", () => {
+  it("keeps all 278 catalogue rows while the graded denominator is the 269 capabilities (D132 B)", () => {
     const ids = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
-    expect(ids).toHaveLength(276)
+    expect(ids).toHaveLength(278)
     expect(ids).toContain("device.env-term")
     expect(ids).toContain("extensions.osc133-a")
     const value = scopeAggregate({
@@ -81,9 +81,9 @@ describe("current full-catalogue scope arithmetic", () => {
       results: results(Object.fromEntries(ids.map((id) => [id, "probe-todo"]))),
     })
     // Every recorded position stays a catalogue row; the nine environment positions are ungraded.
-    expect(value).toMatchObject({ catalogRows: 276, denominator: 267, fraction: "0/267", complete: false })
-    expect(value.counts["probe-todo"]).toBe(267)
-    expect(value.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(276)
+    expect(value).toMatchObject({ catalogRows: 278, denominator: 269, fraction: "0/269", complete: false })
+    expect(value.counts["probe-todo"]).toBe(269)
+    expect(value.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(278)
   })
   it("refuses absent, duplicate or foreign result membership instead of synthesizing a status", () => {
     const input = { scope: "membership", catalogIds: ["a.one", "b.two"] }

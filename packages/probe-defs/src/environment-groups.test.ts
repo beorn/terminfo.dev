@@ -46,12 +46,12 @@ describe("environment-group partition (D132 B)", () => {
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })
 
-  it("partitions the recorded catalogue into 267 graded plus 9 environment ids", () => {
+  it("partitions the recorded catalogue into 269 graded plus 9 environment ids", () => {
     const graded = scoredFeatureIds(recordedIds)
     const environment = recordedIds.filter(isEnvironmentGroup)
-    expect(recordedIds).toHaveLength(276)
+    expect(recordedIds).toHaveLength(278)
     expect(environment).toHaveLength(9)
-    expect(graded).toHaveLength(267)
+    expect(graded).toHaveLength(269)
     expect(graded.length + environment.length).toBe(recordedIds.length)
     expect(graded.filter(isEnvironmentGroup)).toEqual([])
     expect([...graded, ...environment].sort()).toEqual([...recordedIds].sort())
@@ -59,12 +59,12 @@ describe("environment-group partition (D132 B)", () => {
 
   it("derives from the ids it is given, so a historical cohort keeps its own count", () => {
     // A cohort recorded before one of the nine existed loses an UNGRADED id, so its graded count is
-    // still 267 — the absent environment position never reduced the graded denominator.
+    // still 269 — the absent environment position never reduced the graded denominator.
     const withoutOneEnvironmentId = recordedIds.filter((id) => id !== "device.env-no-color")
-    expect(scoredFeatureIds(withoutOneEnvironmentId)).toHaveLength(267)
+    expect(scoredFeatureIds(withoutOneEnvironmentId)).toHaveLength(269)
     // A cohort missing a GRADED capability is one graded capability smaller, not silently padded.
     const withoutOneGradedId = recordedIds.filter((id) => id !== "sgr.bold")
-    expect(scoredFeatureIds(withoutOneGradedId)).toHaveLength(266)
+    expect(scoredFeatureIds(withoutOneGradedId)).toHaveLength(268)
     expect(scoredFeatureIds([])).toEqual([])
   })
 })

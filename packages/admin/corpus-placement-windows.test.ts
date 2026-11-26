@@ -122,7 +122,7 @@ function fixture(alacritty = false) {
       ...launch,
       ...(alacritty ? { mesaRenderer: structuredClone(alacrittyLaunch.mesaRenderer) } : {}),
     }
-  // The frozen specimen predates later catalogue rows (OSC 7577/88, #38699). A run of the current suite carries every
+  // The frozen specimen predates later catalogue rows (OSC 7577/88, #38699; OSC 7501, #38743). A run of the current suite carries every
   // row, so each one the specimen lacks is added as the same Probe to-do the specimen's own rows hold.
   const recorded = new Set(decoded.run.results.map((result) => result.featureId))
   const catalogue = Object.keys(JSON.parse(readFileSync(join(root, "content/features.json"), "utf8")) as object)

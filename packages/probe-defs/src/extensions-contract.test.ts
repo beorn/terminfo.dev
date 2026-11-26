@@ -651,10 +651,10 @@ test.each(["supported", "unsupported", "missing-reader"] as const)("OSC 133;P ob
 })
 
 /**
- * The 82 extension features (81 defined through extensions.ts + 1 catalog-only in features.json; #38699 added
+ * The 84 extension features (83 defined through extensions.ts + 1 catalog-only in features.json; #38699 added
  * OSC 7577's token row, an App environment read declared Untestable for every library, and the OSC 7577 and
- * OSC 88 print-nothing rows).
- * 44 rows are decided in real terminal runs (42 protocol queries plus the two print-nothing rows); 36 unasserted/state probes evaluate to
+ * OSC 88 print-nothing rows; #38743 added the two OSC 7501 program-status rows).
+ * 46 rows are decided in real terminal runs (43 protocol queries plus the three print-nothing rows); 36 unasserted/state probes evaluate to
  * inconclusive pending external apparatus or capture; 1 catalog feature lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
@@ -899,6 +899,18 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     claim:
       "Font ligatures: the headless parser shapes no glyphs; app contexts capture a spaced control and a contiguous sample for review",
   },
+  {
+    id: "extensions.osc7501-query",
+    expected: "decided",
+    claim:
+      "Program status detection query (OSC 7501, spec rev 0.4): ESC ] 7501 ; ? ST before DA1 without echoing the probe's status report nonce",
+  },
+  {
+    id: "extensions.osc7501-silent",
+    expected: "decided",
+    claim:
+      "Program status reports print nothing (OSC 7501, spec rev 0.4): ST, BEL, largest-legal (~3300 B) and over-cap (>4096 B) reports leave the screen and cursor unchanged",
+  },
 ]
 
 /** The named set 28454 reviews: Extensions rows plus the focused test files that bind them. */
@@ -1107,6 +1119,7 @@ const DIRECT_QUERY_REPLIES: Record<string, string> = {
   "extensions.osc701-locale": "\x1b]701;en_US.UTF-8\x07",
   "extensions.osc702-version": "\x1b]702;rxvt-unicode;rxvt;9;31\x07",
   "extensions.osc776-cell-size": "\x1b]776;8;16;2\x07",
+  "extensions.osc7501-query": "\x1b]7501;?\x1b\\",
   "extensions.sixel-da1": "\x1b[?1;4c",
   "extensions.sixel-geometry-report": "\x1b[?2;0;800;528S",
 }
@@ -1308,8 +1321,8 @@ function decidedSatisfactionSources(id: string) {
       }),
     }
   }
-  if (id === "extensions.osc7577-silent" || id === "extensions.osc88-silent") {
-    // #38699: a terminal that consumes every OSC string. Printed text moves the reading; the reports do not.
+  if (id === "extensions.osc7577-silent" || id === "extensions.osc88-silent" || id === "extensions.osc7501-silent") {
+    // #38699, #38743: a terminal that consumes every OSC string. Printed text moves the reading; the reports do not.
     const osc = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
     let text = ""
     let col = 1
@@ -1339,8 +1352,8 @@ test("the extensions contract covers every extension feature and names none unkn
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(82)
-  expect(EXTENSIONS_CONTRACT).toHaveLength(82)
+  expect(extensionsProbes).toHaveLength(84)
+  expect(EXTENSIONS_CONTRACT).toHaveLength(84)
 })
 
 test("the extensions contract names its focused tests, and every named file exists", () => {

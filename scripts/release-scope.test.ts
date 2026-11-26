@@ -266,18 +266,18 @@ describe("the derived scope and the classic cohort", () => {
     expect(included).not.toContain("extensions.osc777-notify")
   })
 
-  it("derives candidate 4 as the extensions and input slices, 47 ids, and refuses an unknown slice", () => {
+  it("derives candidate 4 as the extensions and input slices, 49 ids, and refuses an unknown slice", () => {
     // Candidate 4 is the tier it ADDS: every extensions and input row that is not already tier 1
-    // (extensions holds 82 rows, 45 labelled tier 1; input holds 11, 1 labelled tier 1).
+    // (extensions holds 84 rows, 45 labelled tier 1; input holds 11, 1 labelled tier 1).
     const extensions = cohortIds(catalog, categories, ["extensions"], { excludingTier1: true })
     const input = cohortIds(catalog, categories, ["input"], { excludingTier1: true })
-    expect(extensions).toHaveLength(37)
+    expect(extensions).toHaveLength(39)
     expect(input).toHaveLength(10)
-    expect(cohortIds(catalog, categories, ["extensions"], { excludingTier1: false })).toHaveLength(82)
+    expect(cohortIds(catalog, categories, ["extensions"], { excludingTier1: false })).toHaveLength(84)
     expect(cohortIds(catalog, categories, ["input"], { excludingTier1: false })).toHaveLength(11)
     const ids = cohortIds(catalog, categories, ["extensions", "input"], { excludingTier1: true })
-    expect(ids).toHaveLength(47)
-    expect(new Set(ids).size).toBe(47)
+    expect(ids).toHaveLength(49)
+    expect(new Set(ids).size).toBe(49)
     // One order: the category catalog opens with extensions and closes with input, and the cohort
     // follows that order rather than any per-call grouping.
     expect(ids.slice(0, extensions.length)).toEqual(extensions)
@@ -395,7 +395,7 @@ describe("release status and verdicts", () => {
 describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses)", () => {
   const allCatalogIds = Object.keys(catalog).sort()
 
-  it("partitions the 276 catalogue into 267 graded positions + 9 environment positions across 13 families", () => {
+  it("partitions the 278 catalogue into 269 graded positions + 9 environment positions across 13 families", () => {
     const statuses: Record<string, ProbeStatus> = {}
     for (const id of allCatalogIds) {
       statuses[id] = ENVIRONMENT_GROUP_IDS.includes(id as (typeof ENVIRONMENT_GROUP_IDS)[number])
@@ -411,12 +411,12 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
                 : "probe-todo"
     }
     const rollup = rollupTerminalStatuses(statuses, allCatalogIds)
-    expect(rollup.positions).toBe(267)
+    expect(rollup.positions).toBe(269)
     expect(rollup.environmentPositions).toBe(9)
     expect(Object.keys(rollup.families)).toHaveLength(13)
-    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions, 0)).toBe(267)
+    expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions, 0)).toBe(269)
     expect(Object.values(rollup.families).reduce((sum, fam) => sum + fam.positions + fam.environmentPositions, 0)).toBe(
-      276,
+      278,
     )
     expect(rollup.families.device?.positions).toBe(19)
     expect(rollup.families.device?.environmentPositions).toBe(9)
@@ -425,7 +425,7 @@ describe("Phase 2.4 single status-and-rollup computation (rollupTerminalStatuses
     expect(rollup.decisive).toBe(rollup.counts.supported + rollup.counts.unsupported)
     expect(rollup.decided).toBe(rollup.decisive + rollup.counts.untestable)
     expect(rollup.open).toBe(rollup.counts["probe-todo"] + rollup.counts["probe-invalid"])
-    expect(rollup.decided + rollup.open).toBe(267)
+    expect(rollup.decided + rollup.open).toBe(269)
     expect(rollup.completenessTier).toBe(1)
 
     // A2: no compat aliases on TerminalStatusRollup.
