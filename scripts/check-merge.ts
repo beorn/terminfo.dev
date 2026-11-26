@@ -139,7 +139,7 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
   }
   const buildScript = manifest.scripts?.["build"]
   if (buildScript === undefined) throw new Error("terminfo check:merge: package.json declares no build script")
-  const entries = [...buildScript.matchAll(/\b(scripts\/[\w./-]+\.[cm]?ts)\b/gu)].map((match) => match[1]!)
+  const entries = [...buildScript.matchAll(/\b(scripts\/[\w./-]+\.[cm]?ts)\b/gu)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
   if (entries.length === 0) {
     throw new Error(`terminfo check:merge: the build script names no scripts/ entry file: ${JSON.stringify(buildScript)}`)
   }
@@ -168,8 +168,9 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
   const visit = (path: string) => {
     if (TEST_FILE.test(path)) return
     const top = path.split("/").slice(0, 2).join("/")
-    if (packageByDir.has(top)) {
-      reachPackage(packageByDir.get(top)!)
+    const owner = packageByDir.get(top)
+    if (owner !== undefined) {
+      reachPackage(owner)
       return
     }
     if (files.has(path)) return
@@ -177,10 +178,10 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
     if (SOURCE_FILE.test(path)) queue.push(path)
   }
   const reachPackage = (name: string) => {
-    if (reachedPackages.has(name)) return
+    const entry = packages.get(name)
+    if (entry === undefined || reachedPackages.has(name)) return
     reachedPackages.add(name)
-    const entry = packages.get(name)!
-    for (const dep of entry.deps) if (packages.has(dep)) reachPackage(dep)
+    for (const dep of entry.deps) reachPackage(dep)
     for (const file of listSourceFiles(terminfoRoot, entry.dir)) queue.push(file)
   }
   const resolveLocal = (from: string, specifier: string): string | null => {
@@ -195,21 +196,21 @@ export function siteBuildInputs(terminfoRoot: string): SiteBuildInputs {
   for (const entry of entries) visit(entry)
   // Pages import code too; data under content/ is read by path and imports nothing.
   for (const file of listSourceFiles(terminfoRoot, "docs")) queue.push(file)
-  while (queue.length > 0) {
-    const file = queue.pop()!
+  for (let file = queue.pop(); file !== undefined; file = queue.pop()) {
     const text = readFileSync(join(terminfoRoot, file), "utf8")
     for (const match of text.matchAll(SPECIFIER)) {
-      const specifier = match[1]!
+      const specifier = match[1]
+      if (specifier === undefined) continue
       if (specifier.startsWith(".")) {
         const resolved = resolveLocal(file, specifier)
         if (resolved !== null && !resolved.startsWith("..")) visit(resolved)
         continue
       }
-      const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
+      const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : (specifier.split("/")[0] ?? specifier)
       if (packageDirByName.has(name)) reachPackage(name)
     }
   }
-  const roots = [...PAGE_AND_DATA_ROOTS, ...[...reachedPackages].map((name) => packages.get(name)!.dir)]
+  const roots = [...PAGE_AND_DATA_ROOTS, ...[...reachedPackages].flatMap((name) => packages.get(name)?.dir ?? [])]
   return { roots, files }
 }
 
