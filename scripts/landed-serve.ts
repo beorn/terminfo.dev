@@ -336,8 +336,45 @@ export function createSiteRebuilder(args: { runsDir?: string; outRoot: string; t
  * exits only when there is nothing at all to serve, where serving nothing is the honest answer. Returns true when the
  * staged build was swapped in.
  */
+/** hh#37605 (@cto 86815108): every refusal about a landing's absent content names where content lives. */
+export const LANDING_CONTENT_RULE = "content is materialized only in the preview's pinned landing"
+/** Writing back 113k content files took about a minute on hab1; bounded well past that. */
+const LANDING_CONTENT_FILL_TIMEOUT_MS = 10 * 60 * 1000
+
+/**
+ * hh#37605: hh's landing trees leave this checkout's `content/` out (a sparse checkout set before first checkout),
+ * because only the landing the preview serves reads it. Fill it here, in that landing, before a build reads it:
+ * turning the sparse checkout off is the fill, and on a checkout that was never sparse nothing runs. Returns null when
+ * content is present, else the reason it is not, naming the landing and {@link LANDING_CONTENT_RULE}.
+ */
+export function fillLandingContent(
+  root: string = repoRoot,
+  git: (args: readonly string[]) => void = (args) => {
+    execFileSync("git", [...args], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: LANDING_CONTENT_FILL_TIMEOUT_MS,
+    })
+  },
+): string | null {
+  const content = join(root, "content")
+  if (existsSync(content)) return null
+  console.log(
+    `terminfo-site: ${content} is absent (${LANDING_CONTENT_RULE}); filling it with git sparse-checkout disable`,
+  )
+  try {
+    git(["-C", root, "sparse-checkout", "disable"])
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer | string }).stderr?.toString().trim()
+    return `${LANDING_CONTENT_RULE}: the fill failed in ${root}: ${stderr || (error instanceof Error ? error.message : String(error))}`
+  }
+  return existsSync(content)
+    ? null
+    : `${LANDING_CONTENT_RULE}: git sparse-checkout disable exited 0 in ${root} but ${content} is still absent`
+}
+
 export async function buildLanding(
-  args: { outRoot: string; target: string; runBuild?: RunBuild; beside?: boolean },
+  args: { outRoot: string; target: string; runBuild?: RunBuild; beside?: boolean; contentRoot?: string },
   now: Date = new Date(),
 ): Promise<boolean> {
   const served = join(args.outRoot, "dist")
@@ -361,13 +398,19 @@ export async function buildLanding(
   // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
   // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
   // checkout's HEAD is that pin, and `target` is it; the build has no other way to know a landing is the caller.
-  const status = await (args.runBuild ?? siteBuild)({
-    ...process.env,
-    TERMINFO_SITE_OUT_DIR: staging,
-    TERMINFO_SITE_CODE_GITLINK: args.target,
-  })
+  // hh#37605: a landing that left content out gets it here, beside the served build; a failed fill is a failed build,
+  // so the previous build keeps serving and the marker records why.
+  const unfilled = fillLandingContent(args.contentRoot ?? repoRoot)
+  const status =
+    unfilled !== null
+      ? null
+      : await (args.runBuild ?? siteBuild)({
+          ...process.env,
+          TERMINFO_SITE_OUT_DIR: staging,
+          TERMINFO_SITE_CODE_GITLINK: args.target,
+        })
   const staged = readServedStamp(stagedDist)
-  const failure = status !== 0 ? `site build failed (exit ${String(status)})` : null
+  const failure = unfilled ?? (status !== 0 ? `site build failed (exit ${String(status)})` : null)
   const mismatch =
     failure === null && staged.sourceCommit !== args.target
       ? `build stamped ${staged.sourceCommit ?? "nothing"}, expected ${args.target}`

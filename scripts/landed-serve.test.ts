@@ -15,6 +15,8 @@ import {
   buildLanding,
   createPreviewHandler,
   createSiteRebuilder,
+  fillLandingContent,
+  LANDING_CONTENT_RULE,
   readServedStamp,
   rebuildForRun,
   rebuildReason,
@@ -461,6 +463,75 @@ describe("landed-serve hourly-run rebuild", () => {
       kind: "code",
       failure: "site build failed (exit 70)",
       failedAt: expect.any(String),
+    })
+  })
+
+  // hh#37605 (@cto 86815108): hh's landing trees leave content/ out; the build fills it in the one landing it serves.
+  describe("landing content fill (hh#37605)", () => {
+    function sparseCheckout(): string {
+      const root = mkdtempSync(join(tmpdir(), "landed-serve-fill-"))
+      const repo = join(root, "terminfo.dev")
+      const git = (args: readonly string[]) => execFileSync("git", [...args], { cwd: repo, stdio: "pipe" })
+      mkdirSync(join(repo, "content", "terminals"), { recursive: true })
+      mkdirSync(join(repo, "scripts"), { recursive: true })
+      writeFileSync(join(repo, "content", "terminals", "kitty.json"), "{}\n")
+      writeFileSync(join(repo, "scripts", "landed-serve.ts"), "export {}\n")
+      git(["init", "-q", "-b", "main"])
+      git(["-c", "user.email=t@example.invalid", "-c", "user.name=T", "add", "."])
+      git(["-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-q", "-m", "init"])
+      git(["sparse-checkout", "set", "--cone", "scripts"])
+      return repo
+    }
+
+    it("fills a landing that left content out, and a full checkout runs no git at all", () => {
+      const repo = sparseCheckout()
+      expect(existsSync(join(repo, "content"))).toBe(false)
+      expect(fillLandingContent(repo)).toBeNull()
+      expect(readFileSync(join(repo, "content", "terminals", "kitty.json"), "utf8")).toBe("{}\n")
+      const calls: string[][] = []
+      expect(fillLandingContent(repo, (args) => void calls.push([...args]))).toBeNull()
+      expect(calls).toEqual([])
+    })
+
+    it("a failed fill names the landing and the rule", () => {
+      const repo = sparseCheckout()
+      const failing = () => {
+        throw Object.assign(new Error("git exited 128"), { stderr: "fatal: unable to write index" })
+      }
+      const reason = fillLandingContent(repo, failing)
+      expect(reason).toContain(LANDING_CONTENT_RULE)
+      expect(reason).toContain(repo)
+      expect(reason).toContain("fatal: unable to write index")
+      expect(fillLandingContent(repo, () => undefined)).toContain("is still absent")
+    })
+
+    it("a build whose content cannot be filled keeps the previous build serving and never runs the build", async () => {
+      const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
+      stamp(join(out, "dist"), RUN_A)
+      const target = "c".repeat(40)
+      const contentRoot = join(mkdtempSync(join(tmpdir(), "landed-serve-nogit-")), "terminfo.dev")
+      mkdirSync(contentRoot, { recursive: true })
+      let built = false
+      const errors: string[] = []
+      const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => errors.push(String(line)))
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined)
+      try {
+        const runBuild = async () => {
+          built = true
+          return 0
+        }
+        expect(await buildLanding({ outRoot: out, target, runBuild, contentRoot })).toBe(false)
+      } finally {
+        spy.mockRestore()
+        log.mockRestore()
+      }
+      expect(built).toBe(false)
+      expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_A })
+      expect(errors.join("\n")).toContain(LANDING_CONTENT_RULE)
+      expect(errors.join("\n")).toContain(`still serving the previous build ${CODE.slice(0, 12)}`)
+      expect((JSON.parse(readFileSync(join(out, "rebuild.json"), "utf8")) as { failure: string }).failure).toContain(
+        LANDING_CONTENT_RULE,
+      )
     })
   })
 
