@@ -12,9 +12,12 @@ import {
   assertOwnedTerminalWindow,
   assertOwnedAppOwner,
   closeOwnedTerminalWindow,
+  createTerminalAppTabTitleReader,
   parseKittyIdentity,
+  readTerminalAppTabTitle,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
+  TERMINAL_APP_TAB_TITLE_SCRIPT,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
 import { argvCarriesMarker, descendToOwner, runScopedMarker } from "./owned-process.ts"
@@ -845,5 +848,241 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
       expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 8888)]))).toThrow()
       expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(78, 4242)]))).toThrow()
     })
+  })
+})
+
+describe("37257 Terminal.app close sheet", () => {
+  const window = { provider: "terminal-app", windowId: 1380, tty: "/dev/ttys006" } as OwnedTerminalWindow
+  const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
+
+  /** A small Terminal model: two live processes, one sheet per close, Terminate ends one process per press. */
+  const scripted = (state: {
+    windows: number
+    processes: number
+    sheet: boolean
+    trusted?: boolean
+    noSheet?: boolean
+    noWindow?: boolean
+  }) =>
+    vi.fn((command: string, args?: readonly string[]) => {
+      if (command === "sleep") return ok("")
+      if (args?.[0] === "-e") return ok(state.windows === 0 ? "0\n" : "1\n")
+      const script = String(args?.[3] ?? "")
+      if (script.includes("System Events")) {
+        if (state.windows > 0) {
+          state.windows = 0
+          state.processes = 0
+          state.sheet = false
+        }
+        return ok(JSON.stringify({ status: "pressed", tabs: 0 }))
+      }
+      if (script.includes("AXSheet")) {
+        if (state.noWindow) {
+          return ok(
+            JSON.stringify({
+              status: "no-window",
+              candidates: 0,
+              sheets: 0,
+              pressed: 0,
+              matchedBy: null,
+              windows: [{ title: "codi — -zsh — 120×30", sheets: 0 }],
+            }),
+          )
+        }
+        if (state.noSheet) return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
+        if (state.trusted === false) {
+          return ok(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" }))
+        }
+        if (!state.sheet) return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
+        state.sheet = false
+        state.processes -= 1
+        if (state.processes <= 0) state.windows = 0
+        return ok(JSON.stringify({ status: "pressed", candidates: 1, sheets: 1, pressed: 1 }))
+      }
+      if (script.includes("windows[w].close()")) {
+        if (state.windows > 0 && !state.noSheet) state.sheet = true
+        return ok(state.windows > 0 ? "1" : "0")
+      }
+      return ok(String(state.windows))
+    })
+
+  test("a close that leaves its own terminate sheet closes and dismisses until the id is gone", () => {
+    const state = { windows: 1, processes: 2, sheet: false }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      rounds: { dismissal: { status: string } }[]
+    }
+    expect(state.windows).toBe(0)
+    expect(result.remaining).toBe(0)
+    expect(result.rounds.map((round) => round.dismissal.status)).toEqual(["pressed", "pressed"])
+  })
+
+  test("a sheet that cannot be dismissed still refuses with the rounds in the trace", () => {
+    const state = { windows: 1, processes: 2, sheet: false }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(((command: string, args?: readonly string[]) => {
+      if (command === "sleep") return ok("")
+      if (args?.[0] === "-e") return ok("1\n")
+      const script = String(args?.[3] ?? "")
+      if (script.includes("AXSheet")) {
+        return ok(JSON.stringify({ status: "no-terminate", candidates: 1, sheets: 1, pressed: 0 }))
+      }
+      return script.includes("windows[w].close()") ? ok("1") : ok("1")
+    }) as never)
+    expect(() => closeOwnedTerminalWindow(window)).toThrow(
+      /closing and dismissing its sheets left the window id listed/,
+    )
+  })
+
+  test("an untrusted Accessibility process refuses the dismissal by name", () => {
+    const state = { windows: 1, processes: 2, sheet: false, trusted: false }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    expect(() => closeOwnedTerminalWindow(window)).toThrow(/not trusted for Accessibility/)
+  })
+
+  test("a zero-match on the first close needs no sheet", () => {
+    const state = { windows: 0, processes: 0, sheet: false }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as { remaining: number; rounds?: unknown }
+    expect(result.remaining).toBe(0)
+    expect(result.rounds).toBeUndefined()
+  })
+
+  test("a window whose tab is already gone is closed with the Window menu shortcut", () => {
+    const state = { windows: 1, processes: 0, sheet: false, noSheet: true }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      forced: { status: string }
+      rounds: { dismissal: { status: string } }[]
+    }
+    expect(state.windows).toBe(0)
+    expect(result.remaining).toBe(0)
+    expect(result.rounds[0]?.dismissal.status).toBe("no-sheet")
+    expect(result.forced).toEqual({ status: "pressed", tabs: 0 })
+  })
+
+  test("a window AX cannot see at all still closes through the Window menu shortcut", () => {
+    const state = { windows: 1, processes: 0, sheet: false, noWindow: true }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      forced: { status: string }
+      rounds: { dismissal: { status: string } }[]
+    }
+    expect(state.windows).toBe(0)
+    expect(result.remaining).toBe(0)
+    expect(result.rounds[0]?.dismissal.status).toBe("no-window")
+    expect(result.forced).toEqual({ status: "pressed", tabs: 0 })
+  })
+})
+
+describe("37257 Terminal.app tab title", () => {
+  const composite = "runner — target-A — osascript ◂ collect.command — 120×30"
+  const reply = (
+    over: Record<string, unknown> = {},
+  ): { stdout: string; stderr: string; status: number | null; signal: NodeJS.Signals | null } => ({
+    stdout: JSON.stringify({
+      status: "read",
+      title: "target-A",
+      windowTitle: composite,
+      windowId: 1349,
+      ...over,
+    }),
+    stderr: "",
+    status: 0,
+    signal: null,
+  })
+
+  test("reads the tab's custom title, keyed on the owned TTY alone", () => {
+    const run = vi.fn(() => reply())
+    expect(readTerminalAppTabTitle("/dev/ttys006", run)).toMatchObject({ status: "read", title: "target-A" })
+    expect(run).toHaveBeenCalledWith(["/dev/ttys006"])
+  })
+
+  test("the script reads Terminal's own tab custom title and never writes a title of its own", () => {
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).toContain("customTitle")
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).not.toContain("]2;")
+  })
+
+  test("a tab whose custom title is the window composite is refused by name, never stripped", async () => {
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => {},
+      run: () => reply({ title: composite, windowTitle: composite }),
+    })
+    await expect(reader()).rejects.toThrow(/custom title is the window's composite/)
+  })
+
+  test("the live owner is re-proved before and after every read", async () => {
+    const checks: string[] = []
+    let call = 0
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => checks.push(`check${(call += 1)}`),
+      run: () => reply(),
+    })
+    await reader()
+    expect(checks).toEqual(["check1", "check2"])
+  })
+
+  test("a reply from another window id is refused by name when the reader is bound", async () => {
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      windowId: 1349,
+      check: () => {},
+      run: () => reply({ windowId: 1350 }),
+    })
+    await expect(reader()).rejects.toThrow(/in window 1350, not the measured window 1349/)
+  })
+
+  test("stdout that is not JSON is a prefixed diagnostic", () => {
+    expect(() =>
+      readTerminalAppTabTitle("/dev/ttys006", () => ({ stdout: "not json", stderr: "", status: 0, signal: null })),
+    ).toThrow(/stdout was not JSON: not json/)
+  })
+
+  test("a refusal throws with its phase and reason", async () => {
+    const refused = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => {},
+      run: () => ({
+        stdout: JSON.stringify({
+          status: "refused",
+          phase: "custom-title",
+          reason: "the owned tab has no readable custom title",
+        }),
+        stderr: "",
+        status: 0,
+        signal: null,
+      }),
+    })
+    await expect(refused()).rejects.toThrow(/refused at custom-title: the owned tab has no readable custom title/)
+  })
+
+  test.each([
+    ["not a TTY", "not-a-tty"],
+    ["a TTY-shaped path with a separator", "/dev/ttys006/../x"],
+  ])("refuses %s before running osascript", (_label, tty) => {
+    const run = vi.fn(() => reply())
+    expect(() => readTerminalAppTabTitle(tty, run)).toThrow(/not a device path/)
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  test("an unknown reply shape is a failure, never a reading", () => {
+    expect(() =>
+      readTerminalAppTabTitle("/dev/ttys006", () => ({
+        stdout: '{"status":"read"}',
+        stderr: "",
+        status: 0,
+        signal: null,
+      })),
+    ).toThrow(/no known shape/)
   })
 })

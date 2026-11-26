@@ -624,6 +624,269 @@ export function assertOwnedTerminalWindow(window: OwnedTerminalWindow, daemonPid
   }
 }
 
+/**
+ * 37257 close path (@chief 2026-11-26): a Terminal window whose login shell is still alive answers `close` with its
+ * own "Do you want to terminate running processes in this window?" sheet, so the window stays and the run's
+ * zero-match obligation fails even though nothing is wrong with the measurement. The sheet is Terminal's own, on the
+ * run's own window: this pass finds that window by the recorded id, matches the accessibility window on the window's
+ * exact name, presses the sheet's Terminate button through AX (System Events is not permitted on the run host), and the
+ * caller then re-reads the id's count until it is zero. Nothing here is a title read or a window observation.
+ */
+export const TERMINAL_APP_CLOSE_SHEET_SCRIPT = `ObjC.import("AppKit"); ObjC.import("ApplicationServices");
+function run(argv) {
+  var windowId = Number(argv[0]);
+  function attribute(element, name) {
+    var ref = Ref();
+    var error = Number($.AXUIElementCopyAttributeValue(element, $(name), ref));
+    return { error: error, value: error === 0 ? ref[0] : undefined };
+  }
+  function text(value) {
+    if (value === undefined) return null;
+    var object = ObjC.castRefToObject(value);
+    if (object.isKindOfClass($.NSString)) return ObjC.unwrap(object);
+    return null;
+  }
+  try {
+    var app = Application("Terminal");
+    if (!app.running()) return JSON.stringify({ status: "no-window", reason: "Terminal is not running" });
+    var matches = [];
+    for (var w = 0; w < app.windows.length; w++) if (Number(app.windows[w].id()) === windowId) matches.push(app.windows[w]);
+    if (matches.length !== 1) return JSON.stringify({ status: "no-window", reason: "the owned window id is not present exactly once" });
+    var name = String(matches[0].name());
+    if (!Boolean($.AXIsProcessTrusted())) return JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" });
+    var running = $.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.apple.Terminal");
+    if (Number(running.count) !== 1) return JSON.stringify({ status: "refused", reason: Number(running.count) + " running Terminal processes" });
+    var list = attribute($.AXUIElementCreateApplication(Number(running.objectAtIndex(0).processIdentifier)), "AXWindows");
+    if (list.error !== 0) return JSON.stringify({ status: "refused", reason: "AXWindows AXError " + list.error });
+    // The window's own title is the composite and is NOT unique: a fresh login shell and the run's own tab can carry
+    // the same text, so matching every window by title can name several windows (measured 2026-11-26: candidates 4,
+    // sheets 0 while the close sheet was on the owned window). Press on the title matches, fall back to the single
+    // window that actually has a sheet (the one this run just asked Terminal to close), and report what was seen.
+    var windows = ObjC.castRefToObject(list.value), candidates = 0, sheets = 0, pressed = 0, matchedBy = null;
+    var observed = [], withSheet = [];
+    function sheetButtons(win) {
+      var children = attribute(win, "AXChildren");
+      if (children.error !== 0) return null;
+      var kids = ObjC.castRefToObject(children.value), found = { sheets: 0, buttons: [] };
+      for (var c = 0; c < Number(kids.count); c++) {
+        var kid = kids.objectAtIndex(c);
+        if (text(attribute(kid, "AXRole").value) !== "AXSheet") continue;
+        found.sheets += 1;
+        var sheetChildren = attribute(kid, "AXChildren");
+        if (sheetChildren.error !== 0) continue;
+        var buttons = ObjC.castRefToObject(sheetChildren.value);
+        for (var b = 0; b < Number(buttons.count); b++) {
+          var button = buttons.objectAtIndex(b);
+          if (text(attribute(button, "AXRole").value) !== "AXButton") continue;
+          if (text(attribute(button, "AXTitle").value) !== "Terminate") continue;
+          found.buttons.push(button);
+        }
+      }
+      return found;
+    }
+    function press(found) {
+      var count = 0;
+      for (var b = 0; b < found.buttons.length; b++) {
+        if (Number($.AXUIElementPerformAction(found.buttons[b], $("AXPress"))) === 0) count += 1;
+      }
+      return count;
+    }
+    for (var i = 0; i < Number(windows.count); i++) {
+      var win = windows.objectAtIndex(i);
+      var title = text(attribute(win, "AXTitle").value);
+      var found = sheetButtons(win);
+      observed.push({ title: title, sheets: found === null ? null : found.sheets });
+      if (found === null) continue;
+      if (title === name) {
+        candidates += 1;
+        sheets += found.sheets;
+        if (found.buttons.length > 0) { pressed += press(found); matchedBy = "title"; }
+      } else if (found.buttons.length > 0) {
+        withSheet.push(found);
+      }
+    }
+    if (pressed === 0 && withSheet.length === 1) {
+      pressed += press(withSheet[0]);
+      matchedBy = pressed > 0 ? "sheet" : null;
+    }
+    return JSON.stringify({
+      status: pressed > 0 ? "pressed" : candidates === 0 && withSheet.length === 0 ? "no-window" : sheets === 0 && withSheet.length === 0 ? "no-sheet" : "no-terminate",
+      candidates: candidates,
+      sheets: sheets,
+      pressed: pressed,
+      matchedBy: matchedBy,
+      windows: observed,
+    });
+  } catch (error) {
+    return JSON.stringify({ status: "refused", reason: "the dismissal raised", message: String(error && error.message ? error.message : error) });
+  }
+}`
+
+/** Close one window by its recorded id; returns how many it asked Terminal to close. */
+export const TERMINAL_APP_CLOSE_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return "0";
+  var closed = 0;
+  for (var w = 0; w < app.windows.length; w++) {
+    if (Number(app.windows[w].id()) !== windowId) continue;
+    app.windows[w].close();
+    closed += 1;
+  }
+  return String(closed);
+}`
+
+/** Ask Terminal to close every window with one recorded id; a count, never an absence claim. */
+export function closeTerminalAppWindows(windowId: number, run: TerminalAppCloseRun = defaultCloseRun): number {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app window close: invalid window id")
+  const result = run(TERMINAL_APP_CLOSE_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window close: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const text = result.stdout.trim()
+  if (!/^[0-9]+$/.test(text)) throw new Error(`Terminal.app window close: not a count: ${result.stdout}`)
+  return Number(text)
+}
+
+/**
+ * A Terminal window whose tab has already gone (tabs = 0, measured 2026-11-26) is invisible to AX and AppleScript's
+ * `close` silently ignores it. Bring the recorded window to the front by id and close it with the Window menu's own
+ * shortcut; the front-window id is re-read before the keystroke so a vanished window cannot close another one.
+ */
+export const TERMINAL_APP_FORCE_CLOSE_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return JSON.stringify({ status: "absent", reason: "Terminal is not running" });
+  var present = 0, target = -1;
+  for (var w = 0; w < app.windows.length; w++) {
+    if (Number(app.windows[w].id()) !== windowId) continue;
+    present += 1;
+    target = w;
+  }
+  if (present !== 1) return JSON.stringify({ status: "absent", reason: "the owned window id is not present exactly once" });
+  var tabs = Number(app.windows[target].tabs.length);
+  app.activate();
+  app.windows[target].index.set(1);
+  if (!Boolean(app.frontmost())) return JSON.stringify({ status: "absent", reason: "Terminal is not frontmost yet", tabs: tabs });
+  if (Number(app.windows[0].id()) !== windowId) {
+    return JSON.stringify({ status: "absent", reason: "the owned window did not come to the front", tabs: tabs });
+  }
+  Application("System Events").keystroke("w", { using: "command down" });
+  return JSON.stringify({ status: "pressed", tabs: tabs });
+}`
+
+export type TerminalAppForceCloseReply =
+  | { status: "pressed"; tabs: number }
+  | { status: "absent"; reason: string; tabs?: number }
+
+/** Force one recorded window shut; a reply, never an absence claim (the caller still counts the id). */
+export function forceCloseTerminalAppWindow(
+  windowId: number,
+  run: TerminalAppCloseRun = defaultCloseRun,
+): TerminalAppForceCloseReply {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) {
+    throw new Error("Terminal.app window force close: invalid window id")
+  }
+  const result = run(TERMINAL_APP_FORCE_CLOSE_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window force close: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  let reply: Record<string, unknown>
+  try {
+    reply = JSON.parse(result.stdout) as Record<string, unknown>
+  } catch {
+    throw new Error(`Terminal.app window force close: stdout was not JSON: ${result.stdout}`)
+  }
+  const ok =
+    reply !== null && (reply.status === "pressed" || (reply.status === "absent" && typeof reply.reason === "string"))
+  if (!ok) throw new Error(`Terminal.app window force close: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppForceCloseReply
+}
+
+/** Count the windows with one recorded id; zero is the only success, and Terminal being gone is zero. */
+export const TERMINAL_APP_WINDOW_COUNT_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return "0";
+  var count = 0;
+  for (var w = 0; w < app.windows.length; w++) if (Number(app.windows[w].id()) === windowId) count += 1;
+  return String(count);
+}`
+
+export type TerminalAppCloseSheetReply =
+  | { status: "pressed"; candidates: number; sheets: number; pressed: number }
+  | {
+      status: "no-window" | "no-sheet" | "no-terminate"
+      candidates: number
+      sheets: number
+      pressed: number
+      reason?: string
+    }
+  | { status: "refused"; reason: string; message?: string }
+
+/** One JXA osascript run of a close-path script; the default spawns /usr/bin/osascript with a 10 s kill. */
+export type TerminalAppCloseRun = (
+  script: string,
+  argv: readonly string[],
+) => { stdout: string; stderr: string; status: number | null; error?: Error }
+
+const defaultCloseRun: TerminalAppCloseRun = (script, argv) => {
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", script, ...argv], {
+    encoding: "utf8",
+    timeout: 10_000,
+    killSignal: "SIGKILL",
+  })
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    status: result.status,
+    ...(result.error !== undefined && { error: result.error }),
+  }
+}
+
+/** Press the owned window's own close sheet, if it has one; anything but a press is reported by name. */
+export function dismissTerminalAppCloseSheet(
+  windowId: number,
+  run: TerminalAppCloseRun = defaultCloseRun,
+): TerminalAppCloseSheetReply {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app close sheet: invalid window id")
+  const result = run(TERMINAL_APP_CLOSE_SHEET_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app close sheet: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const reply = JSON.parse(result.stdout) as Record<string, unknown>
+  const ok =
+    typeof reply === "object" &&
+    reply !== null &&
+    (reply.status === "pressed" ||
+      reply.status === "no-window" ||
+      reply.status === "no-sheet" ||
+      reply.status === "no-terminate" ||
+      reply.status === "refused")
+  if (!ok) throw new Error(`Terminal.app close sheet: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppCloseSheetReply
+}
+
+/** How many Terminal windows carry one recorded id; a missing or unreadable count is a thrown failure. */
+export function countTerminalAppWindows(windowId: number, run: TerminalAppCloseRun = defaultCloseRun): number {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app window count: invalid window id")
+  const result = run(TERMINAL_APP_WINDOW_COUNT_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window count: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const text = result.stdout.trim()
+  if (!/^[0-9]+$/.test(text)) throw new Error(`Terminal.app window count: not a count: ${result.stdout}`)
+  return Number(text)
+}
+
 /** Recheck and close atomically in the same operation: AppleScript closes Terminal; kitty, cli-process and
  * iTerm2 signal their recorded pid, and iTerm2 then proves the window server lists none of its windows. */
 export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | void {
@@ -631,7 +894,7 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
     case "terminal-app": {
       const argv = ["-e", ownedWindowScript(window, true)]
       const result = spawnSync("osascript", argv, { encoding: "utf8", timeout: 15_000 })
-      const trace = {
+      const trace: Record<string, unknown> = {
         windowId: window.windowId,
         tty: window.tty,
         command: "osascript",
@@ -641,11 +904,56 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
         stderr: String(result.stderr ?? ""),
         ...(result.error && { error: result.error.message }),
       }
-      if (result.error || result.status !== 0 || trace.stdout.trim() !== "0") {
+      if (result.error || result.status !== 0) {
         throw Object.assign(new Error("Owned Terminal window close and zero-match absence could not be proved"), {
           name: "CaptureRestoreFailed",
           captureCommand: trace,
         })
+      }
+      if (String(trace.stdout).trim() !== "0") {
+        // 37257: the window stayed because Terminal put up its own "terminate running processes?" sheet for a
+        // still-live process. Terminate ends one process per round (the serve script, then the login shell), and the
+        // window still has to be closed again afterwards, so close and dismiss repeat until the id's count is zero.
+        const rounds: unknown[] = []
+        let remaining = countTerminalAppWindows(window.windowId)
+        let refused: string | undefined
+        for (let round = 0; remaining !== 0 && round < 5 && refused === undefined; round += 1) {
+          const closed = closeTerminalAppWindows(window.windowId)
+          // Terminal raises the sheet a moment after close returns; poll it before deciding there is none.
+          let dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          for (let attempt = 0; dismissal.status === "no-sheet" && attempt < 10; attempt += 1) {
+            spawnSync("sleep", ["0.2"])
+            dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          }
+          rounds.push({ closed, dismissal })
+          if (dismissal.status === "refused") refused = dismissal.reason
+          // A tab that has already gone leaves a window AppleScript's close ignores and AX cannot see at all — the
+          // measured reply is status no-window with candidates 0 against the idle windows — so no sheet can appear.
+          // When the dismissal found neither a sheet nor the window, close it with the Window menu's own shortcut.
+          if (dismissal.status === "no-sheet" || dismissal.status === "no-window") {
+            trace.forced = forceCloseTerminalAppWindow(window.windowId)
+          }
+          for (let attempt = 0; remaining !== 0 && attempt < 30; attempt += 1) {
+            spawnSync("sleep", ["0.1"])
+            remaining = countTerminalAppWindows(window.windowId)
+          }
+        }
+        trace.rounds = rounds
+        trace.remainingAfterDismissal = remaining
+        if (refused !== undefined) {
+          throw Object.assign(
+            new Error(`Owned Terminal window close and zero-match absence could not be proved: ${refused}`),
+            { name: "CaptureRestoreFailed", captureCommand: trace },
+          )
+        }
+        if (remaining !== 0) {
+          throw Object.assign(
+            new Error(
+              `Owned Terminal window close and zero-match absence could not be proved: closing and dismissing its sheets left the window id listed (rounds ${JSON.stringify(trace.rounds)})`,
+            ),
+            { name: "CaptureRestoreFailed", captureCommand: trace },
+          )
+        }
       }
       return JSON.stringify({ ...trace, remaining: 0 })
     }
@@ -865,6 +1173,169 @@ export function readTerminalAppDocument(
         typeof reply.trusted === "boolean"))
   if (!ok) throw new OwnedCwdReadError("osascript", "the reply had no known shape", `unknown reply: ${result.stdout}`)
   return reply as TerminalAppDocumentReply
+}
+
+/**
+ * 37257 (@cto 4dfae597, 2026-11-26): Terminal.app's *tab* title, the value OSC 2 sets. The window's `name` is the
+ * app's composition of several settings (directory, custom title, process, geometry) and must never be read as the
+ * protocol value -- 28fb8b2e6 removed that read for this app. Terminal's scripting dictionary keeps the tab's own
+ * title as `custom title`, separate from the window's composite: the JXA pass below reads exactly that property on
+ * the tab whose TTY is the run's -- one owned window, one tab, or a refusal by name.
+ *
+ * Measured on codimac 2026-11-26 (macOS 26.7.3, Terminal 2.15): after `ESC ] 2 ; probe-title-abc BEL`,
+ * `custom title of tab 1 of window id N` read back `probe-title-abc`, and a second write changed it to
+ * `probe-title-def`; at that moment `name of window id N` was `codi — probe-title-def — -zsh — 120x30`. The
+ * Accessibility tree is NOT used: a single-tab window exposes no AX tab element at all (AX-MEASUREMENT.md keeps the
+ * detail), and reading the composite is exactly what the row forbids. A tab whose `custom title` equals the window
+ * composite is refused by name. No fence is written: a title reader must not change the title it reads.
+ */
+export const TERMINAL_APP_TAB_TITLE_SCRIPT = `function run(argv) {
+  var ttyPath = argv[0];
+  function reply(value) { return JSON.stringify(value) }
+  function text(value) { return value === null || value === undefined ? null : String(value) }
+  function owned(app) {
+    var hits = [];
+    for (var w = 0; w < app.windows.length; w++) {
+      var win = app.windows[w], tabs = win.tabs;
+      for (var t = 0; t < tabs.length; t++) if (String(tabs[t].tty()) === ttyPath) hits.push({ tab: tabs[t], win: win });
+    }
+    return hits;
+  }
+  try {
+    var app = Application("Terminal");
+    if (!app.running()) return reply({ status: "refused", phase: "owner", reason: "Terminal is not running" });
+    var hits = owned(app);
+    if (hits.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned TTY is the TTY of " + hits.length + " Terminal tabs" });
+    var tab = hits[0].tab, win = hits[0].win, windowId = Number(win.id());
+    if (win.tabs.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has " + win.tabs.length + " tabs" });
+    var windowTitle = String(win.name());
+    if (windowTitle.length === 0) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has an empty name" });
+    var custom;
+    try {
+      custom = text(tab.customTitle());
+    } catch (error) {
+      return reply({ status: "refused", phase: "custom-title", reason: "the owned tab has no readable custom title", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null });
+    }
+    if (custom === null) return reply({ status: "refused", phase: "custom-title", reason: "the owned tab's custom title is not a string" });
+    var after = owned(app);
+    if (after.length !== 1 || Number(after[0].win.id()) !== windowId) {
+      return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window changed during the read" });
+    }
+    return reply({ status: "read", title: custom, windowTitle: windowTitle, windowId: windowId });
+  } catch (error) {
+    return reply({ status: "refused", phase: "script", reason: "the read raised", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null, message: String(error && error.message ? error.message : error) });
+  }
+}`
+
+export type TerminalAppTabTitleReply =
+  | { status: "read"; title: string; windowTitle: string; windowId: number }
+  | {
+      status: "refused"
+      phase: string
+      reason: string
+      windowTitle?: string
+      errorNumber?: number | null
+      message?: string
+    }
+
+/** One osascript run of the tab-title script; the default spawns /usr/bin/osascript with a 10 s kill. */
+export type TerminalAppTabTitleRun = (argv: readonly [tty: string]) => {
+  stdout: string
+  stderr: string
+  status: number | null
+  signal: NodeJS.Signals | null
+  error?: Error
+}
+
+const defaultTabTitleRun: TerminalAppTabTitleRun = ([ttyPath]) => {
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", TERMINAL_APP_TAB_TITLE_SCRIPT, ttyPath], {
+    encoding: "utf8",
+    timeout: 10_000,
+    killSignal: "SIGKILL",
+  })
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    status: result.status,
+    signal: result.signal,
+    ...(result.error !== undefined && { error: result.error }),
+  }
+}
+
+/** Parse one reply; anything that is not one of the two shapes is a failure, never a reading. */
+export function readTerminalAppTabTitle(
+  ttyPath: string,
+  run: TerminalAppTabTitleRun = defaultTabTitleRun,
+): TerminalAppTabTitleReply {
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(ttyPath)) {
+    throw new Error(`Terminal.app tab title read: the owned TTY is not a device path: ${JSON.stringify(ttyPath)}`)
+  }
+  const result = run([ttyPath])
+  if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+    const how =
+      result.signal !== null
+        ? `killed by ${result.signal}`
+        : result.error
+          ? "could not start"
+          : `exit ${String(result.status)}`
+    throw new Error(
+      `Terminal.app tab title read: osascript ${how}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    throw new Error(`Terminal.app tab title read: stdout was not JSON: ${result.stdout}`)
+  }
+  const reply = parsed as Record<string, unknown>
+  const ok =
+    typeof reply === "object" &&
+    reply !== null &&
+    ((reply.status === "read" &&
+      typeof reply.title === "string" &&
+      typeof reply.windowTitle === "string" &&
+      typeof reply.windowId === "number") ||
+      (reply.status === "refused" && typeof reply.phase === "string" && typeof reply.reason === "string"))
+  if (!ok) throw new Error(`Terminal.app tab title read: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppTabTitleReply
+}
+
+/**
+ * The owned title port for a Terminal.app arm (37257). Every read re-derives the owned tab from the run's TTY and
+ * refuses any other number of windows or tabs; `check` re-proves the live owner before and after each native read. A
+ * "read" reply whose tab title equals the window composite is refused by name: the protocol value is then not
+ * observable through this boundary, and stripping the app's decoration is exactly what the row forbids.
+ */
+export function createTerminalAppTabTitleReader(options: {
+  readonly tty: string
+  readonly windowId?: number
+  readonly check: () => void
+  readonly run?: TerminalAppTabTitleRun
+}): () => Promise<string> {
+  return () => {
+    try {
+      options.check()
+      const reply = readTerminalAppTabTitle(options.tty, options.run)
+      options.check()
+      if (reply.status === "refused") {
+        throw new Error(`Terminal.app tab title read refused at ${reply.phase}: ${reply.reason}`)
+      }
+      if (options.windowId !== undefined && reply.windowId !== options.windowId) {
+        throw new Error(
+          `Terminal.app tab title read: the owned tab is in window ${String(reply.windowId)}, not the measured window ${String(options.windowId)}`,
+        )
+      }
+      if (reply.title === reply.windowTitle) {
+        throw new Error(
+          "Terminal.app tab title read: the owned tab's custom title is the window's composite, so the protocol value is not observable through this boundary",
+        )
+      }
+      return Promise.resolve(reply.title)
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    }
+  }
 }
 
 /**
