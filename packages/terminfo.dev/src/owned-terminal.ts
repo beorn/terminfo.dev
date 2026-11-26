@@ -2217,7 +2217,7 @@ export async function createOwnedTerminal(options: {
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
-    // Native Terminal.app's tab reader is not installed here; a window observation must not stand
+    // The Terminal.app arm reads its tab through the reader installed below, so a window observation never stands
     // in for that separate tab boundary. A mux keeps its own pane reader rather than an outer title.
     const darwinWindowTitle = binding.platform === "darwin" && !terminalApp && !muxAttachmentProof
     const darwinTitleRefusal =
@@ -2242,6 +2242,7 @@ export async function createOwnedTerminal(options: {
         options.terminalAppTabTitle ??
         createTerminalAppTabTitleReader({
           tty: (terminalAppAssertion as TerminalAppOwnerAssertion).tabTty,
+          windowId: (terminalAppAssertion as TerminalAppOwnerAssertion).windowId,
           check: () => {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
           },
@@ -2249,7 +2250,9 @@ export async function createOwnedTerminal(options: {
       return terminalAppTitle()
     }
     const terminalAppTitleReader =
-      binding.platform === "darwin" && terminalAppAssertion !== undefined ? readTerminalAppTabTitleOfOwner : undefined
+      binding.platform === "darwin" && terminalAppAssertion !== undefined && !muxAttachmentProof
+        ? readTerminalAppTabTitleOfOwner
+        : undefined
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.

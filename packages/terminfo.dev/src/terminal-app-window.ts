@@ -846,7 +846,7 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
         if (remaining !== 0) {
           throw Object.assign(
             new Error(
-              "Owned Terminal window close and zero-match absence could not be proved: closing and dismissing its sheets left the window id listed",
+              `Owned Terminal window close and zero-match absence could not be proved: closing and dismissing its sheets left the window id listed (rounds ${JSON.stringify(trace.rounds)})`,
             ),
             { name: "CaptureRestoreFailed", captureCommand: trace },
           )
@@ -1179,7 +1179,12 @@ export function readTerminalAppTabTitle(
       `Terminal.app tab title read: osascript ${how}: ${result.stderr.trim() || result.error?.message || ""}`,
     )
   }
-  const parsed: unknown = JSON.parse(result.stdout)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    throw new Error(`Terminal.app tab title read: stdout was not JSON: ${result.stdout}`)
+  }
   const reply = parsed as Record<string, unknown>
   const ok =
     typeof reply === "object" &&
@@ -1201,6 +1206,7 @@ export function readTerminalAppTabTitle(
  */
 export function createTerminalAppTabTitleReader(options: {
   readonly tty: string
+  readonly windowId?: number
   readonly check: () => void
   readonly run?: TerminalAppTabTitleRun
 }): () => Promise<string> {
@@ -1210,6 +1216,11 @@ export function createTerminalAppTabTitleReader(options: {
     options.check()
     if (reply.status === "refused") {
       throw new Error(`Terminal.app tab title read refused at ${reply.phase}: ${reply.reason}`)
+    }
+    if (options.windowId !== undefined && reply.windowId !== options.windowId) {
+      throw new Error(
+        `Terminal.app tab title read: the owned tab is in window ${String(reply.windowId)}, not the measured window ${String(options.windowId)}`,
+      )
     }
     if (reply.title === reply.windowTitle) {
       throw new Error(

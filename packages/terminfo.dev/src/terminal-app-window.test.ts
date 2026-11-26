@@ -974,6 +974,22 @@ describe("37257 Terminal.app tab title", () => {
     expect(checks).toEqual(["check1", "check2"])
   })
 
+  test("a reply from another window id is refused by name when the reader is bound", async () => {
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      windowId: 1349,
+      check: () => {},
+      run: () => reply({ windowId: 1350 }),
+    })
+    await expect(reader()).rejects.toThrow(/in window 1350, not the measured window 1349/)
+  })
+
+  test("stdout that is not JSON is a prefixed diagnostic", () => {
+    expect(() =>
+      readTerminalAppTabTitle("/dev/ttys006", () => ({ stdout: "not json", stderr: "", status: 0, signal: null })),
+    ).toThrow(/stdout was not JSON: not json/)
+  })
+
   test("a refusal throws with its phase and reason", async () => {
     const refused = createTerminalAppTabTitleReader({
       tty: "/dev/ttys006",
