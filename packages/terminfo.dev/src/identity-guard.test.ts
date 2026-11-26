@@ -431,7 +431,10 @@ describe("verifyTerminalIdentity", () => {
     expect(verifyTerminalIdentity("herdr", herdr, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
     // In a collected run the DA1 sentinel answer follows the DA2 reply (run 9d2d7bf5).
     const collected = { ...herdr, "device.secondary-da": "\x1b[>1;0;0c\x1b[?62;22c" }
-    expect(verifyTerminalIdentity("herdr", collected, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    expect(verifyTerminalIdentity("herdr", collected, { "device.xtversion": true })).toEqual({
+      ok: true,
+      checked: true,
+    })
     // A direct Ghostty names itself with a version; it is not herdr, and herdr is not Ghostty.
     const ghostty = { "device.primary-da": "\x1b[?62;22;52c", "device.xtversion": "ghostty 1.3.1" }
     expect(verifyTerminalIdentity("herdr", ghostty, { "device.xtversion": true }).ok).toBe(false)
@@ -454,7 +457,10 @@ describe("verifyTerminalIdentity", () => {
       "device.primary-da": "\x1b[?62;52c",
       "device.secondary-da": "\x1b[>0;4600;1c\x1b[?62;52c",
     }
-    expect(verifyTerminalIdentity("zellij", underKitty, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    expect(verifyTerminalIdentity("zellij", underKitty, { "device.xtversion": true })).toEqual({
+      ok: true,
+      checked: true,
+    })
     const herdr = { "device.primary-da": "\x1b[?62;22c", "device.xtversion": "libghostty" }
     expect(verifyTerminalIdentity("zellij", herdr, { "device.xtversion": true }).ok).toBe(false)
     expect(verifyTerminalIdentity("herdr", zellij, { "device.xtversion": true }).ok).toBe(false)
