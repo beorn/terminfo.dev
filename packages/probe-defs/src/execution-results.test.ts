@@ -283,7 +283,11 @@ it("strips callback-only reply metadata from stored result and draft serializati
     },
   })
   draft.results[0] = result
-  expect(result.reason).toContain('sent "\\u001b[6n"; received ""; timeout 37 ms')
+  expect(result.reason).toBe("No cursor reply")
+  expect(result.tests[0]?.replyFailure).toEqual({
+    producer: "TTY",
+    attempts: [{ sent: "\x1b[6n", received: null, timeoutMs: 37, matchState: "timeout" }],
+  })
   expect(result).not.toHaveProperty("replyFailureTestIds")
   expect(JSON.stringify(draft)).not.toContain("replyFailureTestIds")
 })
@@ -434,11 +438,15 @@ it.each([
     return
   }
   expect(stored.status).toBe(measuredSilenceOsc0Term ? "probe-todo" : "probe-invalid")
-  for (const entry of captures) {
-    expect(stored.reason).toContain(
-      `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
-    )
-  }
+  expect(stored.tests[0]?.replyFailure).toEqual({
+    producer: kind === "lib" ? "headless" : "TTY",
+    attempts: captures.map((entry) => ({
+      sent: entry.sequence,
+      received: entry.received === "" ? null : entry.received,
+      timeoutMs: kind === "lib" ? null : 37,
+      matchState: kind === "lib" ? "no-match" : "timeout",
+    })),
+  })
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
@@ -565,11 +573,15 @@ it.each([
   expect(stored.reason).toContain(
     "no parsable cursor position reply; the public projection returned null and retained no bytes",
   )
-  for (const [index, entry] of attempts.entries()) {
-    expect(stored.reason).toContain(
-      `query ${index + 1}: sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
-    )
-  }
+  expect(stored.tests[0]?.replyFailure).toEqual({
+    producer: "TTY",
+    attempts: attempts.map((entry) => ({
+      sent: entry.sequence,
+      received: entry.received === "" ? null : entry.received,
+      timeoutMs: entry.timeoutMs,
+      matchState: entry.match !== null ? "matched" : "timeout",
+    })),
+  })
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
@@ -593,7 +605,10 @@ it("retains erased DECAWM evidence when wrap cursor controls cannot qualify", as
   )
   expect(stored.status).toBe("probe-todo")
   expect(stored.reason).toContain("Auto-wrap cursor control did not measure home and ordinary text")
-  expect(stored.reason).toContain('query 1: sent "\\u001b[?7$p"; received "\\u001b?"')
+  expect(stored.tests[0]?.replyFailure).toEqual({
+    producer: "TTY",
+    attempts: [{ sent: "\x1b[?7$p", received: "\x1b?", timeoutMs: 37, matchState: "timeout" }],
+  })
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
@@ -642,10 +657,18 @@ it.each([
     expect(stored.reason).toBe("Soft-reset effect needs owned key injection and input readback")
     expect(callback.note).toContain("DECRPM mode 1 returned Ps 0")
   } else {
-    expect(stored.reason).toContain("Soft-reset effect needs owned key injection and input readback")
-    expect(stored.reason).toContain(
-      `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; ${ps === null ? "timeout 37 ms" : "matched"}`,
-    )
+    expect(stored.reason).toBe("Soft-reset effect needs owned key injection and input readback")
+    expect(stored.tests[0]?.replyFailure).toEqual({
+      producer: "TTY",
+      attempts: [
+        {
+          sent: sequence,
+          received,
+          timeoutMs: 37,
+          matchState: ps === null ? "timeout" : "matched",
+        },
+      ],
+    })
   }
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
@@ -672,9 +695,10 @@ it("retains unusable cursor-style reply evidence without a pixel fallback", asyn
   )
   expect(stored.status).toBe("probe-invalid")
   expect(stored.reason).toContain("no usable DECRQSS cursor-style reply")
-  expect(stored.reason).toContain(
-    `sent ${JSON.stringify(sequence)}; received ${JSON.stringify(received)}; timeout 37 ms`,
-  )
+  expect(stored.tests[0]?.replyFailure).toEqual({
+    producer: "TTY",
+    attempts: [{ sent: sequence, received, timeoutMs: 37, matchState: "timeout" }],
+  })
   expect(stored).not.toHaveProperty("replyFailureTestIds")
 })
 
@@ -687,10 +711,19 @@ it("retains each query's own state when a failed query is followed by a matching
       { sequence: "\x1b[6n", received: "\x1b[2;3R", timeoutMs: 53, match: ["\x1b[2;3R", "2", "3"], reason: "reply" },
     ],
   })
-  expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
-  expect(result.tests?.[0]?.reason).toBe(
-    'no parsable cursor position reply; query 1: sent "\\u001b[6n"; received "\\u001b[1;1R"; matched | query 2: sent "\\u001b[6n"; received "garbage"; timeout 37 ms | query 3: sent "\\u001b[6n"; received "\\u001b[2;3R"; matched',
-  )
+  expect(result.tests?.[0]).toMatchObject({
+    id: "criterion",
+    status: "probe-invalid",
+    reason: "no parsable cursor position reply",
+    replyFailure: {
+      producer: "TTY",
+      attempts: [
+        { sent: "\x1b[6n", received: "\x1b[1;1R", timeoutMs: 41, matchState: "matched" },
+        { sent: "\x1b[6n", received: "garbage", timeoutMs: 37, matchState: "timeout" },
+        { sent: "\x1b[6n", received: "\x1b[2;3R", timeoutMs: 53, matchState: "matched" },
+      ],
+    },
+  })
 })
 
 it.each([
@@ -711,22 +744,39 @@ it.each([
   {
     producer: "TTY" as const,
     attempts: [{ sequence: "\x1b[6n", received: "", timeoutMs: 37, match: null, reason: "timeout" as const }],
-    expected: 'query 1: sent "\\u001b[6n"; received ""; timeout 37 ms',
+    expected: {
+      producer: "TTY" as const,
+      attempts: [{ sent: "\x1b[6n", received: null, timeoutMs: 37, matchState: "timeout" as const }],
+    },
   },
   {
     producer: "headless" as const,
     attempts: [{ sequence: "\x1b[6n", received: "\x1b?", timeoutMs: null }],
-    expected: 'sent "\\u001b[6n"; received "\\u001b?"; synchronous feed and getCursor boundary; timeout not applicable',
+    expected: {
+      producer: "headless" as const,
+      attempts: [{ sent: "\x1b[6n", received: "\x1b?", timeoutMs: null, matchState: "no-match" as const }],
+    },
   },
   {
     producer: "TTY" as const,
     attempts: [
       { sequence: "\x1b[6n", received: "\x1b[?1;2c", timeoutMs: 37, match: null, reason: "sentinel" as const },
     ],
-    expected: 'query 1: sent "\\u001b[6n"; received "\\u001b[?1;2c"; no match',
+    expected: {
+      producer: "TTY" as const,
+      attempts: [{ sent: "\x1b[6n", received: "\x1b[?1;2c", timeoutMs: 37, matchState: "no-match" as const }],
+    },
   },
-  { producer: "TTY" as const, attempts: [], expected: "no completed TTY trace for this query" },
-  { producer: "headless" as const, attempts: [], expected: "no headless capture recorded" },
+  {
+    producer: "TTY" as const,
+    attempts: [],
+    expected: { producer: "TTY" as const, attempts: [] },
+  },
+  {
+    producer: "headless" as const,
+    attempts: [],
+    expected: { producer: "headless" as const, attempts: [] },
+  },
 ])("retains only explicitly marked $producer failure evidence", (evidence) => {
   const { expected } = evidence
   const callback = replyFailure("No cursor reply")
@@ -734,7 +784,8 @@ it.each([
   callback.tests.push(unrelated)
   const result = withReplyFailureEvidence("cursor.position-report", callback, evidence)
   expect(result.tests?.[0]).toMatchObject({ id: "criterion", status: "probe-invalid" })
-  expect(result.tests?.[0]?.reason).toBe(`No cursor reply; ${expected}`)
+  expect(result.tests?.[0]?.reason).toBe("No cursor reply")
+  expect(result.tests?.[0]?.replyFailure).toEqual(expected)
   expect(result.tests?.[1]).toBe(unrelated)
   const unmarked: ProbeCallbackResult = { pass: false, tests: [unrelated] }
   expect(withReplyFailureEvidence("cursor.position-report", unmarked, evidence)).toBe(unmarked)
@@ -781,8 +832,11 @@ it("keeps a read-method gap open while a broken fixture stays invalid", () => {
     attempt: { scope: "probe", startedAt: "2026-11-13T00:00:00.000Z" },
   })
   expect(open.status).toBe("probe-todo")
-  expect(open.reason).toContain("needs owned click injection")
-  expect(open.reason).toContain('sent "\\u001b[?1000h"; received ""; timeout 37 ms')
+  expect(open.reason).toBe("Mouse tracking effect needs owned click injection and input readback")
+  expect(open.tests[0]?.replyFailure).toEqual({
+    producer: "TTY",
+    attempts: [{ sent: "\x1b[?1000h", received: null, timeoutMs: 37, matchState: "timeout" }],
+  })
   const broken = recordExecutedProbe({
     featureId: "input.mouse-1000",
     assertions: [],

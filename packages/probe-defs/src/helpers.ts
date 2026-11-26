@@ -490,38 +490,31 @@ export function withReplyFailureEvidence(
       )
     }
   }
-  const entries =
+  const attempts =
     evidence.producer === "TTY"
-      ? evidence.attempts.map((entry, index) => ({
-          ...entry,
-          prefix: `query ${index + 1}: `,
-          state:
+      ? evidence.attempts.map((entry) => ({
+          sent: entry.sequence,
+          received: entry.received === "" ? null : entry.received,
+          timeoutMs: entry.timeoutMs,
+          matchState:
             entry.match !== null
-              ? "matched"
+              ? ("matched" as const)
               : entry.reason === "timeout"
-                ? `timeout ${entry.timeoutMs} ms`
-                : "no match",
+                ? ("timeout" as const)
+                : ("no-match" as const),
         }))
       : evidence.attempts.map((entry) => ({
-          ...entry,
-          prefix: "",
-          state: "synchronous feed and getCursor boundary; timeout not applicable",
+          sent: entry.sequence,
+          received: entry.received === "" ? null : entry.received,
+          timeoutMs: null,
+          matchState: "no-match" as const,
         }))
-  const detail = entries.length
-    ? entries
-        .map(
-          (entry) =>
-            `${entry.prefix}sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}; ${entry.state}`,
-        )
-        .join(" | ")
-    : evidence.producer === "TTY"
-      ? "no completed TTY trace for this query"
-      : "no headless capture recorded"
+  const replyFailure = { producer: evidence.producer, attempts }
   return {
     ...result,
     tests: result.tests?.map((test) =>
       marked.has(test.id) && (test.status === "probe-invalid" || test.status === "probe-todo")
-        ? { ...test, reason: `${test.reason}; ${detail}` }
+        ? { ...test, replyFailure }
         : test,
     ) as ExecutionOnlyProbeCallbackResult["tests"],
   }
@@ -3543,6 +3536,7 @@ export function recordExecutedProbe(input: {
               assertionRefs: refs,
               ...(rawReplyRef && { rawReplyRef }),
               ...(test.reason && { reason: test.reason }),
+              ...(test.replyFailure && { replyFailure: test.replyFailure }),
             }
           })
         : [

@@ -662,6 +662,7 @@ function traceRecord(
     if (traced !== undefined) stored = exchange(traced, `${where}.trace`)
   }
   const reasonCode = result.reason !== undefined && REASON_CODE.test(result.reason) ? result.reason : undefined
+  const replyFailure = result.tests.find((test) => test.replyFailure !== undefined)?.replyFailure
   const evidence: StoredEvidence = {
     runId: version.runId,
     featureId,
@@ -670,6 +671,7 @@ function traceRecord(
     status: result.status,
     ...(result.assertionType && { assertionType: result.assertionType }),
     ...(reasonCode !== undefined && { reasonCode }),
+    ...(replyFailure !== undefined && { replyFailure }),
     frameKinds: (result.frames ?? []).flatMap((frame) => (frame.kind ? [frame.kind] : [])),
     writes:
       stored?.writes ?? stored?.events?.flatMap((e) => (e.kind === "write" && e.sequence ? [e.sequence] : [])) ?? [],

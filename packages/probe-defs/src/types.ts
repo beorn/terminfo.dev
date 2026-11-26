@@ -143,6 +143,23 @@ export type CollectorAttempt = CollectorSelection & {
     | { result?: undefined; startedAt: string; error?: never }
   )
 
+export const REPLY_FAILURE_MATCH_STATES = ["matched", "timeout", "no-match"] as const
+export type ReplyFailureMatchState = (typeof REPLY_FAILURE_MATCH_STATES)[number]
+
+/** Structured fields for one query attempt on a marked reply-failure test (#37342). */
+export interface ReplyFailureAttempt {
+  sent: string
+  received: string | null
+  timeoutMs: number | null
+  matchState: ReplyFailureMatchState
+}
+
+/** Structured producer evidence attached to a marked reply-failure test (#37342). */
+export interface ReplyFailureEvidence {
+  producer: "TTY" | "headless"
+  attempts: ReplyFailureAttempt[]
+}
+
 /** The still-required tests for the frozen criterion branch, retained at execution. */
 export interface ProbeTestResult {
   id: string
@@ -152,9 +169,10 @@ export interface ProbeTestResult {
   rawReplyRef?: string
   reviewRef?: string
   reason?: string
+  replyFailure?: ReplyFailureEvidence
 }
 /** Callback criterion facts; the producer supplies actual attempt timestamps and global evidence refs. */
-export type ProbeTestInput = Pick<ProbeTestResult, "id" | "status" | "reason" | "assertionRefs">
+export type ProbeTestInput = Pick<ProbeTestResult, "id" | "status" | "reason" | "assertionRefs" | "replyFailure">
 interface ProbeExecutionTests {
   tests?: ProbeTestInput[]
   criterionBranch?: string
