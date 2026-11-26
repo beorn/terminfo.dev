@@ -8,6 +8,18 @@ import type {
 import type { HistoricalCellEvidence } from "./public-results.ts"
 import type { TraceIdentityRuleCheck } from "./run-trace.ts"
 
+/**
+ * The environment variable each process_environment feature reads, for the evidence sentences and the cards alike.
+ * A secret variable (OSC 7577's per-pane token, @cto ee6b7fd9) is never kept, parsed or shown: a card says only
+ * whether it was set and how long it was.
+ */
+export const ENVIRONMENT_READS: Readonly<
+  Record<string, { variable: string; value: RegExp } | { variable: string; secret: true }>
+> = {
+  "device.term-features": { variable: "TERM_FEATURES", value: /^[A-Za-z0-9:,_-]{1,200}$/ },
+  "extensions.osc7577-token": { variable: "OSC7577_TOKEN", secret: true },
+}
+
 export type LoadedCellEvidence = HistoricalCellEvidence & { version: 2; runId: string; runSha256: string }
 export interface CellEvidenceExpectation {
   schemaVersion: 1 | 2

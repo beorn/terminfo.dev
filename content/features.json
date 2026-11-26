@@ -1456,6 +1456,36 @@
     "probe": "The probe first moves the Cwd reader with OSC 7 to control paths in this run, which shows the reader works, then sends two 633 P;Cwd values: plain ASCII absolute paths, distinct from each other and from the control paths. A file URI is read as its percent-decoded pathname with the host ignored; a plain path is compared as is, with no case folding and no trailing-slash or symlink normalisation. The reader equals each sent path: Supported. The OSC 7 control moved the reader and both P;Cwd values left it at its prior value: Unsupported. The reader is inert or missing: no result. The reader changed to anything else, or the original Cwd could not be restored afterwards: no result.",
     "sequence": "ESC ] 633 ; P ; key=value BEL"
   },
+  "extensions.osc7577-token": {
+    "name": "Program resume token (OSC 7577)",
+    "slug": "osc-7577-program-resume-token",
+    "url": "https://www.superlogical.com/rex/docs/build/program-resume",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "OSC 7577 is the Program Resume Protocol (spec revision 0.5, 2026-11-25), published by Superlogical with the herdr authors. A program prints one signed sequence, <code>ESC ] 7577 ; pid=…:time=…:argv=…:mac=… ST</code>, naming the command that restarts it; after the terminal restarts, the terminal may rerun that command in the same pane. The terminal puts a fresh random secret, <code>OSC7577_TOKEN</code>, in each pane's first process, and the program signs its report with SHA-256 over the report body and that token. There is no query and no reply, so a program detects support only by the variable.",
+    "probe": "Measured against spec revision 0.5 (2026-11-25). App: the collector is the freshly launched terminal's first child, started with any inherited <code>OSC7577_TOKEN</code> removed and with this run's clean-launch marker. Supported requires <code>OSC7577_TOKEN</code> present and well formed: 22-64 characters, all from <code>[A-Za-z0-9_-]</code>. Absence, or a malformed token, with the marker seen is Unsupported. Only presence, length and the rule a malformed token breaks are recorded, never the token. Inside a multiplexer a present token may be the outer terminal's, so it gives no result; absence there is Unsupported. Without the marker, or on a route that attaches to an already running terminal, there is no result. Library engines spawn no application child, so the row is declared Untestable there. This row does not measure a different token per pane and per terminal start, the terminal's verification of reports, and resume after a restart.",
+    "sequence": "ESC ] 7577 ; pid=… : time=… : argv=… : mac=… ST"
+  },
+  "extensions.osc7577-silent": {
+    "name": "Program resume reports print nothing (OSC 7577)",
+    "slug": "osc-7577-program-resume-silent",
+    "url": "https://www.superlogical.com/rex/docs/build/program-resume",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "A program that supports the Program Resume Protocol (OSC 7577, spec revision 0.5, 2026-11-25) prints its report whenever its resume command changes, often without knowing whether the terminal supports it. The protocol has no reply and defines nothing to display, so a terminal should consume the whole report silently, whether or not it accepts it. This row asks only that: it is safe to emit, not a claim that the terminal implements program resume.",
+    "probe": "Measured against spec revision 0.5 (2026-11-25). Send two reports: the spec's own well-formed lazygit example terminated by <code>ESC \\</code> (its mac is real for the spec's test token <code>dummy-token-replace-me</code>, so a real pane rejects it and saves nothing), and the spec's invalid report with no mac, terminated by BEL. A printed control <code>AB</code> must first move the reading. Headless: after each report then <code>X</code>, Supported requires the screen text to be exactly <code>X</code> with the cursor at row 0, column 1. App: after each report on a cleared first line, Supported requires the cursor still at row 1, column 1, measured by a cursor position query. Any added text or cursor movement is Unsupported. A reader that does not show the printed control gives no result. The App reading uses the cursor alone, so text drawn and erased again is not distinguished.",
+    "sequence": "ESC ] 7577 ; pid=… : time=… : argv=… : mac=… ST"
+  },
+  "extensions.osc88-silent": {
+    "name": "Terminal resume reports print nothing (OSC 88)",
+    "slug": "osc-88-terminal-resume-silent",
+    "url": "https://github.com/otty-sh/osc-88",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "OSC 88, the Terminal Resume Protocol from otty, is the earlier, unauthenticated form of program resume: a program sends <code>ESC ] 88 ; arm ; cmd=… ST</code> naming its relaunch command, and <code>ESC ] 88 ; clear ST</code> to withdraw it. Neither has a reply. The OSC 7577 specification cites it as earlier work on the same idea. This row asks only whether the terminal consumes both silently, so a program can emit them safely; it does not measure resume.",
+    "probe": "Send <code>OSC 88 ; arm ; cmd=L2Jpbi90cnVl ST</code> (base64 of <code>/bin/true</code>) and <code>OSC 88 ; clear BEL</code>. A printed control <code>AB</code> must first move the reading. Headless: after each sequence then <code>X</code>, Supported requires the screen text to be exactly <code>X</code> with the cursor at row 0, column 1. App: after each sequence on a cleared first line, Supported requires the cursor still at row 1, column 1, measured by a cursor position query. Any added text or cursor movement is Unsupported. A reader that does not show the printed control gives no result. The App reading uses the cursor alone, so text drawn and erased again is not distinguished. Resume itself is not measured.",
+    "sequence": "ESC ] 88 ; arm ; cmd=… ST"
+  },
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
     "slug": "notifications-osc-9",

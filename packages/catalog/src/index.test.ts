@@ -46,10 +46,10 @@ function required<T>(catalog: Readonly<Record<string, T>>, key: string): T {
   return entry
 }
 
-test("reads the live feature catalog: 273 entries, each with the five required fields", () => {
+test("reads the live feature catalog: 276 entries, each with the five required fields", () => {
   const features = loadFeatures(repoContent)
   const ids = Object.keys(features)
-  expect(ids.length).toBe(273)
+  expect(ids.length).toBe(276)
   for (const id of ids) {
     const entry = required(features, id)
     expect(typeof entry.name).toBe("string")

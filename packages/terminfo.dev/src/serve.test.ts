@@ -665,7 +665,7 @@ it.each(["empty", "prerequisite", "completed", "cancelled", "failed", "unknown"]
       if (mode === "empty" || mode === "prerequisite") assert.equal(Object.hasOwn(attempt,"startedAt"),false)
       else assert.ok(Number.isFinite(Date.parse(attempt.startedAt)))
       if (["prerequisite", "cancelled", "failed"].includes(mode)) assert.equal(attempt.error, original.message)
-      assert.equal(draft.results.length, 273)
+      assert.equal(draft.results.length, 276)
       for (const row of draft.results.filter(row=>!ids.includes(row.featureId))) {
         assert.equal(row.status,"probe-todo"); assert.equal(row.attempt.scope,"none")
 
@@ -3769,8 +3769,8 @@ describe("private finite daemon startup", () => {
         expect(run).not.toHaveProperty("subject")
         expect(run).not.toHaveProperty("measuredAt")
       } else expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
-      expect(run.results).toHaveLength(273)
-      expect(new Set(run.results.map((result) => result.featureId)).size).toBe(273)
+      expect(run.results).toHaveLength(276)
+      expect(new Set(run.results.map((result) => result.featureId)).size).toBe(276)
       expect(run.results.every((result) => result.status === "probe-todo")).toBe(true)
       // AC1: explicit request selection overrides startup selection, including [] rather than full.
       for (const ids of [[], ["cursor.show"]]) {
