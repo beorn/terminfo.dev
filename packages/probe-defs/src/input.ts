@@ -9,7 +9,7 @@ import type {
 } from "./types.ts"
 import {
   HEADLESS_OBSERVABLE_REVIEW,
-  auditedAdapterSources,
+  auditedLibvtermR1Sources,
   declaredUntestableResult,
   decrpmPs,
   decrpmReplyPattern,
@@ -1438,7 +1438,7 @@ function mouseEncodingLib(
         identity.runtimeFormat === "wasm" &&
         identity.engineVersion === "0.3.3" &&
         (identity.loadedBinary.sha256 === "3b7c02322357c00adb8addea05240d1d348d901cf6d6300c10401eb62b945fe0" ||
-          auditedAdapterSources(identity, "libvtermR1"))
+          auditedLibvtermR1Sources(identity))
       ) {
         return declaredUntestableResult(
           "Untestable: libvterm's mouse functions take cell positions only, so pixel coordinates have no way in.",
