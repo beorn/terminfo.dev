@@ -853,52 +853,75 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
 
 describe("37257 Terminal.app close sheet", () => {
   const window = { provider: "terminal-app", windowId: 1380, tty: "/dev/ttys006" } as OwnedTerminalWindow
-  const reply = (stdout: string, status = 0) => ({ status, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
+  const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
 
-  test("a close that leaves its own terminate sheet dismisses it and proves zero by id", () => {
+  /** A small Terminal model: two live processes, one sheet per close, Terminate ends one process per press. */
+  const scripted = (state: { windows: number; processes: number; sheet: boolean; trusted?: boolean }) =>
+    vi.fn((command: string, args?: readonly string[]) => {
+      if (command === "sleep") return ok("")
+      if (args?.[0] === "-e") return ok(state.windows === 0 ? "0\n" : "1\n")
+      const script = String(args?.[3] ?? "")
+      if (script.includes("AXSheet")) {
+        if (state.trusted === false) {
+          return ok(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" }))
+        }
+        if (!state.sheet) return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
+        state.sheet = false
+        state.processes -= 1
+        if (state.processes <= 0) state.windows = 0
+        return ok(JSON.stringify({ status: "pressed", candidates: 1, sheets: 1, pressed: 1 }))
+      }
+      if (script.includes("windows[w].close()")) {
+        if (state.windows > 0) state.sheet = true
+        return ok(state.windows > 0 ? "1" : "0")
+      }
+      return ok(String(state.windows))
+    })
+
+  test("a close that leaves its own terminate sheet closes and dismisses until the id is gone", () => {
+    const state = { windows: 1, processes: 2, sheet: false }
     vi.mocked(spawnSync).mockReset()
-    vi.mocked(spawnSync)
-      .mockReturnValueOnce(reply("1\n"))
-      .mockReturnValueOnce(reply(JSON.stringify({ status: "pressed", candidates: 1, sheets: 1, pressed: 1 })))
-      .mockReturnValueOnce(reply("0\n"))
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
     const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
       remaining: number
-      dismissal: { status: string; pressed: number }
+      rounds: { dismissal: { status: string } }[]
     }
+    expect(state.windows).toBe(0)
     expect(result.remaining).toBe(0)
-    expect(result.dismissal).toMatchObject({ status: "pressed", pressed: 1 })
-    const scripts = vi.mocked(spawnSync).mock.calls.map((call) => String(call[1]?.[3] ?? ""))
-    expect(scripts.some((script) => script.includes("AXSheet"))).toBe(true)
+    expect(result.rounds.map((round) => round.dismissal.status)).toEqual(["pressed", "pressed"])
   })
 
-  test("a sheet that cannot be dismissed still refuses with the trace", () => {
+  test("a sheet that cannot be dismissed still refuses with the rounds in the trace", () => {
+    const state = { windows: 1, processes: 2, sheet: false }
     vi.mocked(spawnSync).mockReset()
-    vi.mocked(spawnSync)
-      .mockReturnValueOnce(reply("1\n"))
-      .mockReturnValueOnce(reply(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 })))
-    vi.mocked(spawnSync).mockReturnValue(reply("1\n"))
+    vi.mocked(spawnSync).mockImplementation(((command: string, args?: readonly string[]) => {
+      if (command === "sleep") return ok("")
+      if (args?.[0] === "-e") return ok("1\n")
+      const script = String(args?.[3] ?? "")
+      if (script.includes("AXSheet")) {
+        return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
+      }
+      return script.includes("windows[w].close()") ? ok("1") : ok("1")
+    }) as never)
     expect(() => closeOwnedTerminalWindow(window)).toThrow(
-      /close sheet was dismissed and the window id is still listed/,
+      /closing and dismissing its sheets left the window id listed/,
     )
   })
 
   test("an untrusted Accessibility process refuses the dismissal by name", () => {
+    const state = { windows: 1, processes: 2, sheet: false, trusted: false }
     vi.mocked(spawnSync).mockReset()
-    vi.mocked(spawnSync)
-      .mockReturnValueOnce(reply("1\n"))
-      .mockReturnValueOnce(
-        reply(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" })),
-      )
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
     expect(() => closeOwnedTerminalWindow(window)).toThrow(/not trusted for Accessibility/)
   })
 
   test("a zero-match on the first close needs no sheet", () => {
+    const state = { windows: 0, processes: 0, sheet: false }
     vi.mocked(spawnSync).mockReset()
-    vi.mocked(spawnSync).mockReturnValueOnce(reply("0\n"))
-    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as { remaining: number; dismissal?: unknown }
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as { remaining: number; rounds?: unknown }
     expect(result.remaining).toBe(0)
-    expect(result.dismissal).toBeUndefined()
-    expect(vi.mocked(spawnSync)).toHaveBeenCalledTimes(1)
+    expect(result.rounds).toBeUndefined()
   })
 })
 

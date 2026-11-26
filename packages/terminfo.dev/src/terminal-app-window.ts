@@ -687,6 +687,34 @@ function run(argv) {
   }
 }`
 
+/** Close one window by its recorded id; returns how many it asked Terminal to close. */
+export const TERMINAL_APP_CLOSE_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return "0";
+  var closed = 0;
+  for (var w = 0; w < app.windows.length; w++) {
+    if (Number(app.windows[w].id()) !== windowId) continue;
+    app.windows[w].close();
+    closed += 1;
+  }
+  return String(closed);
+}`
+
+/** Ask Terminal to close every window with one recorded id; a count, never an absence claim. */
+export function closeTerminalAppWindows(windowId: number, run: TerminalAppCloseRun = defaultCloseRun): number {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app window close: invalid window id")
+  const result = run(TERMINAL_APP_CLOSE_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window close: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const text = result.stdout.trim()
+  if (!/^[0-9]+$/.test(text)) throw new Error(`Terminal.app window close: not a count: ${result.stdout}`)
+  return Number(text)
+}
+
 /** Count the windows with one recorded id; zero is the only success, and Terminal being gone is zero. */
 export const TERMINAL_APP_WINDOW_COUNT_SCRIPT = `function run(argv) {
   var windowId = Number(argv[0]);
@@ -791,26 +819,34 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
         })
       }
       if (String(trace.stdout).trim() !== "0") {
-        // 37257: the window stayed because Terminal put up its own "terminate running processes?" sheet for the
-        // still-live login shell. Press that sheet's Terminate on the run's own window, then prove zero by id.
-        const dismissal = dismissTerminalAppCloseSheet(window.windowId)
-        trace.dismissal = dismissal
-        if (dismissal.status === "refused") {
+        // 37257: the window stayed because Terminal put up its own "terminate running processes?" sheet for a
+        // still-live process. Terminate ends one process per round (the serve script, then the login shell), and the
+        // window still has to be closed again afterwards, so close and dismiss repeat until the id's count is zero.
+        const rounds: unknown[] = []
+        let remaining = countTerminalAppWindows(window.windowId)
+        let refused: string | undefined
+        for (let round = 0; remaining !== 0 && round < 5 && refused === undefined; round += 1) {
+          const closed = closeTerminalAppWindows(window.windowId)
+          const dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          rounds.push({ closed, dismissal })
+          if (dismissal.status === "refused") refused = dismissal.reason
+          for (let attempt = 0; remaining !== 0 && attempt < 20; attempt += 1) {
+            spawnSync("sleep", ["0.1"])
+            remaining = countTerminalAppWindows(window.windowId)
+          }
+        }
+        trace.rounds = rounds
+        trace.remainingAfterDismissal = remaining
+        if (refused !== undefined) {
           throw Object.assign(
-            new Error(`Owned Terminal window close and zero-match absence could not be proved: ${dismissal.reason}`),
+            new Error(`Owned Terminal window close and zero-match absence could not be proved: ${refused}`),
             { name: "CaptureRestoreFailed", captureCommand: trace },
           )
         }
-        let remaining = countTerminalAppWindows(window.windowId)
-        for (let attempt = 0; remaining !== 0 && attempt < 50; attempt += 1) {
-          spawnSync("sleep", ["0.1"])
-          remaining = countTerminalAppWindows(window.windowId)
-        }
-        trace.remainingAfterDismissal = remaining
         if (remaining !== 0) {
           throw Object.assign(
             new Error(
-              "Owned Terminal window close and zero-match absence could not be proved: the close sheet was dismissed and the window id is still listed",
+              "Owned Terminal window close and zero-match absence could not be proved: closing and dismissing its sheets left the window id listed",
             ),
             { name: "CaptureRestoreFailed", captureCommand: trace },
           )
