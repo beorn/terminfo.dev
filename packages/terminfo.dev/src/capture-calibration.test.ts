@@ -1339,9 +1339,16 @@ test("the retained Warp pill inside the declared title-bar band calibrates and r
 // @level l1
 // @consumer calibrateCaptureOrigin -> confirmedFrame stage-advance witness with declared chromeBand.
 test("a band-only Warp pill repaint before solid or column paint is not taken as the next stage's paint", async () => {
-  const [before, solid, columns, rows, restore] = ["before", "solid", "columns", "rows", "restore"].map((name) =>
-    retainedFrame(name)!,
-  )
+  const requireFrame = (name: string): CapturedFrame => {
+    const frame = retainedFrame(name)
+    if (!frame) throw new Error(`missing retained Warp frame ${name}`)
+    return frame
+  }
+  const before = requireFrame("before")
+  const solid = requireFrame("solid")
+  const columns = requireFrame("columns")
+  const rows = requireFrame("rows")
+  const restore = requireFrame("restore")
   const bandBytes = 40 * before.width * 4
   const withPill = (frame: CapturedFrame): CapturedFrame => {
     const copy = cloneFrame(frame)
