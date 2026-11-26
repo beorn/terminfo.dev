@@ -149,10 +149,15 @@ it.runIf(OWNED_LAYOUT)(
         outcome: "not-comparable",
         input: "fresh-instance repeat passes regraded this row",
       })
-      // Repeat passes record no call log: only the first pass is replayable evidence.
+      // The second pass's log is kept once, beside the repeat record; it is never doubled inside
+      // collector.repeatPasses, and the third pass, which never grades a row, records none.
       const repeats = JSON.parse(stored.rawReplies["collector.repeatPasses"]!) as Record<string, Record<string, string>>
       for (const pass of [repeats.second!, repeats.third!]) {
         expect(Object.keys(pass).filter((key) => key.endsWith(".callLog"))).toEqual([])
+      }
+      for (const { featureId } of executed) {
+        const repeated = stored.rawReplies["collector.repeats." + featureId] !== undefined
+        expect(typeof stored.rawReplies["collector.repeatCallLog." + featureId] === "string", featureId).toBe(repeated)
       }
       expect(row(report, "extensions.kitty-keyboard")?.outcome).not.toBe("incomplete")
     }

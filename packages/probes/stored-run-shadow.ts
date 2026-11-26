@@ -150,7 +150,10 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
 function replayLibRow(validated: ValidatedRun, featureId: string): ReplayedRow {
   const definition = ALL_PROBES.find(({ id }) => id === featureId)
   if (!definition?.lib) throw new IncompleteReplay("Missing lib callback: " + featureId)
-  const raw = validated.rawReplies[featureId + ".callLog"]
+  // #30932 AC1: a fresh-instance repeated row stores the second pass's own result, so the second pass's recorded log
+  // is the evidence for it; the first pass's log same-named beside the run is not.
+  const raw =
+    validated.rawReplies["collector.repeatCallLog." + featureId] ?? validated.rawReplies[featureId + ".callLog"]
   if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + featureId)
   const log = readCallLog(parseJsonStrict(featureId + " call log", raw))
   const session = withCallLog<LibProbeSource>(null, { mode: "replay", log })
@@ -323,7 +326,9 @@ function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string
   const id = stored.featureId
   const raw = validated.rawReplies
   if (raw[id + ".late"] !== undefined) return "late reply after the sentinel"
-  if (raw["collector.repeats." + id] !== undefined) return "fresh-instance repeat passes regraded this row"
+  if (raw["collector.repeats." + id] !== undefined && repeatPassRefusal(validated, stored)) {
+    return "fresh-instance repeat passes regraded this row"
+  }
   // A native host-recipe record is not an input of its own: its captures are the query pairs the callback saw, and
   // the replay hands those back. Only a query that errored live, or a record that cannot be read, leaves the row
   // unspeakable for a replay.
@@ -392,7 +397,48 @@ function hostRecipeCaptures(
   return captures as { query: string; response: string; error: unknown }[]
 }
 
+/**
+ * #30932 AC1: a fresh-instance repeat stores the second pass's own result. Its row is therefore speakable exactly when
+ * that pass is the one that graded it - not a control refusal or a cross-pass disagreement - and the collector
+ * recorded that pass's log. An older run recorded neither, and stays unspeakable by name.
+ */
+function repeatPassRefusal(validated: ValidatedRun, stored: ProbeResult): boolean {
+  const id = stored.featureId
+  if (stored.tests.some((test) => REPEAT_CROSS_PASS_TESTS.has(test.id))) return true
+  if (repeatSecondCaptures(validated, id) === undefined) return true
+  return validated.rawReplies["collector.repeatCallLog." + id] === undefined
+}
+
+/** The tests the collector writes when a cross-pass comparison, not a callback, decided the stored row. */
+const REPEAT_CROSS_PASS_TESTS: ReadonlySet<string> = new Set([
+  "reply-control",
+  "repeat-execution",
+  "repeat-consistency",
+])
+
+/** The query pairs of the pass whose result is stored, or undefined when the record names none. */
+function repeatSecondCaptures(
+  validated: ValidatedRun,
+  featureId: string,
+): { query: string; response: string }[] | undefined {
+  const raw = validated.rawReplies["collector.repeats." + featureId]
+  if (typeof raw !== "string") return undefined
+  const parsed = parseJsonStrict(featureId + " repeat passes", raw)
+  const second = object(parsed) ? parsed.second : undefined
+  const captures = object(second) ? second.captures : undefined
+  if (captures === undefined) return undefined
+  if (
+    !Array.isArray(captures) ||
+    !captures.every((entry) => object(entry) && typeof entry.query === "string" && typeof entry.response === "string")
+  ) {
+    throw new IncompleteReplay("Fresh-instance repeat record is malformed: " + featureId)
+  }
+  return captures as { query: string; response: string }[]
+}
+
 function retainedCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string }[] {
+  const repeated = repeatSecondCaptures(validated, featureId)
+  if (repeated !== undefined) return repeated
   const raw = validated.rawReplies["collector.queryCaptures." + featureId]
   // A native host-recipe row keeps the same query/response pairs under its own record, because the collector's
   // `replyCaptures` are that record's captures.

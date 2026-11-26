@@ -1229,7 +1229,11 @@ export async function collectBatch(
       ? {
           runId: draft.runId,
           // First-pass call logs are first-pass evidence only (#30932 S3): copying them into each repeat pass
-          // stored every log three times, twice double-escaped inside collector.repeatPasses.
+          // stored every log three times, twice double-escaped inside collector.repeatPasses. Only the second pass
+          // records its own log (#30932 AC1), because its result is the one stored; that log travels beside the
+          // repeat record as collector.repeatCallLog.<id>, never inside collector.repeatPasses. One extra log per
+          // repeated row costs the draft about 7-8% (25 rows x ~38K on a 14.2 MB alacritty draft); the first and
+          // third passes stay logless.
           rawReplies: Object.fromEntries(Object.entries(draft.rawReplies).filter(([key]) => !key.endsWith(".callLog"))),
           results: selected.map((probe) => ({
             featureId: probe.id,
@@ -1243,12 +1247,22 @@ export async function collectBatch(
     control,
     wait: false,
     brackets: [CPR_SPOTS[1], CPR_SPOTS[2]],
+    callLog: true,
   })
   const third = await collectPass(createBackend, backendName, selected, repeatDraft(), undefined, runtime, {
     control,
     wait: true,
     brackets: [CPR_SPOTS[3], CPR_SPOTS[4]],
   })
+  // #30932 AC1: the second pass's own log is the evidence for the result stored for a repeated row, so it is kept
+  // once, at the top level; leaving it in `second.rawReplies` would store it twice and escape it.
+  for (const probe of selected) {
+    const key = probe.id + ".callLog"
+    const log = second.rawReplies[key]
+    if (log === undefined) continue
+    first.rawReplies["collector.repeatCallLog." + probe.id] = log
+    delete second.rawReplies[key]
+  }
   first.rawReplies["collector.repeatPasses"] = JSON.stringify({
     second: second.rawReplies,
     third: third.rawReplies,
