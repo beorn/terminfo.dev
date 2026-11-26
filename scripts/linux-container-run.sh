@@ -897,9 +897,10 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
         }
         read -r socket < "$mux_output/mux-socket.txt"
         # The layout's one pane must be the collector, a bun child of the server started on that socket. If it is
-        # not there within 60 s, keep Zellij's own log and the process tree, then end the session, so the run
-        # fails with the reason instead of waiting on a pane that will never register.
-        for _ in $(seq 1 600); do
+        # not there within 10 s (inside the host's 15 s registration wait), keep Zellij's own log and the process
+        # tree, then end the session, so the run fails with the reason instead of waiting on a pane that never
+        # registers. Processes exit while the loop reads /proc, so its read errors are dropped.
+        for _ in $(seq 1 100); do
           for stat in /proc/[0-9]*/stat; do
             pid=${stat#/proc/}; pid=${pid%/stat}
             [[ "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" == *" --server $socket " ]] || continue
@@ -913,13 +914,13 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
             done
           done
           sleep 0.1
-        done
-        echo "Owned Zellij collector did not start under the server within 60 s; process tree and Zellij log:" >&2
+        done 2>/dev/null
+        echo "Owned Zellij collector did not start under the server within 10 s; process tree and Zellij log:" >&2
         for stat in /proc/[0-9]*/stat; do
           pid=${stat#/proc/}; pid=${pid%/stat}
           printf '%s ppid=%s [%s]\n' "$pid" "$(awk '{print $4}' "$stat" 2>/dev/null)" \
             "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" >&2
-        done
+        done 2>/dev/null
         for log in "${TMPDIR:-/tmp}"/zellij-"$(id -u)"/zellij-log/*; do
           [[ -f "$log" ]] && { echo "== $log" >&2; tail -n 80 "$log" >&2; }
         done
