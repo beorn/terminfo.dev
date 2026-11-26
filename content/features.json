@@ -2381,7 +2381,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 4 changes or queries individual entries in the 256-color palette (indices 0-255). To set a color: <code>ESC ] 4 ; c ; spec BEL</code> where c is the palette index and spec is an X11 color specification (e.g. <code>rgb:FF/00/00</code>). To query: <code>ESC ] 4 ; c ; ? BEL</code> — the terminal responds with the current color in <code>rgb:RR/GG/BB</code> format. Applications use this to customize the terminal palette at runtime, e.g. for theme switching or to ensure specific colors match a design system.\n\nUnder tmux 3.6 <code>OSC 4;0;?</code> reads a local palette entry, and when that entry is unknown it queues an outer palette request instead of answering (input.c:2837-2874): the expectation keeps that split between a local answer and a request relayed to the outer client.",
-    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported.",
+    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported. A library that keeps no starting palette (its embedding app supplies one) and answers the exact colour once one is set reads Supported, with that limit named.",
     "baseline": "modern",
     "sequence": "ESC ] 4 ; c ; spec BEL"
   },
