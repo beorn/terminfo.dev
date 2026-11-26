@@ -666,6 +666,8 @@ export function prepareCliLaunch(appId: string, run: Run): PreparedCliLaunch {
   }
   // Only an export added by this freshly launched terminal may answer the child probe.
   delete env.TERM_FEATURES
+  // #38699: likewise OSC7577_TOKEN; the spec forbids passing on a token, so only this terminal's own may answer.
+  delete env.OSC7577_TOKEN
   return {
     spawnPath: recipe.spawnPath,
     args: recipe.args(run.scriptPath, marker.value),

@@ -13,7 +13,7 @@
  */
 import { createHash } from "node:crypto"
 import type { ProbeStatus, ReplyFailureEvidence, ReplyFailureMatchState } from "../../packages/probe-defs/src/types.ts"
-import { formatControlBytes } from "./evidence-reader.ts"
+import { ENVIRONMENT_READS, formatControlBytes } from "./evidence-reader.ts"
 
 /** The closed set of evidence kinds. Each has exactly one template in `TEMPLATES`. */
 export const EVIDENCE_KINDS = [
@@ -90,6 +90,7 @@ export type EvidenceFacts =
   | { kind: "app-state"; read: "outer-log"; command: string; control: string; sent: boolean; controlArrived: boolean }
   | { kind: "app-state"; read: "state"; target: "unchanged" | "expected" | "other"; control: "worked" | "failed" }
   | { kind: "app-state"; read: "report"; code: string; listed: boolean; controlListed: boolean }
+  | { kind: "app-state"; read: "cursor"; command: string; control: string; reports: number; unchanged: number }
   | { kind: "notification"; text: CardValue; delivered: boolean; deadlineMs: number }
   | { kind: "untestable"; sent: number; answered: number; reasonCode?: string }
   | { kind: "library-state"; state: CardValue | { block: true } }
@@ -539,6 +540,9 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
       "extensions.osc112-reset-cursor",
       "extensions.osc113-reset-pointer-fg",
       "extensions.osc114-reset-pointer-bg",
+      // #38699: the silent rows read back the cursor with a position report (CPR).
+      "extensions.osc7577-silent",
+      "extensions.osc88-silent",
     ],
   ),
   "device.xtversion": ["xtversion"],
@@ -611,11 +615,6 @@ export const OBSERVED_SHAPES: Readonly<Record<string, (observed: string) => bool
   },
 }
 
-/** The environment variable each environment-read feature checks. */
-export const ENVIRONMENT_READS: Readonly<Record<string, { variable: string; value: RegExp }>> = {
-  "device.term-features": { variable: "TERM_FEATURES", value: /^[A-Za-z0-9:,_-]{1,200}$/ },
-}
-
 /**
  * App-state reads (window title, icon name, working directory, line counts, an outer terminal's command log):
  * the paths into the stored callback that a card names, per feature. A feature may declare several, one per
@@ -628,6 +627,8 @@ export type AppStateRead =
   | { read: "sequence"; surface: string; set: string; readings: string; after: string }
   | { read: "counts"; surface: string; counts: ReadonlyArray<readonly [label: string, path: string]> }
   | { read: "outer-log"; command: string; control: string }
+  /** A command that must print nothing: a printed control moves the cursor, then each report must leave it. */
+  | { read: "cursor"; command: string }
 
 const ICON_AND_TITLE: AppStateRead = {
   read: "readings",
@@ -697,6 +698,8 @@ export const APP_STATE_READS: Readonly<Record<string, readonly AppStateRead[]>> 
       ],
     },
   ],
+  "extensions.osc7577-silent": [{ read: "cursor", command: "OSC 7577 program-resume report" }],
+  "extensions.osc88-silent": [{ read: "cursor", command: "OSC 88 resume command" }],
   "extensions.osc22-pointer": [
     { read: "outer-log", command: "The pointer-shape command", control: "the title change sent after it" },
   ],
@@ -981,6 +984,7 @@ function declaredRead(stored: StoredEvidence): AppStateRead | undefined {
     if (read.read === "readings") return read.readings.map(([, path]) => path)
     if (read.read === "sequence") return [read.set, read.readings, read.after]
     if (read.read === "counts") return read.counts.map(([, path]) => path).filter((path) => !optional(path))
+    if (read.read === "cursor") return ["control", "readings"]
     return ["outerCommands"]
   }
   return APP_STATE_READS[stored.featureId]?.find((read) =>
@@ -1031,6 +1035,28 @@ function declaredFacts(stored: StoredEvidence, read: AppStateRead): EvidenceFact
         if (!Number.isSafeInteger(lines)) fail(stored, "app-state", `count ${bare(path)} is not a whole number`)
         return [{ label, lines: lines as number }]
       }),
+    }
+  }
+  if (read.read === "cursor") {
+    // The cursor position each report must leave is the one the run's own assertion recorded.
+    const control = at(stored.callback, "control")
+    const readings = at(stored.callback, "readings")
+    const left = /leaves (cursor row \d+ col \d+)$/.exec(stored.assertions[0]?.expected ?? "")?.[1]
+    if (
+      typeof control !== "string" ||
+      !Array.isArray(readings) ||
+      !readings.every((reading) => typeof at(reading, "shown") === "string") ||
+      left === undefined
+    ) {
+      fail(stored, "app-state", "a cursor read without its control, its readings and the position they must leave")
+    }
+    return {
+      kind: "app-state",
+      read: "cursor",
+      command: read.command,
+      control: control.replace(/^cursor /, ""),
+      reports: readings.length,
+      unchanged: readings.filter((reading) => at(reading, "shown") === left).length,
     }
   }
   const sent = at(stored.callback, "outerCommands.targetSent")
@@ -1118,24 +1144,32 @@ function environment(stored: StoredEvidence): EvidenceFacts {
   const declared = ENVIRONMENT_READS[stored.featureId]
   if (!declared) fail(stored, "environment", "no declared variable for this feature")
   const present = at(stored.callback, "present")
-  const value = at(stored.callback, "value")
   // The launch marker is the collector run's id, set in the environment of the terminal it started; equal
   // means this terminal was started fresh for this run. Neither id is shown.
   const marker = at(stored.callback, "launchMarker")
   const runId = at(stored.callback, "runId")
-  if (
-    typeof present !== "boolean" ||
-    typeof value !== "string" ||
-    typeof marker !== "string" ||
-    typeof runId !== "string"
-  ) {
-    fail(stored, "environment", "an environment read without present, value, its launch marker and the run's id")
+  if (typeof present !== "boolean" || typeof marker !== "string" || typeof runId !== "string") {
+    fail(stored, "environment", "an environment read without present, its launch marker and the run's id")
   }
-  return {
-    kind: "environment",
+  const facts = {
+    kind: "environment" as const,
     variable: declared.variable,
-    launcher: typeof at(stored.callback, "mux") === "string" ? "multiplexer" : "terminal",
+    launcher: typeof at(stored.callback, "mux") === "string" ? ("multiplexer" as const) : ("terminal" as const),
     fresh: marker === runId,
+  }
+  if ("secret" in declared) {
+    // The record keeps only the length; there is no value to read, and none is looked for.
+    const length = at(stored.callback, "length")
+    if (!Number.isSafeInteger(length)) fail(stored, "environment", "a secret environment read without its length")
+    return {
+      ...facts,
+      value: present ? { withheld: { bytes: length as number, ours: false } } : { absent: true },
+    }
+  }
+  const value = at(stored.callback, "value")
+  if (typeof value !== "string") fail(stored, "environment", "an environment read without its value")
+  return {
+    ...facts,
     value: !present ? { absent: true } : declared.value.test(value) ? { shown: value } : withheld(value),
   }
 }
@@ -1464,6 +1498,14 @@ const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
         `${facts.command} ${facts.sent ? "reached it" : "did not reach it"}${
           facts.controlArrived ? `${facts.sent ? ", and" : ", but"} ${facts.control} did.` : "."
         }`,
+      ]
+    }
+    if (facts.read === "cursor") {
+      return [
+        `Printed two letters, which moved the cursor to ${facts.control}; then sent each ${facts.command} form, ${plural(facts.reports, "report")} in all.`,
+        facts.unchanged === facts.reports
+          ? "None of them moved the cursor, so none was shown on screen."
+          : `Of those, ${facts.reports - facts.unchanged} moved the cursor, so the terminal showed it on screen.`,
       ]
     }
     if (facts.read === "state") {

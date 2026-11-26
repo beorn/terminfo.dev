@@ -1659,6 +1659,28 @@ export type TermFeaturesReading =
   | { status: "invalid"; reason: string }
 
 /**
+ * OSC 7577 program resume, spec revision 0.5 (#38699): a supporting terminal puts `OSC7577_TOKEN` in each pane's first
+ * process. The token is that pane's secret, so a reading keeps its presence, its length and the spec rule a malformed
+ * one broke, never its bytes (@cto ee6b7fd9). Bound to the same clean-launch marker and run control as TERM_FEATURES.
+ */
+export type ProgramResumeTokenReading =
+  | {
+      status: "measured"
+      present: boolean
+      length: number
+      /** The spec rule a present token breaks: 22-64 characters, all from [A-Za-z0-9_-]. Absent when well formed. */
+      malformed?: "length" | "charset"
+      runId: string
+      launchMarker: string
+      pid: number
+      tty: string
+      /** As for TERM_FEATURES (#32569): inside a multiplexer a present token may be the outer terminal's. */
+      mux?: "tmux" | "screen"
+    }
+  | { status: "unavailable"; reason: string }
+  | { status: "invalid"; reason: string }
+
+/**
  * The collector's one outer command reader (@cto 1818f9ec): what the outer terminal's command record
  * showed for this callback's own writes. `target` is the record line or parameter the matcher looked
  * for; `outer` names the run's qualified outer terminal. A missing expected line is `unavailable`.
@@ -1759,6 +1781,8 @@ export interface TermProbeSource {
   readTitleAbsenceDecides?: boolean
   /** One allowlisted export, qualified by the fresh launch and this child's run/PID/TTY. */
   readTermFeatures?: () => Promise<TermFeaturesReading>
+  /** OSC7577_TOKEN from the same child read as TERM_FEATURES; never carries the token itself. */
+  readProgramResumeToken?: () => Promise<ProgramResumeTokenReading>
   /** Writes use the callback's recorder; reads bind to this run's verified App or mux. */
   readAppSemanticState?: (featureId: string, write: (text: string) => void) => Promise<AppSemanticReading>
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */

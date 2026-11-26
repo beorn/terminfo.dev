@@ -17,12 +17,19 @@
  */
 import type { AppCellStatus } from "../../data/app-cells.ts"
 import {
+  ENVIRONMENT_READS,
   formatControlBytes,
   type TraceAssertion,
   type TraceCaptures,
   type TraceEvent,
   type TraceQuery,
 } from "../../data/evidence-reader.ts"
+
+/** The variable a process_environment card reads, and whether its value is a secret no card may parse or show. */
+function environmentRead(featureId: string): { variable: string; secret: boolean } {
+  const declared = ENVIRONMENT_READS[featureId] ?? ENVIRONMENT_READS["device.term-features"]!
+  return { variable: declared.variable, secret: "secret" in declared }
+}
 
 export interface CardStepRow {
   readonly num: number
@@ -1144,7 +1151,7 @@ function libraryFedBytes(assertions: readonly TraceAssertion[] | undefined, pars
 function readbackSourceLabel(featureId: string, assertionType?: string): string {
   if (assertionType === "clipboard" || featureId.includes("osc52")) return "Clipboard"
   if (assertionType === "notification" || featureId.includes("notif")) return "Notification"
-  if (assertionType === "process_environment") return "TERM_FEATURES"
+  if (assertionType === "process_environment") return environmentRead(featureId).variable
   if (featureId === "extensions.osc7-cwd") return "Working folder"
   if (featureId.includes("title") || featureId === "device.xtwinops-22" || featureId === "device.xtwinops-23") {
     return "Window title"
@@ -1629,7 +1636,7 @@ function expectedNonReplyWords(opts: {
   if (isAppLog) {
     return appLogExpectedWords(featureId, shortWhoForVerdict(shortSubjectName), sentCommands)
   }
-  if (assertionType === "process_environment") return "TERM_FEATURES environment variable set"
+  if (assertionType === "process_environment") return `${environmentRead(featureId).variable} environment variable set`
   if (assertionType === "clipboard" || featureId.includes("osc52")) return "Clipboard holds the test text"
   if (assertionType === "notification" || featureId.includes("notif")) {
     return "Desktop notification delivered with test text"
@@ -2625,15 +2632,23 @@ export function buildCardModel(input: {
 
   // Measured: Process environment check (zero bytes sent; words only in Expected/Received)
   if (assertionType === "process_environment") {
+    const { variable, secret } = environmentRead(featureId)
     const ev = sanitizeCardText(traceEvidence?.[0]) ?? (status === "supported" ? "value set" : "not set")
-    const valMatch = status === "supported" ? /TERM_FEATURES(?:=|\s+was\s+(?:set\s+to\s+)?)([^\s.,]+)/i.exec(ev) : null
+    // A secret is never parsed out of the evidence text; its card says only set, not set, or set but malformed.
+    const valMatch =
+      status === "supported" && !secret
+        ? new RegExp(`${variable}(?:=|\\s+was\\s+(?:set\\s+to\\s+)?)([^\\s.,]+)`, "i").exec(ev)
+        : null
     const val = valMatch?.[1] && !/^(?:not|unset|absent)$/i.test(valMatch[1]) ? valMatch[1] : undefined
+    const setButRefused = secret && status !== "supported" && !/\bnot set\b/i.test(ev)
     const receivedWords = val
-      ? `TERM_FEATURES=${val}`
+      ? `${variable}=${val}`
       : status === "supported"
-        ? "TERM_FEATURES was set"
-        : "TERM_FEATURES was not set"
-    const expected: CardExpectedRow = { words: "TERM_FEATURES environment variable set" }
+        ? `${variable} was set`
+        : setButRefused
+          ? `${variable} was set, but not as a valid token`
+          : `${variable} was not set`
+    const expected: CardExpectedRow = { words: `${variable} environment variable set` }
     const received: CardReceivedRow = { words: receivedWords }
     const verdict = buildStyle5Verdict({
       status,
@@ -2651,15 +2666,15 @@ export function buildCardModel(input: {
       sentCommands: [],
     })
     const readout: CardReadoutRow = {
-      label: "TERM_FEATURES",
-      text: val ? `“${val}”` : status === "supported" ? "set" : "not set",
+      label: variable,
+      text: val ? `“${val}”` : status === "supported" || setButRefused ? "set" : "not set",
       code: "",
       codeMuted: "read directly",
       mark: singleMark,
     }
     return {
       measured: true,
-      steps: [{ num: 1, code: "", codeMuted: "no bytes", words: "Read TERM_FEATURES at launch" }],
+      steps: [{ num: 1, code: "", codeMuted: "no bytes", words: `Read ${variable} at launch` }],
       expected,
       received,
       verdict,

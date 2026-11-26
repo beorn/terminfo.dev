@@ -122,8 +122,22 @@ function fixture(alacritty = false) {
       ...launch,
       ...(alacritty ? { mesaRenderer: structuredClone(alacrittyLaunch.mesaRenderer) } : {}),
     }
+  // The frozen specimen predates later catalogue rows (OSC 7577/88, #38699). A run of the current suite carries every
+  // row, so each one the specimen lacks is added as the same Probe to-do the specimen's own rows hold.
+  const recorded = new Set(decoded.run.results.map((result) => result.featureId))
+  const catalogue = Object.keys(JSON.parse(readFileSync(join(root, "content/features.json"), "utf8")) as object)
+  const added = catalogue
+    .filter((id) => id !== "$comment" && !recorded.has(id))
+    .map((featureId) => ({
+      featureId,
+      status: "test-todo" as const,
+      attempt: { scope: "none" as const },
+      tests: [],
+      reason: "Required probe test has not started",
+    }))
   const run = {
     ...decoded.run,
+    results: [...decoded.run.results, ...added] as typeof decoded.run.results,
     probeHash: manifest.probeHash,
     suiteId: manifest.probeHash,
     origin: {

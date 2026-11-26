@@ -487,7 +487,7 @@ jobs:
               echo "TERM_FEATURES marker: a process from $APP_BUNDLE is already running; a reused process cannot carry this run's marker; launch refused" >&2
               return 1
             fi
-            TERM_FEATURES_LAUNCH_ENV=(env -u TERM_FEATURES "TERMINFO_TERM_FEATURES_LAUNCH=$run_id" "TERMINFO_RUN_ID=$run_id")
+            TERM_FEATURES_LAUNCH_ENV=(env -u TERM_FEATURES -u OSC7577_TOKEN "TERMINFO_TERM_FEATURES_LAUNCH=$run_id" "TERMINFO_RUN_ID=$run_id")
           }
           case "$APP_ID" in
             terminal-app)

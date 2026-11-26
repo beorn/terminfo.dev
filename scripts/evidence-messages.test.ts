@@ -21,6 +21,7 @@ import { describe, expect, test } from "vitest"
 import { runTraceFacts } from "@terminfo/run-parser"
 import { replyFailureSentence } from "../docs/data/evidence-messages.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
+import { evidenceFacts, evidenceSentences, replyValue, type StoredEvidence } from "../docs/data/evidence-messages.ts"
 import { currentTrace } from "../docs/data/run-trace.ts"
 import type { CurrentSelectedVersion } from "../docs/data/selected-results.ts"
 
@@ -520,4 +521,93 @@ describe("a public card never reads an undecided test's reason (#37341)", () => 
       for (const reason of reasons) expect(text).not.toContain(reason)
     }
   })
+})
+
+// #38699 (@dev/15 review): the three OSC 7577 / OSC 88 rows, read from the callbacks a real Ghostty 1.4.0 Linux
+// capture stored (/hh/var/@dev16/38699-runs/set-c1c070a1b). The committed corpus holds no run with these rows
+// until placement, so each record is built from those stored values; the token record never holds a value.
+describe("OSC 7577 and OSC 88 rows from a real Ghostty capture (#38699)", () => {
+  const RUN = "e8221a05f29086c82a14f5a95d06a71a"
+  const record = (featureId: string, extra: Partial<StoredEvidence>): StoredEvidence => ({
+    runId: RUN,
+    featureId,
+    subjectKind: "term",
+    os: "linux",
+    status: "unsupported",
+    frameKinds: [],
+    writes: [],
+    queries: [],
+    exchangeExtra: {},
+    assertions: [],
+    ...extra,
+  })
+  const token = (callback: Record<string, unknown>, status: "supported" | "unsupported") =>
+    evidenceSentences(
+      "extensions.osc7577-token",
+      evidenceFacts(
+        record("extensions.osc7577-token", {
+          status,
+          assertionType: "process_environment",
+          callback: { status: "measured", runId: RUN, launchMarker: RUN, pid: 196, tty: "tty_nr=34817", ...callback },
+        }),
+      ),
+    )
+
+  test("the token card names OSC7577_TOKEN and shows only set or not set and a length, never a value", () => {
+    expect(token({ present: false, length: 0 }, "unsupported")).toEqual([
+      "The terminal was started fresh for this run, and OSC7577_TOKEN was not set in the environment it gave the test.",
+    ])
+    const set = token({ present: true, length: 38 }, "supported").join(" ")
+    expect(set).toContain("OSC7577_TOKEN to a value we don't show (38 bytes")
+    const malformed = token({ present: true, length: 10, malformed: "length", value: "LEAKMARKER" }, "unsupported")
+    expect(malformed.join(" ")).toContain("(10 bytes")
+    expect(JSON.stringify(malformed)).not.toContain("LEAKMARKER")
+    expect(() => token({ present: true }, "supported")).toThrow("a secret environment read without its length")
+  })
+
+  test.each([
+    ["extensions.osc7577-silent", "OSC 7577 program-resume report", "well-formed report (spec example, ST)"],
+    ["extensions.osc88-silent", "OSC 88 resume command", "arm with cmd=/bin/true (ST)"],
+  ])("%s words the cursor reading the capture stored", (featureId, command, label) => {
+    const read = (shown: string, status: "supported" | "unsupported") =>
+      evidenceSentences(
+        featureId,
+        evidenceFacts(
+          record(featureId, {
+            status,
+            assertionType: "buffer_state",
+            callback: {
+              control: "cursor row 1 col 3",
+              readings: [
+                { label, shown },
+                { label: "second report", shown: "cursor row 1 col 1" },
+              ],
+            },
+            assertions: [
+              {
+                kind: status === "supported" ? "positive" : "negative",
+                expected: "every report leaves cursor row 1 col 1",
+                observed: "{}",
+              },
+            ],
+          }),
+        ),
+      )
+    expect(read("cursor row 1 col 1", "supported")).toEqual([
+      `Printed two letters, which moved the cursor to row 1 col 3; then sent each ${command} form, 2 reports in all.`,
+      "None of them moved the cursor, so none was shown on screen.",
+    ])
+    expect(read("cursor row 1 col 40", "unsupported")[1]).toBe(
+      "Of those, 1 moved the cursor, so the terminal showed it on screen.",
+    )
+  })
+
+  // The full ghostty run fe267bdd stored each silent row's cursor read as a position report; the site build threw
+  // "a reply with no declared shape" on it, which the records above (queries: []) never reach.
+  test.each(["extensions.osc7577-silent", "extensions.osc88-silent"])(
+    "%s shows the cursor position report its run stored",
+    (featureId) => {
+      expect(replyValue(record(featureId, { status: "supported" }), "\u001b[1;3R")).toHaveProperty("shown")
+    },
+  )
 })
