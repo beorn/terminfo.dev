@@ -360,12 +360,21 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
   const OSC52_IDS = [W, R, C]
   const OWN = "Isolated backend returned the exact OSC 52 clipboard nonce"
   const osc52 = (rows: Record<string, Row>) => {
-    const projection = projectResults([run("r1", rows, OSC52_IDS)], OSC52_IDS, { currentProbeHash: "suite", reopened: [] }, [])
+    const projection = projectResults(
+      [run("r1", rows, OSC52_IDS)],
+      OSC52_IDS,
+      { currentProbeHash: "suite", reopened: [] },
+      [],
+    )
     return { projection, ctx: projection.contexts["term:xterm"]! }
   }
 
   it("reads Supported only from both halves at defaults, never from its own probe, and cites both parts", () => {
-    const { projection, ctx } = osc52({ [W]: { status: "supported" }, [R]: { status: "supported" }, [C]: { status: "unsupported" } })
+    const { projection, ctx } = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "supported" },
+      [C]: { status: "unsupported" },
+    })
     const cell = ctx.cells[C]!
     expect(cell.featureResult).toMatchObject({ status: "supported", strength: null })
     expect(cell.result.status).toBe("unsupported")
@@ -384,7 +393,8 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
     expect(published.featureResults[C]).toMatchObject({
       featureId: C,
       status: "supported",
-      reason: "Graded from OSC 52 write and OSC 52 read in this context: copy and paste-back both work at default settings (OSC 52 write and OSC 52 read).",
+      reason:
+        "Graded from OSC 52 write and OSC 52 read in this context: copy and paste-back both work at default settings (OSC 52 write and OSC 52 read).",
       origin: { runId: "r1", resultId: W },
     })
     expect(published.featureResults[C]!.derived).not.toHaveProperty("ownStatus")
@@ -403,28 +413,62 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
   })
 
   it("a refused write is Unsupported; an unmeasured half leaves it To do whatever its own probe read", () => {
-    expect(osc52({ [W]: { status: "unsupported" }, [R]: { status: "supported" }, [C]: { status: "supported" } }).ctx.cells[C]!.featureResult!.status).toBe("unsupported")
-    const open = osc52({ [W]: { status: "supported" }, [R]: { status: "probe-todo", reason: "Not run" }, [C]: { status: "supported" } }).ctx
+    expect(
+      osc52({ [W]: { status: "unsupported" }, [R]: { status: "supported" }, [C]: { status: "supported" } }).ctx.cells[
+        C
+      ]!.featureResult!.status,
+    ).toBe("unsupported")
+    const open = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    }).ctx
     expect(open.cells[C]!.featureResult!.status).toBe("probe-todo")
     expect(open.cells[C]!.derived).toMatchObject({ words: "needs both halves measured: OSC 52 read is not decided" })
-    const invalid = osc52({ [W]: { status: "probe-invalid", reason: "bad" }, [R]: { status: "supported" }, [C]: { status: "supported" } }).ctx
+    const invalid = osc52({
+      [W]: { status: "probe-invalid", reason: "bad" },
+      [R]: { status: "supported" },
+      [C]: { status: "supported" },
+    }).ctx
     expect(invalid.cells[C]!.featureResult!.status).toBe("probe-todo")
   })
 
   it("a half that is itself Untestable makes it Untestable", () => {
-    const { ctx } = osc52({ [W]: { status: "supported" }, [R]: { status: "untestable", reason: "no clipboard" }, [C]: { status: "supported" } })
+    const { ctx } = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "untestable", reason: "no clipboard" },
+      [C]: { status: "supported" },
+    })
     expect(ctx.cells[C]!.featureResult!.status).toBe("untestable")
     expect(ctx.cells[C]!.derived).toMatchObject({ words: "OSC 52 read is untestable here" })
   })
 
   it("compares the halves on app version, OS and profile; a read run on its own named setting may differ in config", () => {
     const subject = (version: string, config: string) => ({ version, os: "linux", osVersion: "7.0.0", config })
-    const reading = (reason: string | null): PartReading => ({ feature: R, name: "OSC 52 read", runId: "r2", status: "supported", reason })
+    const reading = (reason: string | null): PartReading => ({
+      feature: R,
+      name: "OSC 52 read",
+      runId: "r2",
+      status: "supported",
+      reason,
+    })
     const write: PartReading = { feature: W, name: "OSC 52 write", runId: "r1", status: "supported", reason: null }
     const allow = "allow: ghostty --clipboard-read=allow"
-    expect(partsComparable([subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --clipboard-read=allow")], [write, reading(allow)])).toBe(true)
-    expect(partsComparable([subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --other")], [write, reading(null)])).toBe(false)
-    expect(partsComparable([subject("1.4.0", "ghostty"), subject("1.3.1", "ghostty --clipboard-read=allow")], [write, reading(allow)])).toBe(false)
+    expect(
+      partsComparable(
+        [subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --clipboard-read=allow")],
+        [write, reading(allow)],
+      ),
+    ).toBe(true)
+    expect(
+      partsComparable([subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --other")], [write, reading(null)]),
+    ).toBe(false)
+    expect(
+      partsComparable(
+        [subject("1.4.0", "ghostty"), subject("1.3.1", "ghostty --clipboard-read=allow")],
+        [write, reading(allow)],
+      ),
+    ).toBe(false)
     expect(partsComparable([subject("1.4.0", "ghostty"), undefined], [write, reading(null)])).toBe(false)
   })
 
@@ -442,8 +486,12 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
       words: "copy and paste-back both work; reading needs the embedding app's setting (osc52=CopyPaste)",
       decidedBy: [0, 1],
     })
-    expect(gradeOsc52Clipboard([part(W, "supported"), part(R, "supported", harness)], "term").status).toBe("unsupported")
-    expect(gradeOsc52Clipboard([part(W, "supported"), part(R, "unsupported", "default deny: x")], "term")).toMatchObject({
+    expect(gradeOsc52Clipboard([part(W, "supported"), part(R, "supported", harness)], "term").status).toBe(
+      "unsupported",
+    )
+    expect(
+      gradeOsc52Clipboard([part(W, "supported"), part(R, "unsupported", "default deny: x")], "term"),
+    ).toMatchObject({
       status: "unsupported",
       decidedBy: [1],
     })

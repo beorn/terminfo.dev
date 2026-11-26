@@ -367,7 +367,10 @@ function derivedOrigin(
         )
       }
     }
-    return derived.cites ? cells[derived.cites]!.origin : own
+    if (derived.cites === undefined) return own
+    const cited = cells[derived.cites]
+    if (!cited) throw new Error(`${key}/${id}: cites ${derived.cites}, but this context has no ${derived.cites} cell`)
+    return cited.origin
   }
   const parent = cells[derived.parent]
   if (!parent || parent.origin.runId !== derived.parentRunId) {

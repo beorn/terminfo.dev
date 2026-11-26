@@ -115,24 +115,50 @@ export function gradeOsc52Clipboard(parts: readonly PartReading[], kind: string)
   if (!write || !read) throw new Error("The OSC 52 umbrella reads exactly two parts: write, then read")
   const open = parts.filter((part) => !DECIDED_PART.has(part.status))
   if (open.length > 0) {
-    return { status: "probe-todo", words: `needs both halves measured: ${open.map((part) => part.name).join(" and ")} ${open.length > 1 ? "are" : "is"} not decided`, decidedBy: [] }
+    return {
+      status: "probe-todo",
+      words: `needs both halves measured: ${open.map((part) => part.name).join(" and ")} ${open.length > 1 ? "are" : "is"} not decided`,
+      decidedBy: [],
+    }
   }
-  const untestable = parts.findIndex((part) => part.status === "untestable")
-  if (untestable >= 0) return { status: "untestable", words: `${parts[untestable]!.name} is untestable here`, decidedBy: [untestable] }
+  const untestable = parts.find((part) => part.status === "untestable")
+  if (untestable) {
+    return {
+      status: "untestable",
+      words: `${untestable.name} is untestable here`,
+      decidedBy: [parts.indexOf(untestable)],
+    }
+  }
   if (write.status === "unsupported") {
     return { status: "unsupported", words: `copy does not work (${write.name})`, decidedBy: [0] }
   }
   if (read.status === "unsupported") {
-    return { status: "unsupported", words: `copy works (${write.name}); reading does not answer at default settings, see ${read.name}`, decidedBy: [1] }
+    return {
+      status: "unsupported",
+      words: `copy works (${write.name}); reading does not answer at default settings, see ${read.name}`,
+      decidedBy: [1],
+    }
   }
   const setting = readSetting(read.reason)
   if (setting && kind === "lib") {
-    return { status: "supported", words: `copy and paste-back both work; reading needs the embedding app's setting (${setting.setting})`, decidedBy: [0, 1] }
+    return {
+      status: "supported",
+      words: `copy and paste-back both work; reading needs the embedding app's setting (${setting.setting})`,
+      decidedBy: [0, 1],
+    }
   }
   if (setting) {
-    return { status: "unsupported", words: `copy works (${write.name}); reading is off by default (${setting.setting}), see ${read.name}`, decidedBy: [1] }
+    return {
+      status: "unsupported",
+      words: `copy works (${write.name}); reading is off by default (${setting.setting}), see ${read.name}`,
+      decidedBy: [1],
+    }
   }
-  return { status: "supported", words: `copy and paste-back both work at default settings (${write.name} and ${read.name})`, decidedBy: [0, 1] }
+  return {
+    status: "supported",
+    words: `copy and paste-back both work at default settings (${write.name} and ${read.name})`,
+    decidedBy: [0, 1],
+  }
 }
 
 /** Every parts row. Any row beyond these goes to @cto first, as the pairs do. */
@@ -242,14 +268,22 @@ export function applyDerived(
   return derived
 }
 
-type PartSubject = { version: string; os: string; osVersion: string | null; config: string | null }
+type PartSubject = {
+  readonly version: unknown
+  readonly os: unknown
+  readonly osVersion?: unknown
+  readonly config?: unknown
+}
 
 /**
  * Whether the parts were measured on the same app version, OS and profile (@cpo/term 5483ec82). A part that names the
  * setting it was read under (readSetting) was measured on its own profile by design: the grade judges that setting,
  * so its config may differ. Any other config difference, or a missing part, is not comparable.
  */
-export function partsComparable(subjects: readonly (PartSubject | undefined)[], readings: readonly PartReading[]): boolean {
+export function partsComparable(
+  subjects: readonly (PartSubject | undefined)[],
+  readings: readonly PartReading[],
+): boolean {
   const first = subjects[0]
   if (!first) return false
   return subjects.every(
@@ -286,13 +320,19 @@ function applyParts(cells: Record<string, SelectedContextCell>, row: DerivedPart
   )
   const grade: PartsGrade = same
     ? row.grade(readings, child.run.subject.kind)
-    : { status: "probe-todo", words: "needs both halves measured on the same app version, OS and profile", decidedBy: [] }
+    : {
+        status: "probe-todo",
+        words: "needs both halves measured on the same app version, OS and profile",
+        decidedBy: [],
+      }
+  const first = grade.decidedBy[0]
+  const cited = first === undefined ? undefined : row.parts[first]
   cells[row.child] = {
     ...child,
     featureResult: { ...child.featureResult, status: grade.status, strength: null },
     derived: {
       parts: readings,
-      ...(grade.decidedBy.length > 0 && { cites: row.parts[grade.decidedBy[0]!]!.feature }),
+      ...(cited && { cites: cited.feature }),
       words: grade.words,
       ownStatus: cellStatus(child),
       ownReason: child.result.reason ?? null,
