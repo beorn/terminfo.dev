@@ -514,7 +514,8 @@ export function currentCoverageSentence(
 ): string {
   const { tested, graded } = testedOfGraded(aggregate.counts)
   if (catalogIds !== undefined) {
-    const named = scoredFeatureIds(catalogIds).length
+    // #38772: an App only cell is in the catalogue but deliberately out of the counts, so it leaves the named side too.
+    const named = scoredFeatureIds(catalogIds).length - (aggregate.counts[APP_ONLY] ?? 0)
     if (named !== graded) {
       throw new Error(
         `coverage counts fold ${graded} graded features, but the catalogue they are printed for has ${named} graded features`,
@@ -547,7 +548,7 @@ export function decisiveCells(
  * reader was handed a joined bar (@cto c3c2f885). A stored-only aggregate simply has no differs member.
  */
 export type ReadableCounts = Readonly<
-  Record<ProbeStatus, number> & Partial<Record<"probe-conflict" | typeof DIFFERS_BY_CONTEXT, number>>
+  Record<ProbeStatus, number> & Partial<Record<"probe-conflict" | typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY, number>>
 >
 
 /**

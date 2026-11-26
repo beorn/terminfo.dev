@@ -12,7 +12,7 @@ import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import { APP_ONLY, joinContextCells, type ContextCellFacts } from "../docs/data/app-cells.ts"
-import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
+import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { categoryIds } from "../docs/data/result-categories.ts"
 import { evidenceStatus, evidenceStatusWords } from "../docs/.vitepress/theme/evidence-status.ts"
 import { catalogAppOnly } from "../docs/data/app-only-cells.ts"
@@ -115,6 +115,9 @@ describe("App only on library rows (#38772)", () => {
     expect(ctx.counts).toMatchObject({ supported: 1, [APP_ONLY]: 1 })
     expect(ctx.score).toEqual({ supported: 1, all: 1 })
     expect(ctx.complete).toBe(true)
+    // The site's coverage sentence names the catalogue it prints for; an App only cell is in that catalogue but out of
+    // the counts, so the check must allow for it (the queue's site build refused 260 vs 264 without this).
+    expect(currentCoverageSentence({ counts: ctx.counts }, ids)).toBe("1 of 1 tested")
   })
 
   it("leaves a terminal row graded as measured", () => {
