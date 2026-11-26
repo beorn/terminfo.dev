@@ -55,8 +55,114 @@ export const DERIVED_UNSUPPORTED: readonly DerivedPair[] = [
   },
 ]
 
+/** One cell a parts row reads, as a reader knows it. */
+export interface DerivedPart {
+  readonly feature: string
+  readonly name: string
+}
+
+/** A part as its context selected it: its own run, status and recorded reason. */
+export interface PartReading extends DerivedPart {
+  readonly runId: string
+  readonly status: string
+  readonly reason: string | null
+}
+
+/** A parts row's verdict: the status, its words, and the parts that decide it (the first is the cited entry). */
+export interface PartsGrade {
+  readonly status: "supported" | "unsupported" | "untestable" | "probe-todo"
+  readonly words: string
+  readonly decidedBy: readonly number[]
+}
+
+/**
+ * A cell graded only from other cells of the same context by its table (#38772, @cto 8cccf709), never by its own
+ * probe. The pairs above are the one-part case: their part is the parent and their table is "refused by its own effect
+ * witness entails Unsupported"; they keep their literal shape so their outputs stay byte-identical.
+ */
+export interface DerivedParts {
+  readonly child: string
+  readonly parts: readonly DerivedPart[]
+  readonly grade: (parts: readonly PartReading[], kind: string) => PartsGrade
+}
+
+export type DerivedRow = DerivedPair | DerivedParts
+
+const DECIDED_PART = new Set(["supported", "unsupported", "untestable"])
+
+/**
+ * The setting a read row names when it read only under a non-default setting, from the fixed phrases our collectors
+ * record: an app profile's "allow: <setting>", or a library's "read under harness-supplied <setting>". Anything else
+ * reads as defaults.
+ */
+export function readSetting(reason: string | null): { setting: string; by: "app" | "embedder" } | null {
+  if (!reason) return null
+  const app = /(?:^|; )allow: ([^;]+)/.exec(reason)?.[1]
+  if (app) return { setting: app.trim(), by: "app" }
+  const embedder = /read under harness-supplied ([^;]+)/.exec(reason)?.[1]
+  if (embedder) return { setting: embedder.trim(), by: "embedder" }
+  return null
+}
+
+/**
+ * OSC 52's umbrella from its write and read rows (@cpo/term f281df2f, 5483ec82). A half that is not decided leaves it
+ * To do; a half that is Untestable makes it Untestable; a refused write is Unsupported. With the write working, a read
+ * refused at defaults is Unsupported; a read that needs a setting is Unsupported on an app (judged at shipped defaults)
+ * and Supported on a library (judged with its embedder's setting enabled); a read at defaults is Supported.
+ */
+export function gradeOsc52Clipboard(parts: readonly PartReading[], kind: string): PartsGrade {
+  const [write, read] = parts
+  if (!write || !read) throw new Error("The OSC 52 umbrella reads exactly two parts: write, then read")
+  const open = parts.filter((part) => !DECIDED_PART.has(part.status))
+  if (open.length > 0) {
+    return { status: "probe-todo", words: `needs both halves measured: ${open.map((part) => part.name).join(" and ")} ${open.length > 1 ? "are" : "is"} not decided`, decidedBy: [] }
+  }
+  const untestable = parts.findIndex((part) => part.status === "untestable")
+  if (untestable >= 0) return { status: "untestable", words: `${parts[untestable]!.name} is untestable here`, decidedBy: [untestable] }
+  if (write.status === "unsupported") {
+    return { status: "unsupported", words: `copy does not work (${write.name})`, decidedBy: [0] }
+  }
+  if (read.status === "unsupported") {
+    return { status: "unsupported", words: `copy works (${write.name}); reading does not answer at default settings, see ${read.name}`, decidedBy: [1] }
+  }
+  const setting = readSetting(read.reason)
+  if (setting && kind === "lib") {
+    return { status: "supported", words: `copy and paste-back both work; reading needs the embedding app's setting (${setting.setting})`, decidedBy: [0, 1] }
+  }
+  if (setting) {
+    return { status: "unsupported", words: `copy works (${write.name}); reading is off by default (${setting.setting}), see ${read.name}`, decidedBy: [1] }
+  }
+  return { status: "supported", words: `copy and paste-back both work at default settings (${write.name} and ${read.name})`, decidedBy: [0, 1] }
+}
+
+/** Every parts row. Any row beyond these goes to @cto first, as the pairs do. */
+export const DERIVED_FROM_PARTS: readonly DerivedParts[] = [
+  {
+    child: "extensions.osc52-clipboard",
+    parts: [
+      { feature: "extensions.osc52-write", name: "OSC 52 write" },
+      { feature: "extensions.osc52-read", name: "OSC 52 read" },
+    ],
+    grade: gradeOsc52Clipboard,
+  },
+]
+
+/** Every derived row the projection reads by default: the one-part pairs, then the parts rows. */
+export const DERIVED_ROWS: readonly DerivedRow[] = [...DERIVED_UNSUPPORTED, ...DERIVED_FROM_PARTS]
+
+/** Set only on a cell graded from parts: each part as read, the verdict's words, and the cell's own stored reading. */
+export interface DerivedPartsMarker {
+  readonly parts: readonly PartReading[]
+  readonly words: string
+  readonly ownStatus: string
+  readonly ownReason: string | null
+}
+
+/** A derived cell's marker: from one refused parent, or from parts. */
+export type DerivedMarker = DerivedParentMarker | DerivedPartsMarker
+
 /** Set only on a derived cell: the parent it was read from, and the child's own stored reading kept beside it. */
-export interface DerivedMarker {
+export interface DerivedParentMarker {
   readonly parent: string
   readonly parentName: string
   readonly parentRunId: string
@@ -97,10 +203,15 @@ function entailingParent(cell: SelectedContextCell | undefined): cell is Selecte
 export function applyDerived(
   contextKey: string,
   cells: Record<string, SelectedContextCell>,
-  pairs: readonly DerivedPair[],
+  rows: readonly DerivedRow[],
 ): string[] {
   const derived: string[] = []
-  for (const pair of pairs) {
+  for (const row of rows) {
+    if ("parts" in row) {
+      if (applyParts(cells, row)) derived.push(row.child)
+      continue
+    }
+    const pair = row
     const parent = cells[pair.parent]
     const child = cells[pair.child]
     if (!child || !entailingParent(parent)) continue
@@ -129,8 +240,70 @@ export function applyDerived(
   return derived
 }
 
+type PartSubject = { version: string; os: string; osVersion: string | null; config: string | null }
+
+/**
+ * Whether the parts were measured on the same app version, OS and profile (@cpo/term 5483ec82). A part that names the
+ * setting it was read under (readSetting) was measured on its own profile by design: the grade judges that setting,
+ * so its config may differ. Any other config difference, or a missing part, is not comparable.
+ */
+export function partsComparable(subjects: readonly (PartSubject | undefined)[], readings: readonly PartReading[]): boolean {
+  const first = subjects[0]
+  if (!first) return false
+  return subjects.every(
+    (subject, index) =>
+      subject !== undefined &&
+      subject.version === first.version &&
+      subject.os === first.os &&
+      subject.osVersion === first.osVersion &&
+      (subject.config === first.config || readSetting(readings[index]?.reason ?? null) !== null),
+  )
+}
+
+/**
+ * Grade one parts row in place; true when it graded the child. Every part must be present and measured on the same app
+ * version, OS and profile as the others, or the child reads To do (@cpo/term 5483ec82). The child's own probe never
+ * decides it; its stored reading stays beside the grade.
+ */
+function applyParts(cells: Record<string, SelectedContextCell>, row: DerivedParts): boolean {
+  const child = cells[row.child]
+  if (!child?.featureResult) return false
+  const present = row.parts.map((part) => cells[part.feature])
+  const readings: PartReading[] = row.parts.map((part, index) => {
+    const cell = present[index]
+    return {
+      ...part,
+      runId: cell?.run.runId ?? "",
+      status: cell ? cellStatus(cell) : "probe-todo",
+      reason: cell?.result.reason ?? null,
+    }
+  })
+  const same = partsComparable(
+    present.map((cell) => cell?.run.subject),
+    readings,
+  )
+  const grade: PartsGrade = same
+    ? row.grade(readings, child.run.subject.kind)
+    : { status: "probe-todo", words: "needs both halves measured on the same app version, OS and profile", decidedBy: [] }
+  cells[row.child] = {
+    ...child,
+    featureResult: { ...child.featureResult, status: grade.status, strength: null },
+    derived: {
+      parts: readings,
+      words: grade.words,
+      ownStatus: cellStatus(child),
+      ownReason: child.result.reason ?? null,
+    },
+    ...(grade.decidedBy.length > 0 && { origin: present[grade.decidedBy[0]!]!.origin }),
+  }
+  return true
+}
+
 /** The words a derived cell shows wherever it is displayed. */
 export function publicDerivedReason(marker: DerivedMarker): string {
+  if ("parts" in marker) {
+    return `Graded from ${marker.parts.map((part) => part.name).join(" and ")} in this context: ${marker.words}.`
+  }
   const witness = marker.parentReason ? ` (${marker.parentReason})` : ""
   return `Unsupported, derived: ${marker.parentName} was refused in run ${marker.parentRunId}${witness}; ${marker.needs}.`
 }

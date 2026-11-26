@@ -27,7 +27,7 @@ import {
   type DeclaredMarker,
   type DeclaredUntestableCell,
 } from "./declared-untestable.ts"
-import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
+import { applyDerived, DERIVED_ROWS, type DerivedMarker, type DerivedRow } from "./derived-cells.ts"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
 import type { CurrentTraceDocument, TraceIdentityRuleCheck } from "./run-trace.ts"
@@ -554,8 +554,8 @@ export function projectResults(
     reopened?: readonly ReopenedCell[]
     /** Open cells reviewed as untestable (content/declared-untestable.json); loadSelectedResults always passes them. */
     declared?: readonly DeclaredUntestableCell[]
-    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
-    derived?: readonly DerivedPair[]
+    /** Declared derived rows; absent means the one table, DERIVED_ROWS (#33019, #38772). */
+    derived?: readonly DerivedRow[]
     onProgress?: (completed: number, total: number) => void
   },
   archivedExclusions: readonly SelectedExclusion[],
@@ -712,7 +712,7 @@ export function projectResults(
       policy.log,
       supplements,
       policy.reopened ?? [],
-      policy.derived ?? DERIVED_UNSUPPORTED,
+      policy.derived ?? DERIVED_ROWS,
       policy.declared ?? [],
       policy.onProgress,
     ),
@@ -899,7 +899,7 @@ function composeContextSummaries(
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
-  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
+  derivedPairs: readonly DerivedRow[] = DERIVED_ROWS,
   declared: readonly DeclaredUntestableCell[] = [],
   onProgress?: (completed: number, total: number) => void,
 ): Record<string, SelectedContextSummary> {

@@ -39,7 +39,7 @@ const props = withDefaults(
       | PublicProbeResult
       | (PublicFeatureResult & {
           joined?: { status: AppCellStatus; from: Array<{ context: string; status: FeatureResultStatus }> }
-          derived?: { parent: string; parentRunId: string; reason: string }
+          derived?: { parent: string; parentRunId: string; reason?: string } | { parts: readonly unknown[] }
         })
     /** compact: the mark alone (matrices); text: mark and word; label: the word alone, for a list whose bullet is the mark (#37761). */
     display?: "compact" | "text" | "label"
@@ -93,8 +93,11 @@ let evidenceController: AbortController | null = null
 const id = useId()
 const tooltipId = `${id}-preview`
 
+// #38772: only a cell read from a refused parent is shown as derived; one graded from parts shows its own status and reason.
 const derivedInfo = computed(() =>
-  props.cell && "derived" in props.cell && props.cell.derived ? props.cell.derived : undefined,
+  props.cell && "derived" in props.cell && props.cell.derived && "parent" in props.cell.derived
+    ? props.cell.derived
+    : undefined,
 )
 const derived = computed(() => Boolean(derivedInfo.value))
 const derivedParentName = computed(() => {
