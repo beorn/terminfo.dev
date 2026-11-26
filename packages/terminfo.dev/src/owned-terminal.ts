@@ -2261,7 +2261,7 @@ export async function createOwnedTerminal(options: {
       : terminalApp
         ? undefined
         : clipboard && "readTitle" in clipboard
-          ? clipboard.readTitle.bind(clipboard)
+          ? clipboard.readTitle?.bind(clipboard)
           : undefined
     // 37257 (@cto 2026-11-26): Terminal.app's protocol title is its *tab* title. The window AXTitle is only identity,
     // so the tab element under the owned window's AXTabGroup is the read, and a tab that reports only the composite is

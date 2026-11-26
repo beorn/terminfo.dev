@@ -208,7 +208,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -236,7 +236,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -264,7 +264,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -292,7 +292,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -320,7 +320,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -348,7 +348,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -376,7 +376,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -404,7 +404,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -432,7 +432,7 @@
       "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [

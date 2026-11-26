@@ -134,7 +134,8 @@ describe("content host-path scan", () => {
     expect(scanContent(content).map((x) => x.path)).toEqual(["content/artifacts/a.txt"])
   })
 
+  // Reads every committed content file (measured 8.2 s at host load 28 on 2026-11-26), past the 5 s default.
   it("the committed content/ tree records no host path", () => {
     expect(scanContent(fileURLToPath(new URL("../content", import.meta.url)))).toEqual([])
-  })
+  }, 30_000)
 })
