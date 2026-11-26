@@ -744,7 +744,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       const existing = target[cursorX]
       if (!mutations.has("overwrite-noop") || !existing || existing.char === " " || existing.char === "") {
         target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, hyperlink, ...attributes }
-        if (width > 1 && cursorX + 1 < cols) {
+        // "wide-follower-kept" (#38772): the vt220 library decodes and places a wide glyph but leaves its follower cell
+        // as it was. Follower ownership is text.wide.*'s claim, never a decoding claim.
+        if (width > 1 && cursorX + 1 < cols && !mutations.has("wide-follower-kept")) {
           target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, hyperlink, ...attributes }
         }
       }
@@ -1625,10 +1627,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (!mutations.has("xtgettcap-noop")) replies += "\x1bP1+r544e=787465726d\x1b\\"
       return
     }
-    if (payload.toLowerCase() === "+q7465726d4e616d65") {
+    if (payload.toLowerCase() === "+q736176654c696e6573") {
       replies += mutations.has("xtgetxres-noop")
-        ? "\x1bP0+R7465726d4e616d65\x1b\\"
-        : "\x1bP1+R7465726d4e616d65=787465726d\x1b\\"
+        ? "\x1bP0+R736176654c696e6573\x1b\\"
+        : "\x1bP1+R736176654c696e6573=31303234\x1b\\"
     }
   }
 

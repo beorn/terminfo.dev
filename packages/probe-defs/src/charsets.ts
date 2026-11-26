@@ -42,16 +42,17 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "charsets.utf8",
     expected: "Sampled Unicode characters \u00e9 and \u4e16 occupy their target cells with ASCII controls intact",
-    seed: "\x1b[1;1H\x1b[2KAxy?Z",
-    before: [["A", "x", "y", "?", "Z"]],
+    seed: "\x1b[1;1H\x1b[2KAxy Z",
+    before: [["A", "x", "y", " ", "Z"]],
     steps: [
       { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "First target CUP did not reach Unicode sample cell" } },
       { write: "\u00e9" },
       { write: "\x1b[1;3H", cursor: { x: 2, y: 0, note: "Second target CUP did not reach Unicode sample cell" } },
       { write: "\u4e16" },
     ],
-    // U+4E16 is one WIDE cell: it claims column 3 and its follower claims column 4, whose cell the
-    // wide glyph owns. The `?` the seed painted there is what witnesses the takeover.
+    // U+4E16 is one WIDE cell: it claims column 3 and its follower column 4. The seed leaves column 4 blank, so
+    // the row claims the decoding only: whether a wide glyph clears its follower is text.wide.*'s claim, and the
+    // vt220 library that kept a seeded `?` there decoded both samples correctly (#38772).
     after: [["A", "\u00e9", "\u4e16", "", "Z"]],
     controls: [
       { row: 0, col: 0, char: "A" },
