@@ -78,6 +78,25 @@ export function isPublishedStatus(status: string): boolean {
   return DECIDED.has(status) || status === DIFFERS_BY_CONTEXT
 }
 
+/**
+ * A feature page's counts over its subjects' results (#37341 Q1, #38772): "unknown" is no result yet; an App only row
+ * is neither a result nor a missing one, so it is in no count; anything else undecided is a loader bug and refuses.
+ */
+export function featurePageCounts(results: readonly { name: string; result: string }[], featureId: string) {
+  for (const { name, result } of results) {
+    if (result !== "unknown" && result !== APP_ONLY && !isPublishedStatus(result)) {
+      throw new Error(`${name}: ${featureId} reached the feature page with undecided result ${JSON.stringify(result)}`)
+    }
+  }
+  const counted = results.filter((row) => row.result !== APP_ONLY)
+  const totalCount = counted.filter((row) => isPublishedStatus(row.result)).length
+  return {
+    yesCount: counted.filter((row) => row.result === "supported").length,
+    totalCount,
+    noResultCount: counted.length - totalCount,
+  }
+}
+
 /** What one context recorded for one probe, reduced to the facts the join compares and names. */
 export interface ContextCellFacts {
   status: FeatureResultStatus

@@ -11,7 +11,7 @@ import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
-import { APP_ONLY, joinContextCells, type ContextCellFacts } from "../docs/data/app-cells.ts"
+import { APP_ONLY, featurePageCounts, joinContextCells, type ContextCellFacts } from "../docs/data/app-cells.ts"
 import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { categoryIds } from "../docs/data/result-categories.ts"
 import { evidenceStatus, evidenceStatusWords } from "../docs/.vitepress/theme/evidence-status.ts"
@@ -159,6 +159,16 @@ describe("App only on library rows (#38772)", () => {
     expect(row.supported).toEqual([BOLD])
     expect(row["no-result"]).toEqual([])
     expect(evidenceStatusWords(evidenceStatus(CLICK, APP_ONLY))).toBe("App only")
+  })
+
+  it("reaches the feature page as App only, in no count; an undecided result still refuses (the site build refused it)", () => {
+    const rows = [
+      { name: "vterm", result: APP_ONLY },
+      { name: "xterm", result: "supported" },
+      { name: "kitty", result: "unknown" },
+    ]
+    expect(featurePageCounts(rows, CLICK)).toEqual({ yesCount: 1, totalCount: 1, noResultCount: 1 })
+    expect(() => featurePageCounts([{ name: "vterm", result: "probe-todo" }], CLICK)).toThrow(/undecided result "probe-todo"/)
   })
 
   it("reads the catalogue's declarations by default: the four features @cpo/term ruled (20882c8a), each with a reason", () => {
