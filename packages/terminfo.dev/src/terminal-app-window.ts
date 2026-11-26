@@ -868,6 +868,154 @@ export function readTerminalAppDocument(
 }
 
 /**
+ * 37257 (@cto 4dfae597, 2026-11-26): Terminal.app's *tab* title, the value OSC 2 sets. The window's `name` is the
+ * app's composition of several settings (directory, custom title, process, geometry) and must never be read as the
+ * protocol value -- 28fb8b2e6 removed that read for this app. Terminal's scripting dictionary keeps the tab's own
+ * title as `custom title`, separate from the window's composite: the JXA pass below reads exactly that property on
+ * the tab whose TTY is the run's -- one owned window, one tab, or a refusal by name.
+ *
+ * Measured on codimac 2026-11-26 (macOS 26.7.3, Terminal 2.15): after `ESC ] 2 ; probe-title-abc BEL`,
+ * `custom title of tab 1 of window id N` read back `probe-title-abc`, and a second write changed it to
+ * `probe-title-def`; at that moment `name of window id N` was `codi — probe-title-def — -zsh — 120x30`. The
+ * Accessibility tree is NOT used: a single-tab window exposes no AX tab element at all (AX-MEASUREMENT.md keeps the
+ * detail), and reading the composite is exactly what the row forbids. A tab whose `custom title` equals the window
+ * composite is refused by name. No fence is written: a title reader must not change the title it reads.
+ */
+export const TERMINAL_APP_TAB_TITLE_SCRIPT = `function run(argv) {
+  var ttyPath = argv[0];
+  function reply(value) { return JSON.stringify(value) }
+  function text(value) { return value === null || value === undefined ? null : String(value) }
+  function owned(app) {
+    var hits = [];
+    for (var w = 0; w < app.windows.length; w++) {
+      var win = app.windows[w], tabs = win.tabs;
+      for (var t = 0; t < tabs.length; t++) if (String(tabs[t].tty()) === ttyPath) hits.push({ tab: tabs[t], win: win });
+    }
+    return hits;
+  }
+  try {
+    var app = Application("Terminal");
+    if (!app.running()) return reply({ status: "refused", phase: "owner", reason: "Terminal is not running" });
+    var hits = owned(app);
+    if (hits.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned TTY is the TTY of " + hits.length + " Terminal tabs" });
+    var tab = hits[0].tab, win = hits[0].win, windowId = Number(win.id());
+    if (win.tabs.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has " + win.tabs.length + " tabs" });
+    var windowTitle = String(win.name());
+    if (windowTitle.length === 0) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has an empty name" });
+    var custom;
+    try {
+      custom = text(tab.customTitle());
+    } catch (error) {
+      return reply({ status: "refused", phase: "custom-title", reason: "the owned tab has no readable custom title", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null });
+    }
+    if (custom === null) return reply({ status: "refused", phase: "custom-title", reason: "the owned tab's custom title is not a string" });
+    var after = owned(app);
+    if (after.length !== 1 || Number(after[0].win.id()) !== windowId) {
+      return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window changed during the read" });
+    }
+    return reply({ status: "read", title: custom, windowTitle: windowTitle, windowId: windowId });
+  } catch (error) {
+    return reply({ status: "refused", phase: "script", reason: "the read raised", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null, message: String(error && error.message ? error.message : error) });
+  }
+}`
+
+export type TerminalAppTabTitleReply =
+  | { status: "read"; title: string; windowTitle: string; windowId: number }
+  | {
+      status: "refused"
+      phase: string
+      reason: string
+      windowTitle?: string
+      errorNumber?: number | null
+      message?: string
+    }
+
+/** One osascript run of the tab-title script; the default spawns /usr/bin/osascript with a 10 s kill. */
+export type TerminalAppTabTitleRun = (argv: readonly [tty: string]) => {
+  stdout: string
+  stderr: string
+  status: number | null
+  signal: NodeJS.Signals | null
+  error?: Error
+}
+
+const defaultTabTitleRun: TerminalAppTabTitleRun = ([ttyPath]) => {
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", TERMINAL_APP_TAB_TITLE_SCRIPT, ttyPath], {
+    encoding: "utf8",
+    timeout: 10_000,
+    killSignal: "SIGKILL",
+  })
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    status: result.status,
+    signal: result.signal,
+    ...(result.error !== undefined && { error: result.error }),
+  }
+}
+
+/** Parse one reply; anything that is not one of the two shapes is a failure, never a reading. */
+export function readTerminalAppTabTitle(
+  ttyPath: string,
+  run: TerminalAppTabTitleRun = defaultTabTitleRun,
+): TerminalAppTabTitleReply {
+  if (!/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(ttyPath)) {
+    throw new Error(`Terminal.app tab title read: the owned TTY is not a device path: ${JSON.stringify(ttyPath)}`)
+  }
+  const result = run([ttyPath])
+  if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+    const how =
+      result.signal !== null
+        ? `killed by ${result.signal}`
+        : result.error
+          ? "could not start"
+          : `exit ${String(result.status)}`
+    throw new Error(
+      `Terminal.app tab title read: osascript ${how}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const parsed: unknown = JSON.parse(result.stdout)
+  const reply = parsed as Record<string, unknown>
+  const ok =
+    typeof reply === "object" &&
+    reply !== null &&
+    ((reply.status === "read" &&
+      typeof reply.title === "string" &&
+      typeof reply.windowTitle === "string" &&
+      typeof reply.windowId === "number") ||
+      (reply.status === "refused" && typeof reply.phase === "string" && typeof reply.reason === "string"))
+  if (!ok) throw new Error(`Terminal.app tab title read: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppTabTitleReply
+}
+
+/**
+ * The owned title port for a Terminal.app arm (37257). Every read re-derives the owned tab from the run's TTY and
+ * refuses any other number of windows or tabs; `check` re-proves the live owner before and after each native read. A
+ * "read" reply whose tab title equals the window composite is refused by name: the protocol value is then not
+ * observable through this boundary, and stripping the app's decoration is exactly what the row forbids.
+ */
+export function createTerminalAppTabTitleReader(options: {
+  readonly tty: string
+  readonly check: () => void
+  readonly run?: TerminalAppTabTitleRun
+}): () => Promise<string> {
+  return async () => {
+    options.check()
+    const reply = readTerminalAppTabTitle(options.tty, options.run)
+    options.check()
+    if (reply.status === "refused") {
+      throw new Error(`Terminal.app tab title read refused at ${reply.phase}: ${reply.reason}`)
+    }
+    if (reply.title === reply.windowTitle) {
+      throw new Error(
+        "Terminal.app tab title read: the owned tab's custom title is the window's composite, so the protocol value is not observable through this boundary",
+      )
+    }
+    return reply.title
+  }
+}
+
+/**
  * The owned cwd port for readAppSemanticState (34870). Every read, the baseline included, writes its own OSC 2 fence
  * (the phase's marker, or a fresh baseline nonce) and polls the bounded reader until the owned window's name carries
  * it; only then is AXDocument read, so each phase's value is fresh. `check` re-proves the live owner around every

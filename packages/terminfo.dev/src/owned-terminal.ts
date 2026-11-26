@@ -125,6 +125,7 @@ import type { LedgerAttribute } from "./probes/attribute-ledger.ts"
 import {
   assertOwnedAppOwner,
   assertOwnedTerminalWindow,
+  createTerminalAppTabTitleReader,
   ownedAppProbes,
   terminalAppOwnedCwd,
 } from "./terminal-app-window.ts"
@@ -1884,6 +1885,8 @@ export async function createOwnedTerminal(options: {
   appSemanticCapture?: (featureId: string, phase: string) => Promise<unknown>
   /** The collector's one installed Darwin capture owner, bound after this terminal is constructed. */
   readDarwinTitle?: TermProbeSource["readTitle"]
+  /** Test seam for the 37257 Terminal.app tab-title read; production builds it from the owner assertion. */
+  terminalAppTabTitle?: () => Promise<string>
 }): Promise<OwnedTerminal> {
   const {
     captureRunId,
@@ -2228,6 +2231,25 @@ export async function createOwnedTerminal(options: {
         : clipboard && "readTitle" in clipboard
           ? clipboard.readTitle.bind(clipboard)
           : undefined
+    // 37257 (@cto 2026-11-26): Terminal.app's protocol title is its *tab* title. The window AXTitle is only identity,
+    // so the tab element under the owned window's AXTabGroup is the read, and a tab that reports only the composite is
+    // refused by name. No fence is written: a title reader must not change the title it is reading. Built on first use
+    // because the owner object carrying the live-capture check is created below this point.
+    const terminalAppAssertion = terminalApp === undefined ? undefined : parseTerminalAppOwner(terminalApp)
+    let terminalAppTitle: (() => Promise<string>) | undefined
+    const readTerminalAppTabTitleOfOwner = async (): Promise<string> => {
+      terminalAppTitle ??=
+        options.terminalAppTabTitle ??
+        createTerminalAppTabTitleReader({
+          tty: (terminalAppAssertion as TerminalAppOwnerAssertion).tabTty,
+          check: () => {
+            if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned title read has no live bound capture")
+          },
+        })
+      return terminalAppTitle()
+    }
+    const terminalAppTitleReader =
+      binding.platform === "darwin" && terminalAppAssertion !== undefined ? readTerminalAppTabTitleOfOwner : undefined
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)
     // A mux's own reader wins; foreign terminal variables never select an App reader.
@@ -2263,7 +2285,7 @@ export async function createOwnedTerminal(options: {
     }
     const readTitle =
       nativeEditorId === undefined
-        ? windowTitleReader
+        ? (windowTitleReader ?? terminalAppTitleReader)
         : createNativeEditorTitleReader({ runId: expectedLaunchRunId, assertProcess: assertNativeEditorProcess })
     // The Darwin clipboard adapter's assertOwned resolves without proving anything, so it stays bound to the
     // launcher variable exactly as before: it is a Linux-arm ownership proof and never a Darwin one (8c084f05).

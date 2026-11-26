@@ -12,9 +12,12 @@ import {
   assertOwnedTerminalWindow,
   assertOwnedAppOwner,
   closeOwnedTerminalWindow,
+  createTerminalAppTabTitleReader,
   parseKittyIdentity,
+  readTerminalAppTabTitle,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
+  TERMINAL_APP_TAB_TITLE_SCRIPT,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
 import { argvCarriesMarker, descendToOwner, runScopedMarker } from "./owned-process.ts"
@@ -845,5 +848,93 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
       expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(77, 8888)]))).toThrow()
       expect(() => assertOwnedAppOwner(claim(), runId, probes([4242], [censusRow(78, 4242)]))).toThrow()
     })
+  })
+})
+
+describe("37257 Terminal.app tab title", () => {
+  const composite = "runner — target-A — osascript ◂ collect.command — 120×30"
+  const reply = (
+    over: Record<string, unknown> = {},
+  ): { stdout: string; stderr: string; status: number | null; signal: NodeJS.Signals | null } => ({
+    stdout: JSON.stringify({
+      status: "read",
+      title: "target-A",
+      windowTitle: composite,
+      windowId: 1349,
+      ...over,
+    }),
+    stderr: "",
+    status: 0,
+    signal: null,
+  })
+
+  test("reads the tab's custom title, keyed on the owned TTY alone", () => {
+    const run = vi.fn(() => reply())
+    expect(readTerminalAppTabTitle("/dev/ttys006", run)).toMatchObject({ status: "read", title: "target-A" })
+    expect(run).toHaveBeenCalledWith(["/dev/ttys006"])
+  })
+
+  test("the script reads Terminal's own tab custom title and never writes a title of its own", () => {
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).toContain("customTitle")
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).not.toContain("]2;")
+  })
+
+  test("a tab whose custom title is the window composite is refused by name, never stripped", async () => {
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => {},
+      run: () => reply({ title: composite, windowTitle: composite }),
+    })
+    await expect(reader()).rejects.toThrow(/custom title is the window's composite/)
+  })
+
+  test("the live owner is re-proved before and after every read", async () => {
+    const checks: string[] = []
+    let call = 0
+    const reader = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => checks.push(`check${(call += 1)}`),
+      run: () => reply(),
+    })
+    await reader()
+    expect(checks).toEqual(["check1", "check2"])
+  })
+
+  test("a refusal throws with its phase and reason", async () => {
+    const refused = createTerminalAppTabTitleReader({
+      tty: "/dev/ttys006",
+      check: () => {},
+      run: () => ({
+        stdout: JSON.stringify({
+          status: "refused",
+          phase: "custom-title",
+          reason: "the owned tab has no readable custom title",
+        }),
+        stderr: "",
+        status: 0,
+        signal: null,
+      }),
+    })
+    await expect(refused()).rejects.toThrow(/refused at custom-title: the owned tab has no readable custom title/)
+  })
+
+  test.each([
+    ["not a TTY", "not-a-tty"],
+    ["a TTY-shaped path with a separator", "/dev/ttys006/../x"],
+  ])("refuses %s before running osascript", (_label, tty) => {
+    const run = vi.fn(() => reply())
+    expect(() => readTerminalAppTabTitle(tty, run)).toThrow(/not a device path/)
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  test("an unknown reply shape is a failure, never a reading", () => {
+    expect(() =>
+      readTerminalAppTabTitle("/dev/ttys006", () => ({
+        stdout: '{"status":"read"}',
+        stderr: "",
+        status: 0,
+        signal: null,
+      })),
+    ).toThrow(/no known shape/)
   })
 })
