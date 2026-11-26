@@ -36,6 +36,28 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     da2VersionEncoding: "screen",
     forbidXtversion: true,
   },
+  // herdr 0.9.5 (#38759), measured 2026-11-26 in an isolated session with no outer terminal answering: its pane
+  // emulator is libghostty, so it answers DA1 "\e[?62;22c", DA2 "\e[>1;0;0c" and XTVERSION "libghostty" with no
+  // version. The version comes from the run's declared executable, as Alacritty's does.
+  herdr: {
+    terminal: "herdr",
+    subjectKind: "mux",
+    da1Pattern: /^\x1b\[\?62;22c$/,
+    da2Pattern: /^\x1b\[>1;0;0c$/,
+    xtversionPattern: /^libghostty$/,
+    requireXtversion: true,
+  },
+  // Zellij 0.46.0 (#38759), measured 2026-11-26 the same way: DA1 "\e[?62;4;52c", DA2 "\e[>0;4600;1c" and XTVERSION
+  // "Zellij(4600)". The number is Zellij's own build code, not a release version, so the version comes from the run's
+  // declared executable, as herdr's does.
+  zellij: {
+    terminal: "zellij",
+    subjectKind: "mux",
+    da1Pattern: /^\x1b\[\?62;4;52c$/,
+    da2Pattern: /^\x1b\[>0;\d+;1c$/,
+    xtversionPattern: /^Zellij\(\d+\)$/,
+    requireXtversion: true,
+  },
   kitty: {
     terminal: "kitty",
     da1Pattern: /\?62;/,

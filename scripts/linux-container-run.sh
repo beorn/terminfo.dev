@@ -744,6 +744,12 @@ if [[ "${1:-}" == "--mux-inner" ]]; then
 fi
 
 if [[ "${1:-}" == "--mux-shell" ]]; then
+  if [[ "$TERMINFO_MUX_KIND" == zellij && -z "${TERMINFO_MUX_SUBREAPER:-}" ]]; then
+    # Zellij daemonizes its server (#38759). Re-exec this shell as a child subreaper (same PID and start ticks) so it
+    # adopts that server and the collector's ancestry still reaches the outer terminal; see linux-subreaper-exec.ts.
+    export TERMINFO_MUX_SUBREAPER=1
+    exec bun "$(dirname "$TERMINFO_RUNNER")/linux-subreaper-exec.ts" bash "$0" "$@"
+  fi
   mux_output=$2
   printf '%s\n' "$$" > "$mux_output/outer-shell.pid"
   bun "$TERMINFO_RUNNER" test --serve <&0 2>"$mux_output/preflight-collector.stderr" &
@@ -781,6 +787,140 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       export SCREENDIR="$HOME/.screen"
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
+      ;;
+    herdr)
+      # herdr 0.9.5 (#38759): a headless server owns the session socket; this shell's foreground client is the one
+      # attached display. HERDR_CONFIG_PATH points at the receipt's empty config, so no user config is read.
+      unset TERM_PROGRAM TERM_PROGRAM_VERSION
+      export XDG_CONFIG_HOME="$HOME/.config" HERDR_CONFIG_PATH="$mux_config"
+      # herdr.sock is the API socket the CLI verbs use; an attached client connects to herdr-client.sock, so that is
+      # the socket the receipt names and the attachment proof pairs with the client (measured on herdr 0.9.5).
+      mux_api_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr.sock"
+      mux_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr-client.sock"
+      printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
+      setsid herdr --session "$mux_session" server </dev/null >"$mux_output/mux-server.log" 2>&1 &
+      mux_server=$!
+      for _ in $(seq 1 100); do
+        [[ -S "$mux_api_socket" && -S "$mux_socket" ]] && break
+        kill -0 "$mux_server" || { echo "Owned herdr server exited" >&2; exit 2; }
+        sleep 0.05
+      done
+      [[ -S "$mux_api_socket" && -S "$mux_socket" ]] || { echo "Owned herdr sockets were not created" >&2; exit 2; }
+      herdr --session "$mux_session" workspace create --cwd "$mux_output" --label "$mux_session" --no-focus \
+        >"$mux_output/mux-workspace.json" 2>>"$mux_output/mux-server.log" || {
+        echo "Owned herdr workspace was not created" >&2; exit 2;
+      }
+      mux_pane=$(jq -er 'first(.. | .pane_id? // empty)' "$mux_output/mux-workspace.json") || {
+        echo "Owned herdr workspace reply names no pane: $mux_output/mux-workspace.json" >&2; exit 2;
+      }
+      printf -v herdr_collector 'exec bun %q test --serve' "$TERMINFO_RUNNER"
+      mux_shell=$$
+      (
+        # Start the collector only once THIS shell's client is attached; exec makes the server its direct parent,
+        # which the attachment proof reads (collector -> server -> outer shell). herdr keeps a client attached after
+        # its last pane exits, so the server is stopped here once the collector is gone.
+        client=
+        for _ in $(seq 1 200); do
+          for child in $(cat "/proc/$mux_shell/task/$mux_shell/children" 2>/dev/null); do
+            [[ "$(tr '\0' ' ' < "/proc/$child/cmdline" 2>/dev/null)" == "herdr --session $mux_session " ]] && client=$child
+          done
+          [[ -n "$client" ]] && break
+          sleep 0.05
+        done
+        [[ -n "$client" ]] || { echo "Owned herdr client did not attach" >&2; herdr --session "$mux_session" server stop; exit 2; }
+        herdr --session "$mux_session" pane run "$mux_pane" "$herdr_collector" >>"$mux_output/mux-server.log" 2>&1 || {
+          echo "Owned herdr pane run failed" >&2; herdr --session "$mux_session" server stop; exit 2;
+        }
+        # The collector is a bun process somewhere under the server (the pane shell execs it). Search every
+        # descendant: a loaded host can take well over 10 s to start bun, and the attachment proof, not this
+        # watcher, decides whether the ancestry is the one the receipt allows.
+        collector=
+        for _ in $(seq 1 600); do
+          frontier=("$mux_server")
+          while [[ "${#frontier[@]}" -gt 0 && -z "$collector" ]]; do
+            next=()
+            for parent in "${frontier[@]}"; do
+              for child in $(cat "/proc/$parent/task/$parent/children" 2>/dev/null); do
+                case "$(readlink "/proc/$child/exe" 2>/dev/null)" in */bun | */.bun-wrapped) collector=$child ;; esac
+                next+=("$child")
+              done
+            done
+            frontier=("${next[@]}")
+          done
+          [[ -n "$collector" ]] && break
+          sleep 0.1
+        done
+        [[ -n "$collector" ]] || {
+          echo "Owned herdr collector did not start under the server within 60 s; process tree:" >&2
+          for stat in /proc/[0-9]*/stat; do read -r -a f < "$stat" 2>/dev/null && printf "%s %s %s\n" "${f[0]}" "${f[3]}" "${f[1]}" >&2; done
+          herdr --session "$mux_session" server stop; exit 2;
+        }
+        printf 'herdr collector pid %s, parent %s\n' "$collector" "$(awk '{print $4}' "/proc/$collector/stat")" \
+          >>"$mux_output/mux-server.log"
+        while [[ -d "/proc/$collector" ]]; do sleep 0.1; done
+        herdr --session "$mux_session" server stop >>"$mux_output/mux-server.log" 2>&1
+      ) 2>>"$mux_output/mux-server.log" &
+      mux_watcher=$!
+      herdr --session "$mux_session"
+      wait "$mux_watcher" || { echo "Owned herdr collector watcher failed" >&2; exit 2; }
+      wait "$mux_server"
+      ;;
+    zellij)
+      # Zellij 0.46.0 (#38759): this shell's foreground client starts a daemonized server (`zellij --server <socket>`)
+      # that runs the layout's one pane, the collector, as its direct child. close_on_exit ends the pane, then the
+      # session and the client, when the collector exits. The config turns off the first-run tips and release notes,
+      # which would otherwise cover the pane. ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home, in a
+      # directory named for the session: Zellij names the socket itself (contract_version_1/<hash>), and the mux receipt
+      # requires the run id in its path (run f3026605 failed every row on that).
+      # The config reaches Zellij through --config-dir, whose config.kdl links to the receipt's config file: with
+      # --config <file>, Zellij 0.46.0 ignores the layout's pane command and opens the default shell instead, on the
+      # host as in the container (#38759, run 9513c657: the collector never registered).
+      unset TERM_PROGRAM TERM_PROGRAM_VERSION
+      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/$mux_session-sockets" SHELL="$(command -v bash)"
+      mkdir -m 700 "$ZELLIJ_SOCKET_DIR"
+      printf 'show_startup_tips false\nshow_release_notes false\n' > "$mux_config"
+      mkdir "$mux_output/zellij-config"
+      ln -s "$mux_config" "$mux_output/zellij-config/config.kdl"
+      mux_layout="$mux_output/mux-layout.kdl"
+      {
+        # The server's own environment names no SHELL in the container (its log: "Cannot read SHELL env, falling back
+        # to use /bin/sh") and the pane opened /bin/sh, not the collector; name bun by its resolved path.
+        printf 'layout {\n    pane command="%s" close_on_exit=true {\n' "$(readlink -f "$(command -v bun)")"
+        printf '        args "%s" "test" "--serve"\n' "$TERMINFO_RUNNER"
+        printf '    }\n}\n'
+      } > "$mux_layout"
+      (
+        # Record the one socket that appears under ZELLIJ_SOCKET_DIR once THIS shell's client starts the server;
+        # the attachment proof then pairs the client with it and checks the server holds it.
+        for _ in $(seq 1 600); do
+          for socket in "$ZELLIJ_SOCKET_DIR"/*/*; do
+            [[ -S "$socket" ]] || continue
+            printf '%s\n' "$socket" > "$mux_output/mux-socket.txt"
+            break 2
+          done
+          sleep 0.1
+        done
+        [[ -s "$mux_output/mux-socket.txt" ]] || {
+          echo "Owned Zellij server socket was not created under $ZELLIJ_SOCKET_DIR within 60 s" >&2
+          exit 2
+        }
+        # One process-tree snapshot 8 s in, inside the host's 15 s registration wait: if the layout's pane is not the
+        # collector, this is the record of what ran instead. Processes exit while it reads /proc; those reads drop.
+        sleep 8
+        echo "Zellij process tree 8 s after the server socket appeared:"
+        for stat in /proc/[0-9]*/stat; do
+          pid=${stat#/proc/}; pid=${pid%/stat}
+          printf '%s ppid=%s [%s]\n' "$pid" "$(awk '{print $4}' "$stat")" "$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+        done 2>/dev/null
+      ) >>"$mux_output/mux-server.log" 2>>"$mux_output/mux-server.log" &
+      mux_watcher=$!
+      zellij_log_dir="${TMPDIR:-/tmp}/zellij-$(id -u)/zellij-log"
+      ( while :; do [[ -d "$zellij_log_dir" ]] && cp -r "$zellij_log_dir/." "$mux_output/zellij-log/" 2>/dev/null; sleep 1; done ) &
+      zellij_log_mirror=$!
+      mkdir -p "$mux_output/zellij-log"
+      zellij --config-dir "$mux_output/zellij-config" --session "$mux_session" --new-session-with-layout "$mux_layout"
+      kill "$zellij_log_mirror" 2>/dev/null
+      wait "$mux_watcher" || { echo "Owned Zellij socket watcher failed" >&2; exit 2; }
       ;;
     *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;;
   esac
@@ -1279,7 +1419,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   collector_command=(bun --no-env-file "$TERMINFO_RUNNER" test --serve)
   if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
     [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
-    case "$TERMINFO_MUX_KIND" in tmux|screen) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
+    case "$TERMINFO_MUX_KIND" in tmux|screen|herdr|zellij) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
     export TERMINFO_OUTER_COLOUR_RECORD=/out/outer-colour-record.json
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
@@ -1430,6 +1570,16 @@ if [[ "${1:-}" == "--inside" ]]; then
         mux_socket=${mux_sockets[0]}
         "$mux_executable" --version > /out/mux-version.txt
         mux_version=$(sed -nE 's/^Screen version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' /out/mux-version.txt)
+        ;;
+      herdr)
+        read -r mux_socket < /out/mux-socket.txt
+        "$mux_executable" --version > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^herdr ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' /out/mux-version.txt)
+        ;;
+      zellij)
+        read -r mux_socket < /out/mux-socket.txt
+        "$mux_executable" --version > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^zellij ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' /out/mux-version.txt)
         ;;
     esac
     [[ -n "$mux_version" ]] || { echo "Owned mux executable did not report its version" >&2; exit 2; }
@@ -1620,7 +1770,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen|herdr|zellij] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1640,7 +1790,7 @@ while [[ "$#" -gt 0 ]]; do
     --mux)
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
-      case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      case "$mux_kind" in tmux|screen|herdr|zellij) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
       shift 2
       ;;
     --mux-profile)
@@ -1770,6 +1920,12 @@ notify_recorder_source="$vendor_root/packages/terminfo.dev/src/linux-notify-reco
   echo "Notify recorder source is missing: $notify_recorder_source; preserved at $run_dir" >&2; exit 2;
 }
 cp "$notify_recorder_source" "$prep/bundle/linux-notify-recorder.ts"
+# The subreaper helper the Zellij mux shell re-execs through (#38759); like the recorder, it imports only bun:ffi.
+subreaper_source="$vendor_root/packages/terminfo.dev/src/linux-subreaper-exec.ts"
+[[ -s "$subreaper_source" ]] || {
+  echo "Subreaper helper source is missing: $subreaper_source; preserved at $run_dir" >&2; exit 2;
+}
+cp "$subreaper_source" "$prep/bundle/linux-subreaper-exec.ts"
 (
   cd "$prep"
   tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf runner-bundle.tar -C bundle .

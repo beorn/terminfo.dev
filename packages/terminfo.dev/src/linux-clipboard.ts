@@ -126,8 +126,11 @@ export interface LinuxClipboardAdapter {
    */
   readonly readAllowPassthrough?: () => Promise<{ readonly value: string } | { readonly reason: string }>
   assertOwned(): Promise<void>
-  /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
-  readTitle(): Promise<string>
+  /**
+   * The same receipt owns the App window or the mux's own title, never the outer window for a mux. Absent for a mux
+   * with no reviewed title reader (herdr, Zellij: #38759), so its title probes read To do.
+   */
+  readTitle?(): Promise<string>
   withIconNameFixture?(
     write: (text: string) => void,
     work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
@@ -574,6 +577,32 @@ function command(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise
   })
 }
 
+/**
+ * The reviewed command that reads a mux pane's title, or none. tmux and Screen each have one; herdr 0.9.5 and Zellij
+ * 0.46.0 have none, so their title probes read To do rather than send another mux's flags (run 9032abd0 sent Zellij
+ * Screen's `-S <session> -Q title`, #38759).
+ */
+export function muxTitleCommand(
+  target: Pick<MuxReceiptTarget, "mux" | "socketPath" | "session"> & { executable: { path: string } },
+): { file: string; args: string[]; env?: NodeJS.ProcessEnv } | undefined {
+  switch (target.mux) {
+    case "tmux":
+      return {
+        file: target.executable.path,
+        args: ["-S", target.socketPath, "display-message", "-p", "-t", target.session, "#{pane_title}"],
+      }
+    case "screen":
+      return {
+        file: target.executable.path,
+        args: ["-S", target.session, "-Q", "title"],
+        env: { SCREENDIR: dirname(target.socketPath) },
+      }
+    case "herdr":
+    case "zellij":
+      return undefined
+  }
+}
+
 export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid owned clipboard receipt")
   const r = value as Partial<ClipboardReceipt>
@@ -640,7 +669,7 @@ export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
       case "mux": {
         const target = r.target
         if (
-          !["tmux", "screen"].includes(target.mux) ||
+          !["tmux", "screen", "herdr", "zellij"].includes(target.mux) ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(target.bootId ?? "") ||
           typeof target.socketPath !== "string" ||
           !target.socketPath.startsWith("/") ||
@@ -840,6 +869,93 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       if (!ownsSocket) throw new Error("Owned mux Screen server does not own the declared socket")
       if (displays.length !== 1 || displays[0] !== shell.ttyRdev) {
         throw new Error("Owned mux Screen requires exactly one attached display on the outer tty")
+      }
+      break
+    }
+    case "herdr":
+    case "zellij": {
+      // herdr 0.9.5 and Zellij 0.46.0 (#38759) list no clients, so attachment is read from the kernel, as Screen's is.
+      // The server is the collector's only mux ancestor and a child of the outer shell (herdr's server is started by
+      // the shell; Zellij's daemonizes and is adopted by the shell, which re-execs as a child subreaper). The one
+      // client is the outer shell's child naming the session on the outer tty, and one of the client's unix sockets
+      // is connected (ss -xn peer inode) to a socket the server holds that is bound to the declared path.
+      const name = target.mux === "herdr" ? "herdr" : "Zellij"
+      const argvOf = (pid: number): string[] | undefined => {
+        try {
+          return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean)
+        } catch {
+          // silent-fallback-allow: an unreadable server refuses below as not on the declared socket, and an unreadable
+          // child is not the client, so the one-attached-client check below refuses unless exactly one client is read
+          return undefined
+        }
+      }
+      const [server] = intermediates
+      if (intermediates.length !== 1 || !server || server.ppid !== shell.pid) {
+        throw new Error(`Owned mux ${name} server/collector ancestry differs`)
+      }
+      if (target.mux === "zellij") {
+        const serverArgv = argvOf(server.pid)
+        if (serverArgv?.length !== 3 || serverArgv[1] !== "--server" || serverArgv[2] !== target.socketPath) {
+          throw new Error("Owned mux Zellij server was not started on the declared socket")
+        }
+      }
+      const isClient = (argv: readonly string[]): boolean => {
+        if (target.mux === "herdr") return argv.length === 3 && argv[1] === "--session" && argv[2] === target.session
+        const at = argv.indexOf("--session")
+        return at > 0 && argv[at + 1] === target.session && !argv.includes("--server")
+      }
+      const childrenPath = `/proc/${shell.pid}/task/${shell.pid}/children`
+      let children: number[]
+      try {
+        children = readFileSync(childrenPath, "utf8").trim().split(/\s+/).filter(Boolean).map(Number)
+      } catch (cause) {
+        throw new Error(`Owned mux ${name} outer shell children ${childrenPath} cannot be read`, { cause })
+      }
+      const clients = children.filter((pid) => {
+        if (pid === server.pid) return false
+        const argv = argvOf(pid)
+        return argv !== undefined && isClient(argv)
+      })
+      const clientPid = clients[0]
+      if (clients.length !== 1 || clientPid === undefined) {
+        throw new Error(`Owned mux ${name} requires exactly one attached client; found ${clients.length}`)
+      }
+      client = processIdentity(clientPid)
+      const socketInodes = (pid: number): Set<string> => {
+        const directory = `/proc/${pid}/fd`
+        const inodes = new Set<string>()
+        let descriptors: string[]
+        try {
+          descriptors = readdirSync(directory)
+        } catch (cause) {
+          throw new Error(`Owned mux ${name} fd directory ${directory} cannot be read`, { cause })
+        }
+        for (const fd of descriptors) {
+          let link: string
+          try {
+            link = readlinkSync(`${directory}/${fd}`)
+          } catch (cause) {
+            throw new Error(`Owned mux ${name} fd link ${directory}/${fd} cannot be read`, { cause })
+          }
+          const match = /^socket:\[(\d+)\]$/.exec(link)
+          if (match?.[1]) inodes.add(match[1])
+        }
+        return inodes
+      }
+      const clientSockets = socketInodes(client.pid)
+      const serverSockets = socketInodes(server.pid)
+      // ss -xnH: Netid State Recv-Q Send-Q Local-Address Local-Port(inode) Peer-Address Peer-Port(inode).
+      const rows = (await command("ss", ["-xnH"]))
+        .trim()
+        .split("\n")
+        .map((row) => row.trim().split(/\s+/))
+        .filter((row) => row.length >= 8)
+      const boundServerSide = new Set(
+        rows.filter((row) => row[4] === target.socketPath && serverSockets.has(row[5] ?? "")).map((row) => row[5]),
+      )
+      const connected = rows.some((row) => clientSockets.has(row[5] ?? "") && boundServerSide.has(row[7]))
+      if (!connected) {
+        throw new Error(`Owned mux ${name} client holds no socket connected to the server's declared socket`)
       }
       break
     }
@@ -1449,6 +1565,10 @@ export async function createLinuxClipboardAdapter(
     },
   )
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
+  const titleCommand =
+    receipt.target?.kind === "mux"
+      ? muxTitleCommand(receipt.target)
+      : { file: "xdotool", args: ["getwindowname", receipt.terminal.windowId] }
   let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
@@ -1510,6 +1630,7 @@ export async function createLinuxClipboardAdapter(
       }
       const title = async () => {
         await verify()
+        if (!adapter.readTitle) throw new Error("No owned title reader, so the original title cannot be kept")
         const value = await adapter.readTitle()
         await verify()
         return value
@@ -1609,26 +1730,16 @@ export async function createLinuxClipboardAdapter(
         detail: { ...result.detail, iconFixture: { before: before.snapshot, originalTitle, samples, cleanup } },
       }
     },
-    async readTitle() {
-      await assertOwned()
-      const target = receipt.target
-      const title =
-        target?.kind !== "mux"
-          ? await command("xdotool", ["getwindowname", receipt.terminal.windowId], env)
-          : target.mux === "tmux"
-            ? await command(
-                target.executable.path,
-                ["-S", target.socketPath, "display-message", "-p", "-t", target.session, "#{pane_title}"],
-                env,
-              )
-            : await command(target.executable.path, ["-S", target.session, "-Q", "title"], {
-                ...env,
-                SCREENDIR: dirname(target.socketPath),
-              })
-      await assertOwned()
-      // Preserve title whitespace, stripping only the command's one output line terminator.
-      return title.replace(/\n$/u, "")
-    },
+    // A mux with no reviewed title reader installs none, so its title probes read To do (#38759).
+    ...(titleCommand && {
+      async readTitle() {
+        await assertOwned()
+        const title = await command(titleCommand.file, titleCommand.args, { ...env, ...titleCommand.env })
+        await assertOwned()
+        // Preserve title whitespace, stripping only the command's one output line terminator.
+        return title.replace(/\n$/u, "")
+      },
+    }),
     ...(screenTarget && {
       async getScrollback() {
         await assertOwned()
