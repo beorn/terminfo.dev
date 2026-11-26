@@ -153,6 +153,8 @@ export const DERIVED_ROWS: readonly DerivedRow[] = [...DERIVED_UNSUPPORTED, ...D
 /** Set only on a cell graded from parts: each part as read, the verdict's words, and the cell's own stored reading. */
 export interface DerivedPartsMarker {
   readonly parts: readonly PartReading[]
+  /** The part whose entry the card cites (the first that decided it); absent when no part decided it. */
+  readonly cites?: string
   readonly words: string
   readonly ownStatus: string
   readonly ownReason: string | null
@@ -290,11 +292,11 @@ function applyParts(cells: Record<string, SelectedContextCell>, row: DerivedPart
     featureResult: { ...child.featureResult, status: grade.status, strength: null },
     derived: {
       parts: readings,
+      ...(grade.decidedBy.length > 0 && { cites: row.parts[grade.decidedBy[0]!]!.feature }),
       words: grade.words,
       ownStatus: cellStatus(child),
       ownReason: child.result.reason ?? null,
     },
-    ...(grade.decidedBy.length > 0 && { origin: present[grade.decidedBy[0]!]!.origin }),
   }
   return true
 }

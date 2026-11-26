@@ -374,6 +374,7 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
         { feature: W, name: "OSC 52 write", runId: "r1", status: "supported", reason: null },
         { feature: R, name: "OSC 52 read", runId: "r1", status: "supported", reason: null },
       ],
+      cites: W,
       words: "copy and paste-back both work at default settings (OSC 52 write and OSC 52 read)",
       ownStatus: "unsupported",
       ownReason: SILENCE,
@@ -381,6 +382,7 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
     expect(ctx.derivedIds).toEqual([C])
     const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!
     expect(published.featureResults[C]).toMatchObject({
+      featureId: C,
       status: "supported",
       reason: "Graded from OSC 52 write and OSC 52 read in this context: copy and paste-back both work at default settings (OSC 52 write and OSC 52 read).",
       origin: { runId: "r1", resultId: W },

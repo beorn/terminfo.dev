@@ -367,7 +367,7 @@ function derivedOrigin(
         )
       }
     }
-    return own
+    return derived.cites ? cells[derived.cites]!.origin : own
   }
   const parent = cells[derived.parent]
   if (!parent || parent.origin.runId !== derived.parentRunId) {
