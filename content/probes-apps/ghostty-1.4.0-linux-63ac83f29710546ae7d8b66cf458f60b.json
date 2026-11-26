@@ -6,7 +6,7 @@
   "runId": "63ac83f29710546ae7d8b66cf458f60b",
   "suiteId": "b5e6af1728e8",
   "probeHash": "b5e6af1728e8",
-  "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+  "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
   "intendedSubject": {
     "kind": "term",
     "id": "ghostty",
@@ -2602,7 +2602,7 @@
       "imageTarSha256": "71894db8eb191a4e5454477a5c5f0f2ef5da3bfa520acec02a03fd0e1e003727",
       "arch": "amd64",
       "nixLockRevision": "28f41ebbed8bf646c7d6bf59ef843e17bf168e76",
-      "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+      "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
       "cleanTree": true,
       "suiteHash": "b5e6af1728e8"
     },

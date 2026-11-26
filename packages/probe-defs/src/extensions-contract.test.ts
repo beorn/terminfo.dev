@@ -1406,7 +1406,7 @@ test("the harness replays every extension feature deterministically", async () =
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(44)
+  expect(decidedRows).toHaveLength(46)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)

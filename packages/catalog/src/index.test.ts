@@ -62,7 +62,7 @@ test("reads the live feature catalog: 278 entries, each with the five required f
   expect(required(features, "sgr.bold").name).toBe("Bold (SGR 1)")
 })
 
-test("reads the live terminal catalog: 26 entries, each with the five required fields", () => {
+test("reads the live terminal catalog: 28 entries, each with the five required fields", () => {
   const declarations = JSON.parse(readFileSync(join(repoContent, "terminals.json"), "utf8")) as Record<
     string,
     { kind?: string }
@@ -70,7 +70,7 @@ test("reads the live terminal catalog: 26 entries, each with the five required f
   expect(required(declarations, "ghostty").kind).toBe("term")
   expect(required(declarations, "ghostty-native").kind).toBe("lib")
   const terminals = loadTerminals(repoContent)
-  expect(Object.keys(terminals).length).toBe(26)
+  expect(Object.keys(terminals).length).toBe(28)
   expect(required(terminals, "ghostty").label).toBe("Ghostty")
   expect(required(terminals, "ghostty").platforms).toEqual(["macos", "linux"])
   expect(required(terminals, "xterm").manifestBackend).toBeUndefined()

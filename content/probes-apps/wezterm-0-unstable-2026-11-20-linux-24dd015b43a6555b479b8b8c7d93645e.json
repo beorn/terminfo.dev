@@ -6,7 +6,7 @@
   "runId": "24dd015b43a6555b479b8b8c7d93645e",
   "suiteId": "b5e6af1728e8",
   "probeHash": "b5e6af1728e8",
-  "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+  "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
   "intendedSubject": {
     "kind": "term",
     "id": "wezterm",
@@ -2603,7 +2603,7 @@
       "imageTarSha256": "2048cd19f618d6749cb7c36e2315a9b4eb025d8d00f27cdfbe53988212413a19",
       "arch": "amd64",
       "nixLockRevision": "28f41ebbed8bf646c7d6bf59ef843e17bf168e76",
-      "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+      "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
       "cleanTree": true,
       "suiteHash": "b5e6af1728e8"
     },

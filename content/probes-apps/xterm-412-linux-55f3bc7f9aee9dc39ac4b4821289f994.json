@@ -6,7 +6,7 @@
   "runId": "55f3bc7f9aee9dc39ac4b4821289f994",
   "suiteId": "b5e6af1728e8",
   "probeHash": "b5e6af1728e8",
-  "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+  "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
   "intendedSubject": {
     "kind": "term",
     "id": "xterm",
@@ -2599,7 +2599,7 @@
       "imageTarSha256": "9972056fe6e2d9a3ae8edfc38ac11a33d53774e3beea20cecb19b08794e4c698",
       "arch": "amd64",
       "nixLockRevision": "28f41ebbed8bf646c7d6bf59ef843e17bf168e76",
-      "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+      "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
       "cleanTree": true,
       "suiteHash": "b5e6af1728e8"
     },

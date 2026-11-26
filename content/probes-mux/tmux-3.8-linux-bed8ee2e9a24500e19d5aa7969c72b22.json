@@ -6,7 +6,7 @@
   "runId": "bed8ee2e9a24500e19d5aa7969c72b22",
   "suiteId": "b5e6af1728e8",
   "probeHash": "b5e6af1728e8",
-  "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+  "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
   "intendedSubject": {
     "kind": "term",
     "id": "kitty",
@@ -2617,7 +2617,7 @@
         "imageTarSha256": "9f9a63bc91e97f04e69a25aca7811b0954d4330e9b5c9e8ad8f2f29623eb7ec7",
         "arch": "amd64",
         "nixLockRevision": "28f41ebbed8bf646c7d6bf59ef843e17bf168e76",
-        "sourceRevision": "affe10b27464a22e130eff5e7e324e164e7147f6",
+        "sourceRevision": "f96554ce2e250294ba4a14c12739a9acd44d2432",
         "cleanTree": true,
         "suiteHash": "b5e6af1728e8"
       },

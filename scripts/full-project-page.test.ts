@@ -25,10 +25,10 @@ const root = join(import.meta.dirname, "..")
 const data = loadFullProjectData()
 
 describe("the full-273 preview", () => {
-  it("covers all 278 catalog rows over all 33 expected contexts", () => {
+  it("covers all 278 catalog rows over all 35 expected contexts", () => {
     expect(data.catalogRows).toBe(278)
-    expect(data.contexts).toHaveLength(33)
-    expect(data.collected + data.notCollected).toBe(33)
+    expect(data.contexts).toHaveLength(35)
+    expect(data.collected + data.notCollected).toBe(35)
   })
 
   it("prints Supported over all 278 and finishes only at zero TODO/failure", () => {
