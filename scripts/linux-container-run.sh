@@ -895,40 +895,22 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
           echo "Owned Zellij server socket was not created under $ZELLIJ_SOCKET_DIR within 60 s" >&2
           exit 2
         }
-        read -r socket < "$mux_output/mux-socket.txt"
-        # The layout's one pane must be the collector, a bun child of the server started on that socket. If it is
-        # not there within 10 s (inside the host's 15 s registration wait), keep Zellij's own log and the process
-        # tree, then end the session, so the run fails with the reason instead of waiting on a pane that never
-        # registers. Processes exit while the loop reads /proc, so its read errors are dropped.
-        for _ in $(seq 1 100); do
-          for stat in /proc/[0-9]*/stat; do
-            pid=${stat#/proc/}; pid=${pid%/stat}
-            [[ "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" == *" --server $socket " ]] || continue
-            for child in $(cat "/proc/$pid/task/$pid/children" 2>/dev/null); do
-              case "$(readlink "/proc/$child/exe" 2>/dev/null)" in
-                */bun | */.bun-wrapped)
-                  printf 'zellij collector pid %s, server %s\n' "$child" "$pid"
-                  exit 0
-                  ;;
-              esac
-            done
-          done
-          sleep 0.1
-        done 2>/dev/null
-        echo "Owned Zellij collector did not start under the server within 10 s; process tree and Zellij log:" >&2
+        # One process-tree snapshot 8 s in, inside the host's 15 s registration wait: if the layout's pane is not the
+        # collector, this is the record of what ran instead. Processes exit while it reads /proc; those reads drop.
+        sleep 8
+        echo "Zellij process tree 8 s after the server socket appeared:"
         for stat in /proc/[0-9]*/stat; do
           pid=${stat#/proc/}; pid=${pid%/stat}
-          printf '%s ppid=%s [%s]\n' "$pid" "$(awk '{print $4}' "$stat" 2>/dev/null)" \
-            "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" >&2
+          printf '%s ppid=%s [%s]\n' "$pid" "$(awk '{print $4}' "$stat")" "$(tr '\0' ' ' < "/proc/$pid/cmdline")"
         done 2>/dev/null
-        for log in "${TMPDIR:-/tmp}"/zellij-"$(id -u)"/zellij-log/*; do
-          [[ -f "$log" ]] && { echo "== $log" >&2; tail -n 80 "$log" >&2; }
-        done
-        zellij kill-session "$mux_session" >&2 2>&1
-        exit 2
       ) >>"$mux_output/mux-server.log" 2>>"$mux_output/mux-server.log" &
       mux_watcher=$!
+      zellij_log_dir="${TMPDIR:-/tmp}/zellij-$(id -u)/zellij-log"
+      ( while :; do [[ -d "$zellij_log_dir" ]] && cp -r "$zellij_log_dir/." "$mux_output/zellij-log/" 2>/dev/null; sleep 1; done ) &
+      zellij_log_mirror=$!
+      mkdir -p "$mux_output/zellij-log"
       zellij --config "$mux_config" --session "$mux_session" --new-session-with-layout "$mux_layout"
+      kill "$zellij_log_mirror" 2>/dev/null
       wait "$mux_watcher" || { echo "Owned Zellij socket watcher failed" >&2; exit 2; }
       ;;
     *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;;
