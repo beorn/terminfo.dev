@@ -256,9 +256,10 @@ export function loadWorkingRun(
     seen.add(engine)
     const rollup = rollups[engine]
     const counts = decodedCounts.get(engine)
+    // Over the run's own frozen catalogue: parseRun holds its results to exactly that membership, and the summary
+    // rollup was written over it. The live catalogue may have grown since (#38699 added three rows).
     const actual = rollupTerminalStatuses(
       Object.fromEntries((run.results ?? []).map((result) => [result.featureId, result.status])),
-      options.catalogIds,
     )
     if (
       !record(rollup) ||
