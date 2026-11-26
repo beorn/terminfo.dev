@@ -808,7 +808,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
         echo "Owned herdr workspace reply names no pane: $mux_output/mux-workspace.json" >&2; exit 2;
       }
       printf -v herdr_collector 'exec bun %q test --serve' "$TERMINFO_RUNNER"
-      mux_shell=$
+      mux_shell=$$
       (
         # Start the collector only once THIS shell's client is attached; exec makes the server its direct parent,
         # which the attachment proof reads (collector -> server -> outer shell). herdr keeps a client attached after
