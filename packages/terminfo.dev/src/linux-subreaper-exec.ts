@@ -11,7 +11,8 @@ import { dlopen, FFIType, ptr } from "bun:ffi"
 
 const PR_SET_CHILD_SUBREAPER = 36
 const argv = process.argv.slice(2)
-if (argv.length === 0) {
+const [command] = argv
+if (command === undefined) {
   process.stderr.write("usage: linux-subreaper-exec <command> [args...]\n")
   process.exit(2)
 }
@@ -24,8 +25,9 @@ if (libc.symbols.prctl(PR_SET_CHILD_SUBREAPER, 1n, 0n, 0n, 0n) !== 0) {
   process.exit(2)
 }
 const strings = argv.map((arg) => Buffer.from(`${arg}\0`))
+const file = Buffer.from(`${command}\0`)
 const table = new BigUint64Array(strings.length + 1)
 for (const [index, bytes] of strings.entries()) table[index] = BigInt(ptr(bytes))
-libc.symbols.execvp(ptr(strings[0]!), ptr(table))
-process.stderr.write(`linux-subreaper-exec: execvp ${argv[0]} failed\n`)
+libc.symbols.execvp(ptr(file), ptr(table))
+process.stderr.write(`linux-subreaper-exec: execvp ${command} failed\n`)
 process.exit(127)

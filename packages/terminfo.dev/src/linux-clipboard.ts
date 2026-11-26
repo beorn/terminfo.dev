@@ -126,8 +126,11 @@ export interface LinuxClipboardAdapter {
    */
   readonly readAllowPassthrough?: () => Promise<{ readonly value: string } | { readonly reason: string }>
   assertOwned(): Promise<void>
-  /** The same receipt owns the App window or the mux's own title, never the outer window for a mux. */
-  readTitle(): Promise<string>
+  /**
+   * The same receipt owns the App window or the mux's own title, never the outer window for a mux. Absent for a mux
+   * with no reviewed title reader (herdr, Zellij: #38759), so its title probes read To do.
+   */
+  readTitle?(): Promise<string>
   withIconNameFixture?(
     write: (text: string) => void,
     work: (read: () => Promise<string | null>) => Promise<AppSemanticReading>,
@@ -574,6 +577,32 @@ function command(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise
   })
 }
 
+/**
+ * The reviewed command that reads a mux pane's title, or none. tmux and Screen each have one; herdr 0.9.5 and Zellij
+ * 0.46.0 have none, so their title probes read To do rather than send another mux's flags (run 9032abd0 sent Zellij
+ * Screen's `-S <session> -Q title`, #38759).
+ */
+export function muxTitleCommand(
+  target: Pick<MuxReceiptTarget, "mux" | "socketPath" | "session"> & { executable: { path: string } },
+): { file: string; args: string[]; env?: NodeJS.ProcessEnv } | undefined {
+  switch (target.mux) {
+    case "tmux":
+      return {
+        file: target.executable.path,
+        args: ["-S", target.socketPath, "display-message", "-p", "-t", target.session, "#{pane_title}"],
+      }
+    case "screen":
+      return {
+        file: target.executable.path,
+        args: ["-S", target.session, "-Q", "title"],
+        env: { SCREENDIR: dirname(target.socketPath) },
+      }
+    case "herdr":
+    case "zellij":
+      return undefined
+  }
+}
+
 export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid owned clipboard receipt")
   const r = value as Partial<ClipboardReceipt>
@@ -855,6 +884,8 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         try {
           return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean)
         } catch {
+          // silent-fallback-allow: an unreadable server refuses below as not on the declared socket, and an unreadable
+          // child is not the client, so the one-attached-client check below refuses unless exactly one client is read
           return undefined
         }
       }
@@ -1534,6 +1565,10 @@ export async function createLinuxClipboardAdapter(
     },
   )
   const screenTarget = receipt.target?.kind === "mux" && receipt.target.mux === "screen" ? receipt.target : undefined
+  const titleCommand =
+    receipt.target?.kind === "mux"
+      ? muxTitleCommand(receipt.target)
+      : { file: "xdotool", args: ["getwindowname", receipt.terminal.windowId] }
   let screenRead = 0
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
@@ -1595,6 +1630,7 @@ export async function createLinuxClipboardAdapter(
       }
       const title = async () => {
         await verify()
+        if (!adapter.readTitle) throw new Error("No owned title reader, so the original title cannot be kept")
         const value = await adapter.readTitle()
         await verify()
         return value
@@ -1694,26 +1730,16 @@ export async function createLinuxClipboardAdapter(
         detail: { ...result.detail, iconFixture: { before: before.snapshot, originalTitle, samples, cleanup } },
       }
     },
-    async readTitle() {
-      await assertOwned()
-      const target = receipt.target
-      const title =
-        target?.kind !== "mux"
-          ? await command("xdotool", ["getwindowname", receipt.terminal.windowId], env)
-          : target.mux === "tmux"
-            ? await command(
-                target.executable.path,
-                ["-S", target.socketPath, "display-message", "-p", "-t", target.session, "#{pane_title}"],
-                env,
-              )
-            : await command(target.executable.path, ["-S", target.session, "-Q", "title"], {
-                ...env,
-                SCREENDIR: dirname(target.socketPath),
-              })
-      await assertOwned()
-      // Preserve title whitespace, stripping only the command's one output line terminator.
-      return title.replace(/\n$/u, "")
-    },
+    // A mux with no reviewed title reader installs none, so its title probes read To do (#38759).
+    ...(titleCommand && {
+      async readTitle() {
+        await assertOwned()
+        const title = await command(titleCommand.file, titleCommand.args, { ...env, ...titleCommand.env })
+        await assertOwned()
+        // Preserve title whitespace, stripping only the command's one output line terminator.
+        return title.replace(/\n$/u, "")
+      },
+    }),
     ...(screenTarget && {
       async getScrollback() {
         await assertOwned()
