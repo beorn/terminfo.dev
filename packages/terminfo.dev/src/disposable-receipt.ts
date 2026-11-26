@@ -565,7 +565,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     return proof
   }
   if (source.platform !== "linux") fail(where, "platform must be linux or darwin")
-  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as LinuxMuxAttachmentProof["mux"]
+  const mux = oneOf(source, "mux", ["tmux", "screen", "herdr"], where) as LinuxMuxAttachmentProof["mux"]
   const bootId = text(source, "bootId", where)
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
   if (!Array.isArray(source.chain) || source.chain.length < 2) fail(where, "chain must include collector and outer app")

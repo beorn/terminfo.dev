@@ -1209,7 +1209,7 @@ export interface OuterAppProof {
 /** Snapshot verified by the live Linux owner, retained for historical joins without live PID queries. */
 export interface LinuxMuxAttachmentProof {
   platform: "linux"
-  mux: "tmux" | "screen"
+  mux: "tmux" | "screen" | "herdr"
   bootId: string
   receiptSha256: string
   launchRunId: string
@@ -1648,7 +1648,7 @@ export type TermFeaturesReading =
       pid: number
       tty: string
       /** The multiplexer this child runs inside (#32569): a present value may come from the outer terminal. */
-      mux?: "tmux" | "screen"
+      mux?: "tmux" | "screen" | "herdr"
     }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }

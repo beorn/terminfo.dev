@@ -1329,7 +1329,7 @@ async function runProbeBatchInRun(
           : read
     }
     const subjectMux =
-      options.ownedTerminal?.muxAttachmentProof?.mux ??
+      probeContextMux(options.ownedTerminal?.muxAttachmentProof?.mux) ??
       (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")
         ? options.subject.id
         : undefined)
@@ -2520,7 +2520,7 @@ async function runProbeBatchInRun(
     Object.keys(batch.ungradedDiagnostics).length === 0
   if (!options.finishCapture) await verify?.()
   const runMux =
-    options.ownedTerminal?.muxAttachmentProof?.mux ??
+    probeContextMux(options.ownedTerminal?.muxAttachmentProof?.mux) ??
     (options.subject?.kind === "mux" && (options.subject.id === "tmux" || options.subject.id === "screen")
       ? options.subject.id
       : undefined)
@@ -2529,6 +2529,15 @@ async function runProbeBatchInRun(
   }
   applyUnreachedSteps(batch)
   return batch
+}
+
+/**
+ * The mux a probe's own handling knows (#38759). tmux and Screen carry mux-specific probe paths (history queries,
+ * passthrough, colour siblings); herdr has none, so its run takes the generic path, the way a mux without a
+ * declared arm does today. The receipt still names herdr: only the probe context is narrowed.
+ */
+function probeContextMux(mux: "tmux" | "screen" | "herdr" | undefined): "tmux" | "screen" | undefined {
+  return mux === "tmux" || mux === "screen" ? mux : undefined
 }
 
 /** A step that can only be measured after its entry, as data: no terminal is named (#32785). */

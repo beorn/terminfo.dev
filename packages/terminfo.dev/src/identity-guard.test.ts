@@ -421,6 +421,22 @@ describe("verifyTerminalIdentity", () => {
     expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
   })
 
+  it("verifies herdr from its own libghostty replies and refuses Ghostty's under its name (#38759)", () => {
+    // herdr 0.9.5's pane emulator, measured 2026-11-26 with no outer terminal answering (/hh/var/@dev12/herdr-test).
+    const herdr = {
+      "device.primary-da": "\x1b[?62;22c",
+      "device.secondary-da": "\x1b[>1;0;0c",
+      "device.xtversion": "libghostty",
+    }
+    expect(verifyTerminalIdentity("herdr", herdr, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    // A direct Ghostty names itself with a version; it is not herdr, and herdr is not Ghostty.
+    const ghostty = { "device.primary-da": "\x1b[?62;22;52c", "device.xtversion": "ghostty 1.3.1" }
+    expect(verifyTerminalIdentity("herdr", ghostty, { "device.xtversion": true }).ok).toBe(false)
+    expect(verifyTerminalIdentity("ghostty", herdr, { "device.xtversion": true }).ok).toBe(false)
+    // herdr reports no version, so the run's declared executable version is the one that applies.
+    expect(declaredAppVersion(resolveMeasuredAppVersion("herdr", "", herdr), "0.9.5")).toBe("0.9.5")
+  })
+
   it("takes the apparatus-declared version only where the app reports none", () => {
     // Alacritty answers no XTVERSION and sets no TERM_PROGRAM, so its measured version is unknown
     // and every exact-version App declaration was dropped before the batch (#32889).
