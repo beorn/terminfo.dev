@@ -2631,13 +2631,15 @@ const modeDefinitions: ProbeDefinition[] = [
         const decrqm = on !== null && on !== 0 && off !== null && off !== 0 ? { on, off } : null
         if (decrqm && !(ctx.capture || ctx.cells)) {
           const { on, off } = decrqm
-          if (on === 1 && off === 2) {
+          // @cto c76dd6b9: the DECRPM rule for all nine. Ps 4 (cannot be set) refuses; a clean toggle or a permanently
+          // set reply (Ps 3) is recognition, never a pass.
+          if (on !== 4 && off !== 4 && ((on === 1 && off === 2) || on === 3 || off === 3)) {
             return declaredUntestableResult(
               `Recognized; effect not tested: DECRQM mode 4 reads ${decrpmReading(on)} after CSI 4 h and ${decrpmReading(off)} after CSI 4 l, and the IRM effect needs owned cell readback`,
               { on: decrpmReading(on), off: decrpmReading(off) },
             )
           }
-          // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
+          // The stored reading keeps the Ps (#30557 r2): permanently reset, or a set or reset that did not take, refuses.
           return {
             pass: false,
             response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),

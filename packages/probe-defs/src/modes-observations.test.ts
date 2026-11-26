@@ -3102,9 +3102,9 @@ test.each([
 )
 
 test.each([
-  [3, 2],
   [1, 4],
   [3, 4],
+  [2, 2],
 ] as const)("insert-replace without capture reads DECRQM toggle states %i then %i as a refusal", async (on, off) => {
   const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
   if (!definition?.term) throw new Error("Missing app IRM callback")
@@ -4320,3 +4320,28 @@ test("modes.insert-replace reads a clean DECRQM 4 toggle as recognized, not Supp
     }),
   ])
 })
+
+test.each([
+  [3, 2],
+  [1, 3],
+  [3, 3],
+] as const)(
+  "insert-replace without capture reads a permanently set DECRQM reply (%i then %i) as recognized, as the DECRPM rule does (@cto c76dd6b9)",
+  async (on, off) => {
+    const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+    if (!definition?.term) throw new Error("Missing app IRM callback")
+    const states = [on, off]
+    const result = await definition.term(
+      replayTermProbeSource(new Map(), {
+        queryWithSentinel: async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`),
+      }),
+    )
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toEqual([
+      expect.objectContaining({
+        status: "untestable",
+        reason: expect.stringMatching(/^Recognized; effect not tested: DECRQM mode 4/),
+      }),
+    ])
+  },
+)

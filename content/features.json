@@ -1018,7 +1018,7 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48"],
     "body": "IRM (Insert/Replace Mode) controls whether new characters insert (shifting existing content right) or replace (overwriting) at the cursor. Enable insert mode with <code>ESC [ 4 h</code>, disable (replace mode) with <code>ESC [ 4 l</code>. Replace mode is the default. Most modern TUI applications use explicit ICH/DCH sequences rather than IRM.",
-    "probe": "Write \"ABC\", move to col 1, send <code>\\x1b[4h</code> (IRM), write \"X\", verify X is at col 0 and A shifted to col 1. App probe: the same write is read from the screen cells, and the cells decide. DECRQM mode 4 (<code>CSI 4 $ p</code>) is context only: where the run cannot read cells, a reply that reads set after <code>CSI 4 h</code> and reset after <code>CSI 4 l</code> reads Untestable, \"Recognized; effect not tested\", never supported, and a reply that cannot toggle (Ps 3 or 4) is unsupported.",
+    "probe": "Write \"ABC\", move to col 1, send <code>\\x1b[4h</code> (IRM), write \"X\", verify X is at col 0 and A shifted to col 1. App probe: the same write is read from the screen cells, and the cells decide. DECRQM mode 4 (<code>CSI 4 $ p</code>) is context only: where the run cannot read cells, a clean set-then-reset reply (set after <code>CSI 4 h</code>, reset after <code>CSI 4 l</code>), or a permanently set reply (Ps 3), reads Untestable, \"Recognized; effect not tested\", never supported; permanently reset (Ps 4) is unsupported.",
     "baseline": "modern",
     "sequence": "ESC [ 4 h"
   },
