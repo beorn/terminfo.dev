@@ -2963,7 +2963,7 @@ describe("Kitty protocol detection", () => {
             const match = /\x1b\]52;c;([^\x07\x1b]*)\x07/.exec(text)
             if (match) clipboard = atob(match[1] ?? "")
           },
-          queryOutcome,
+          queryWithSentinelOutcome: queryOutcome,
         }),
       )
       expect(result.observation, id).toMatchObject({
@@ -2982,11 +2982,12 @@ describe("Kitty protocol detection", () => {
       const result = await read.term(
         terminalSource({
           withClipboardFixture,
-          queryOutcome: async () => ({
+          queryWithSentinelOutcome: async () => ({
             match: null,
-            reason: "timeout",
+            reason: "sentinel",
             raw,
             rawBase64: Buffer.from(raw).toString("base64"),
+            sentinel: { atMs: 3, graceMs: 250 },
           }),
         }),
       )
@@ -3004,7 +3005,7 @@ describe("Kitty protocol detection", () => {
     const uncorrelated = await read.term(
       terminalSource({
         withClipboardFixture,
-        queryOutcome: async () => {
+        queryWithSentinelOutcome: async () => {
           const raw = `\x1b]52;c;${btoa(clipboard)}\x07`
           return { match: null, reason: "timeout", raw, rawBase64: Buffer.from(raw).toString("base64") }
         },
@@ -3022,7 +3023,7 @@ describe("Kitty protocol detection", () => {
     const prompt = await read.term(
       terminalSource({
         withClipboardFixture,
-        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
         capture: async (request) => {
           captured = true
           expect(request).toEqual({ role: "target", label: "Clipboard query after no response" })
@@ -3049,7 +3050,7 @@ describe("Kitty protocol detection", () => {
       terminalSource({
         withClipboardFixture: async (work) =>
           work({ readText: async () => "baseline", writeText: async () => undefined }),
-        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
         capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref }),
       }),
     )
