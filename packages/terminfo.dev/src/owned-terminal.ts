@@ -2258,7 +2258,7 @@ export async function createOwnedTerminal(options: {
       : terminalApp
         ? undefined
         : clipboard && "readTitle" in clipboard
-          ? clipboard.readTitle.bind(clipboard)
+          ? clipboard.readTitle?.bind(clipboard)
           : undefined
     const withIconNameFixture = clipboard?.withIconNameFixture?.bind(clipboard)
     const assertIconOwner = clipboard?.assertOwned.bind(clipboard)

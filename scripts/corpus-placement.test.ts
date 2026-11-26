@@ -52,9 +52,14 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
-function muxSpecimen() {
-  const path = join(import.meta.dirname, "../content/probes-mux/tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json")
-  const historicalPath = join(import.meta.dirname, "../content/suites/4b01b0117e18.json")
+const MUX_SPECIMENS = {
+  tmux: { run: "tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json", suite: "4b01b0117e18.json" },
+  // Zellij answers no release version (XTVERSION "Zellij(4600)"); placement takes it from the attached executable (#38759).
+  zellij: { run: "zellij-0.46.0-linux-7c2f430ae8edaa4e5f0300eaa730f27c.json", suite: "c95f3b5b465f.json" },
+} as const
+function muxSpecimen(mux: keyof typeof MUX_SPECIMENS = "tmux") {
+  const path = join(import.meta.dirname, "../content/probes-mux", MUX_SPECIMENS[mux].run)
+  const historicalPath = join(import.meta.dirname, "../content/suites", MUX_SPECIMENS[mux].suite)
   const historical = parseSuiteManifest(historicalPath, readFileSync(historicalPath, "utf8"))
   const run = parseRun(
     path,
@@ -1071,10 +1076,19 @@ test.each(hostedMacApps)("hosted Mac $id binds launch, target, runner and exact 
 
 // Accepted: Linux mux custody joins attachment, retained clipboard receipt, outer preflight and provenance.
 // Darwin join and the clipboard adapter's own tests cannot exercise this writer's Linux joins.
-test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mux custody join: %s", (fault) => {
+// Zellij reports no release version, so its identity rests on the attachment receipt's executable: the declared
+// version must equal it (#38759), where tmux's rests on its own XTVERSION.
+test.each([
+  ["tmux", "valid"],
+  ["tmux", "clipboard-hash"],
+  ["tmux", "preflight"],
+  ["tmux", "config"],
+  ["zellij", "valid"],
+  ["zellij", "version"],
+] as const)("Linux %s mux custody join: %s", (mux, fault) => {
   const f = fixture()
   const base = join(import.meta.dirname, "../test-fixtures")
-  const specimen = muxSpecimen()
+  const specimen = muxSpecimen(mux)
   const draft = initializeRunDraft({
     runId: specimen.runId,
     sourceRevision: specimen.sourceRevision,
@@ -1109,7 +1123,7 @@ test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mu
   const captureHash = hash(capture)
   replies["collector.httpResponseSha256"] = captureHash
   Object.assign(draft, {
-    subject: specimen.subject,
+    subject: fault === "version" ? { ...specimen.subject, version: "0.47.0" } : specimen.subject,
     outerApp: outer,
     identity: specimen.identity,
     measuredAt: specimen.measuredAt,
@@ -1133,7 +1147,8 @@ test.each(["valid", "clipboard-hash", "preflight", "config"] as const)("Linux mu
   )
   if (fault === "valid") expect(readFileSync(placeCollectedRun(f.source, f.manifest, f.content))).toEqual(bytes)
   else {
-    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(/mux-attachment-invalid/)
+    const refusal = fault === "version" ? /identity-replies-mismatch/ : /mux-attachment-invalid/
+    expect(() => placeCollectedRun(f.source, f.manifest, f.content)).toThrow(refusal)
     expect(existsSync(join(f.content, "suites"))).toBe(false)
   }
 })

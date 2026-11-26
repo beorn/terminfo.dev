@@ -1226,6 +1226,8 @@ describe("explicit Linux image selection", () => {
     writeFileSync(join(root, "bun.lock"), "{}")
     // The image input must carry the Notify recorder the --inside run starts (#33053); the nix double compares it.
     writeFileSync(join(source, "linux-notify-recorder.ts"), "// notify recorder fixture bytes\n")
+    // ...and the subreaper helper the Zellij mux shell re-execs through (#38759).
+    writeFileSync(join(source, "linux-subreaper-exec.ts"), "// subreaper helper fixture bytes\n")
     writeFileSync(
       join(root, "flake.lock"),
       JSON.stringify({ nodes: { nixpkgs: { locked: { rev: "fixture-nixpkgs" } } } }),
@@ -1297,6 +1299,7 @@ fi`,
        "$4" == '.#kitty-visual-current-image' ]]
     cmp "$TERMINFO_LINUX_RUNNER_DIR/index.js" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs"
     cmp "$TERMINFO_LINUX_RUNNER_DIR/linux-notify-recorder.ts" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/src/linux-notify-recorder.ts"
+    cmp "$TERMINFO_LINUX_RUNNER_DIR/linux-subreaper-exec.ts" "$FIXTURE_ROOT/vendor/terminfo.dev/packages/terminfo.dev/src/linux-subreaper-exec.ts"
     echo '${freshReference}';;
   build)
     printf '%s' "$TERMINFO_LINUX_RUNNER_DIR" > "$FIXTURE_HOME/build-runner-dir"
