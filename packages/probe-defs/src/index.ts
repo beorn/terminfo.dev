@@ -76,9 +76,13 @@ export {
   ASSERTION_TYPES,
   HOST_INPUT_NAMES,
   SILENCE_RULES,
+  REPLY_FAILURE_MATCH_STATES,
   frameDigests,
   type SilenceDeclaration,
   type SilenceRule,
+  type ReplyFailureMatchState,
+  type ReplyFailureAttempt,
+  type ReplyFailureEvidence,
 } from "./types.ts"
 export type {
   ObservationOutcome,

@@ -9,6 +9,7 @@ import type {
 } from "../../docs/data/selected-results.ts"
 
 import { isEnvironmentGroup } from "@terminfo/probe-defs"
+import { replyFailureSentence } from "../../docs/data/evidence-messages.ts"
 import { currentCoverageSentence, currentSupportedShare } from "../../docs/data/release-scope.ts"
 import { undecidedSplit } from "./undecided-split.ts"
 
@@ -175,10 +176,13 @@ export function CensusReport({
           // D132 B (#30917): the nine environment positions are manual by design and no collection
           // selects them, so the collector's "not selected" reason must not print as uncollected work.
           // Only that TODO reason is replaced (#34587): a stored environment result keeps its own reason.
+          const replyFailure = cell?.result.tests.find((test) => test.replyFailure !== undefined)?.replyFailure
+          const replyFailureNote =
+            replyFailure !== undefined ? replyFailureSentence(id, replyFailure, cell?.origin.runId) : undefined
           const note =
             isEnvironmentGroup(id) && cell?.result.status === "probe-todo"
               ? ENVIRONMENT_GROUP_NOTE
-              : [conflict, cell?.result.reason].filter((value) => value !== undefined).join("; ")
+              : [conflict, cell?.result.reason, replyFailureNote].filter((value) => value !== undefined).join("; ")
           if (!note) {
             return []
           }

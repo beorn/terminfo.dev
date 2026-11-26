@@ -12,7 +12,7 @@
  * shown. A value whose feature declares no shape at all fails the build.
  */
 import { createHash } from "node:crypto"
-import type { ProbeStatus } from "../../packages/probe-defs/src/types.ts"
+import type { ProbeStatus, ReplyFailureEvidence, ReplyFailureMatchState } from "../../packages/probe-defs/src/types.ts"
 import { formatControlBytes } from "./evidence-reader.ts"
 
 /** The closed set of evidence kinds. Each has exactly one template in `TEMPLATES`. */
@@ -26,6 +26,7 @@ export const EVIDENCE_KINDS = [
   "notification",
   "untestable",
   "library-state",
+  "reply-failure",
 ] as const
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number]
 
@@ -92,6 +93,16 @@ export type EvidenceFacts =
   | { kind: "notification"; text: CardValue; delivered: boolean; deadlineMs: number }
   | { kind: "untestable"; sent: number; answered: number; reasonCode?: string }
   | { kind: "library-state"; state: CardValue | { block: true } }
+  | {
+      kind: "reply-failure"
+      producer: "TTY" | "headless"
+      attempts: Array<{
+        sent: CardValue
+        received: CardValue
+        timeoutMs: number | null
+        matchState: ReplyFailureMatchState
+      }>
+    }
 
 /** One stored query as the run kept it (read windows are never read here). */
 export interface StoredQuery {
@@ -124,6 +135,8 @@ export interface StoredEvidence {
   /** A headless library's parser state, read windows removed. */
   parserState?: unknown
   assertions: ReadonlyArray<{ kind: string; expected: string; observed: string }>
+  /** Structured reply-failure fields attached to a marked test (#37342). */
+  replyFailure?: ReplyFailureEvidence
 }
 
 function fail(stored: Pick<StoredEvidence, "featureId" | "runId">, kind: string, what: string): never {
@@ -1129,6 +1142,25 @@ function environment(stored: StoredEvidence): EvidenceFacts {
 
 /** Sort one stored result into its evidence kind and read the fields that kind's template needs. */
 export function evidenceFacts(stored: StoredEvidence): EvidenceFacts {
+  if (stored.replyFailure !== undefined) {
+    return {
+      kind: "reply-failure",
+      producer: stored.replyFailure.producer,
+      attempts: stored.replyFailure.attempts.map((attempt) => ({
+        sent: { shown: formatControlBytes(attempt.sent) },
+        received:
+          attempt.received === null
+            ? { absent: true }
+            : stored.replyFailure?.producer === "headless"
+              ? { shown: formatControlBytes(attempt.received) }
+              : stored.featureId in REPLY_SHAPES
+                ? replyValue(stored, attempt.received)
+                : (SHAPES.control(attempt.received) ?? withheld(attempt.received)),
+        timeoutMs: attempt.timeoutMs,
+        matchState: attempt.matchState,
+      })),
+    }
+  }
   if (stored.status === "untestable") {
     return {
       kind: "untestable",
@@ -1470,6 +1502,49 @@ const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
   "library-state": ({ state }) => [
     "block" in state ? "The library's state after the test is shown below." : `The library sent back ${words(state)}.`,
   ],
+  "reply-failure": ({ producer, attempts }) => {
+    if (attempts.length === 0) {
+      return [
+        producer === "TTY"
+          ? "No reply trace was recorded for this query."
+          : "No library reply capture was recorded for this query.",
+      ]
+    }
+    const clauses = attempts.map((attempt) => {
+      const sent = words(attempt.sent)
+      if (attempt.matchState === "matched") {
+        return `sent ${sent} and got ${words(attempt.received)} (matched)`
+      }
+      if (attempt.matchState === "timeout") {
+        const within = attempt.timeoutMs === null ? "before the timeout" : `within ${attempt.timeoutMs} ms`
+        return "absent" in attempt.received
+          ? `sent ${sent} and got no reply ${within}`
+          : `sent ${sent} and got ${words(attempt.received)} before the ${attempt.timeoutMs ?? 0} ms timeout`
+      }
+      return "absent" in attempt.received
+        ? `sent ${sent} and got no reply`
+        : `sent ${sent} and got ${words(attempt.received)} (no match)`
+    })
+    return [`${producer === "headless" ? "The library test" : "The test"} ${clauses.join("; ")}.`]
+  },
+}
+
+/** Word structured reply-failure fields through the evidence-message module (#37342). */
+export function replyFailureSentence(featureId: string, replyFailure: ReplyFailureEvidence, runId = "live"): string {
+  const stored: StoredEvidence = {
+    runId,
+    featureId,
+    subjectKind: replyFailure.producer === "headless" ? "lib" : "term",
+    os: null,
+    status: "probe-invalid",
+    frameKinds: [],
+    writes: [],
+    queries: [],
+    exchangeExtra: {},
+    assertions: [],
+    replyFailure,
+  }
+  return evidenceSentences(featureId, evidenceFacts(stored)).join(" ")
 }
 
 /** Word one result's evidence: one or two sentences, or a build error naming the probe and the kind. */

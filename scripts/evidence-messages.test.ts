@@ -19,6 +19,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import { runTraceFacts } from "@terminfo/run-parser"
+import { replyFailureSentence } from "../docs/data/evidence-messages.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { currentTrace } from "../docs/data/run-trace.ts"
 import type { CurrentSelectedVersion } from "../docs/data/selected-results.ts"
@@ -45,7 +46,7 @@ type RawRecord = {
     featureId: string
     status: string
     reason?: string
-    tests?: Array<{ status: string; reason?: string }>
+    tests?: Array<{ status: string; reason?: string; replyFailure?: unknown }>
   }>
   rawReplies: Record<string, string>
   [key: string]: unknown
@@ -123,7 +124,9 @@ const KITTY_NOTIFY = "0f6a17be820e41ecf3404199ff00fbb7" // Kitty 0.49.2, Linux
 const ALACRITTY_LIB = "30aa57b2-f889-4188-85f1-6ebab56568a2" // alacritty_terminal 0.26.0 library
 
 describe("one real record per evidence kind (#37341)", () => {
-  const table: Array<[kind: string, dir: string, runId: string, featureId: string, sentences: string]> = [
+  const table: Array<
+    [kind: string, dir: string, runId: string, featureId: string, sentences: string, edit?: (raw: RawRecord) => void]
+  > = [
     ["byte reply", "probes-apps", KITTY, "modes.decsclm", "The terminal sent back ESC [ ?4;0 $ y."],
     [
       "no reply (device-check fence)",
@@ -182,12 +185,64 @@ describe("one real record per evidence kind (#37341)", () => {
       "This terminal could not be tested for this feature, so nothing was sent.",
     ],
     ["library state", "probes-libs", ALACRITTY_LIB, "device.tertiary-da", "The library sent back ESC [ ?6 c."],
+    [
+      "reply failure (#37342)",
+      "probes-apps",
+      KITTY,
+      "device.tertiary-da",
+      "The test sent ESC [ = c ESC [ c and got no reply within 250 ms.",
+      (raw) => {
+        const exchange = JSON.parse(raw.rawReplies["device.tertiary-da"]!) as {
+          queries: Array<{ sequence: string; timeoutMs?: number; sentinel?: { graceMs: number } }>
+        }
+        const query = exchange.queries[0]!
+        const result = raw.results.find((entry) => entry.featureId === "device.tertiary-da")!
+        result.tests![0]!.replyFailure = {
+          producer: "TTY",
+          attempts: [
+            {
+              sent: query.sequence,
+              received: null,
+              timeoutMs: query.sentinel?.graceMs ?? query.timeoutMs ?? null,
+              matchState: "timeout",
+            },
+          ],
+        }
+      },
+    ],
   ]
 
-  test.each(table)("%s: content/%s run %s, feature %s", (_kind, dir, runId, featureId, sentences) => {
-    const { observed, panes } = card(dir, runId, featureId)
+  test.each(table)("%s: content/%s run %s, feature %s", (_kind, dir, runId, featureId, sentences, edit) => {
+    const { observed, panes } = card(dir, runId, featureId, edit)
     expect(observed).toBe(sentences)
     for (const placeholder of PLACEHOLDERS) expect(panes.tested.text).not.toContain(placeholder)
+  })
+
+  test("replyFailureSentence words structured TTY and headless reply-failure fields (#37342)", () => {
+    expect(
+      replyFailureSentence("cursor.position-report", {
+        producer: "TTY",
+        attempts: [
+          { sent: "\x1b[6n", received: "\x1b[1;1R", timeoutMs: 41, matchState: "matched" },
+          { sent: "\x1b[6n", received: "garbage", timeoutMs: 37, matchState: "timeout" },
+          { sent: "\x1b[6n", received: "\x1b[?1;2c", timeoutMs: 53, matchState: "no-match" },
+        ],
+      }),
+    ).toBe(
+      "The test sent ESC [ 6 n and got ESC [ 1;1 R (matched); sent ESC [ 6 n and got a value we don't show (7 bytes, not text the test sent) before the 37 ms timeout; sent ESC [ 6 n and got ESC [ ?1;2 c (no match).",
+    )
+    expect(
+      replyFailureSentence("cursor.position-report", {
+        producer: "headless",
+        attempts: [{ sent: "\x1b[9999n", received: null, timeoutMs: null, matchState: "no-match" }],
+      }),
+    ).toBe("The library test sent ESC [ 9999 n and got no reply.")
+    expect(replyFailureSentence("cursor.position-report", { producer: "TTY", attempts: [] })).toBe(
+      "No reply trace was recorded for this query.",
+    )
+    expect(replyFailureSentence("cursor.position-report", { producer: "headless", attempts: [] })).toBe(
+      "No library reply capture was recorded for this query.",
+    )
   })
 
   test("XTVERSION reads its reply from the stored device.xtversion.trace exchange", () => {

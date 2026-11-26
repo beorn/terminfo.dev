@@ -792,9 +792,10 @@ The legacy callback `pass` still exists for the [diagnostic Vitest runner](../pr
 A callback can mark explicit failure tests that need actual request evidence. An execution-only callback uses
 `replyFailure`; a measured callback can retain a partial observation while marking its required-reply failure.
 The callback-only `replyFailureTestIds` never enters a stored result or draft. After the callback returns,
-the TTY or headless producer uses `withReplyFailureEvidence` to append escaped sent/received bytes and the
-actual timeout or synchronous capture boundary to only those marked failure-test reasons. Readers find the
-attempts in the stored criterion test's reason; the observation note and top-level summary stay unchanged. Callback conclusions, test IDs,
+the TTY or headless producer uses `withReplyFailureEvidence` to attach structured `replyFailure` fields (`producer`
+and per-attempt `sent`, `received`, `timeoutMs`, `matchState`) to only those marked failure tests, without composing a
+sentence into `reason`. Readers find the attempts in the stored test's `replyFailure` field and word them through the
+evidence-message module; the test reason, observation note and top-level summary stay unchanged. Callback conclusions, test IDs,
 criterion branches, observations and assertions remain callback-owned. Missing request records remain
 named failures; they do not prove that a producer is absent. Proved missing required capabilities or
 identity-bound declarations retain named PROBE TODO results without markers. Malformed replies, sentinel negatives

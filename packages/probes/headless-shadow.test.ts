@@ -300,7 +300,10 @@ it("replays a marked reply failure to the live row through the retained captures
     progress.mockRestore(),
   )
   const live = batch.results[0]!
-  expect(live.reason).toContain("synchronous feed and getCursor boundary")
+  expect(live.tests[0]?.replyFailure).toEqual({
+    producer: "headless",
+    attempts: [{ sent: "\x1b[9999n", received: null, timeoutMs: null, matchState: "no-match" }],
+  })
   const session = withCallLog<LibProbeSource>(null, {
     mode: "replay",
     log: readCallLog(JSON.parse(batch.rawReplies[probe.id + ".callLog"]!)),
@@ -316,7 +319,9 @@ it("replays a marked reply failure to the live row through the retained captures
   const attempt = live.attempt as { scope: "probe"; startedAt: string }
   expect(gradeLibRow({ probe, result, declared, attempt, captures })).toEqual(live)
   // Without the retained captures the grade loses the evidence: the input is load-bearing, not decorative.
-  expect(gradeLibRow({ probe, result, declared, attempt, captures: [] }).reason).not.toBe(live.reason)
+  expect(gradeLibRow({ probe, result, declared, attempt, captures: [] }).tests[0]?.replyFailure).not.toEqual(
+    live.tests[0]?.replyFailure,
+  )
 })
 
 it("names a headless family for every lib probe from its id alone", () => {

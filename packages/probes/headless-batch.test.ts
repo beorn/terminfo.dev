@@ -3281,9 +3281,17 @@ test("retains registered reply failure evidence when the path control is silent"
   })
   const result = batch.results[0]!
   expect(result.status).toBe("probe-invalid")
-  expect(result.reason).toContain(`sent ${JSON.stringify("\x1b[?996n")}; received ""`)
-  expect(result.reason).toContain("synchronous feed and getCursor boundary; timeout not applicable")
-  expect(result.tests).toMatchObject([{ id: "criterion", status: "probe-invalid", rawReplyRef: id }])
+  expect(result.tests).toMatchObject([
+    {
+      id: "criterion",
+      status: "probe-invalid",
+      rawReplyRef: id,
+      replyFailure: {
+        producer: "headless",
+        attempts: [{ sent: "\x1b[?996n", received: null, timeoutMs: null, matchState: "no-match" }],
+      },
+    },
+  ])
   expect(batch.rawReplies[id]).toBe("")
 })
 
@@ -3304,10 +3312,14 @@ test.each([false, true])("retains only marked synchronous reply failure evidence
   ])
   const result = batch.results[0]!
   expect(result.status).toBe("probe-invalid")
-  expect(result.reason).toBe(
+  expect(result.reason).toBe("No probe reply")
+  expect(result.tests[0]?.replyFailure).toEqual(
     marked
-      ? 'No probe reply; sent "\\u001b[9999n"; received ""; synchronous feed and getCursor boundary; timeout not applicable'
-      : "No probe reply",
+      ? {
+          producer: "headless",
+          attempts: [{ sent: "\x1b[9999n", received: null, timeoutMs: null, matchState: "no-match" }],
+        }
+      : undefined,
   )
   expect(JSON.stringify(batch)).not.toContain("replyFailureTestIds")
 })

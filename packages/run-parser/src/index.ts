@@ -1138,10 +1138,38 @@ export function parseProbeResults(
       }
       rejectUnknownFields(
         entry,
-        ["id", "status", "attempt", "assertionRefs", "rawReplyRef", "reviewRef", "reason"],
+        ["id", "status", "attempt", "assertionRefs", "rawReplyRef", "reviewRef", "reason", "replyFailure"],
         path,
         `${featureId}/${entry.id} test`,
       )
+      if (entry.replyFailure !== undefined) {
+        if (
+          !object(entry.replyFailure) ||
+          (entry.replyFailure.producer !== "TTY" && entry.replyFailure.producer !== "headless") ||
+          !Array.isArray(entry.replyFailure.attempts)
+        ) {
+          fail(path, `invalid reply failure evidence for ${featureId}/${entry.id}`)
+        }
+        rejectUnknownFields(entry.replyFailure, ["producer", "attempts"], path, `${featureId}/${entry.id} replyFailure`)
+        for (const attempt of entry.replyFailure.attempts) {
+          if (
+            !object(attempt) ||
+            typeof attempt.sent !== "string" ||
+            (attempt.received !== null && typeof attempt.received !== "string") ||
+            (attempt.timeoutMs !== null &&
+              (typeof attempt.timeoutMs !== "number" || !Number.isFinite(attempt.timeoutMs))) ||
+            (attempt.matchState !== "matched" && attempt.matchState !== "timeout" && attempt.matchState !== "no-match")
+          ) {
+            fail(path, `invalid reply failure attempt for ${featureId}/${entry.id}`)
+          }
+          rejectUnknownFields(
+            attempt,
+            ["sent", "received", "timeoutMs", "matchState"],
+            path,
+            `${featureId}/${entry.id} replyFailure attempt`,
+          )
+        }
+      }
       testIds.add(entry.id)
       const testStatus = storedProbeStatus(entry.status)
       if (!PROBE_STATUSES.includes(testStatus as ProbeTestResult["status"])) {
