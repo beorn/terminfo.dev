@@ -835,7 +835,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
             next=()
             for parent in "${frontier[@]}"; do
               for child in $(cat "/proc/$parent/task/$parent/children" 2>/dev/null); do
-                [[ "$(readlink "/proc/$child/exe" 2>/dev/null)" == */bun ]] && collector=$child
+                case "$(readlink "/proc/$child/exe" 2>/dev/null)" in */bun | */.bun-wrapped) collector=$child ;; esac
                 next+=("$child")
               done
             done
