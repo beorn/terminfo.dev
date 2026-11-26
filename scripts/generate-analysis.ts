@@ -31,7 +31,13 @@ import {
   joinedAppCells,
   loadCurrentResults,
 } from "../docs/data/current-results.ts"
-import { DIFFERS_BY_CONTEXT, isPublishedStatus, standInGrade, type JoinedApp } from "../docs/data/app-cells.ts"
+import {
+  APP_ONLY,
+  DIFFERS_BY_CONTEXT,
+  isPublishedStatus,
+  standInGrade,
+  type JoinedApp,
+} from "../docs/data/app-cells.ts"
 import { originalRunFor } from "../docs/data/selected-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -112,7 +118,7 @@ interface TerminalStats {
   /** The whole-catalogue fold the readout prints through `currentSupportedShare` / `currentCoverageSentence`. */
   aggregate: CurrentAggregate
   catalogIds: string[]
-  results: Record<string, FeatureResultStatus>
+  results: Record<string, AnalysisStatus>
   baselineCompliance: Record<string, { total: number; yes: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
@@ -207,18 +213,21 @@ function loadAnnotations(): Record<string, { note: string; url?: string }> {
 interface SelectedAnalysisInput {
   routeKey: string
   os: string | null
-  recordedResults: Array<{ featureId: string; status: FeatureResultStatus }>
+  recordedResults: Array<{ featureId: string; status: AnalysisStatus }>
   catalogIds: string[]
   aggregate: CurrentAggregate
   sourceId: string
-  results: Record<string, FeatureResultStatus>
+  results: Record<string, AnalysisStatus>
   versions: string[]
   type: "term" | "lib" | "mux"
   sources: AnalysisSource[]
 }
 
+/** A graded row's joined reading: its grade, or App only on a library row that no library can measure (#38772). */
+type AnalysisStatus = FeatureResultStatus | typeof APP_ONLY
+
 /** The joined grade of one graded row; the join no longer produces the retired disagreement bucket. */
-function joinedStatus(app: JoinedApp, featureId: string, key: string): FeatureResultStatus {
+function joinedStatus(app: JoinedApp, featureId: string, key: string): AnalysisStatus {
   const cell = app.cells[featureId]
   if (!cell) throw new Error(`Analysis context ${key}/${featureId} is absent from its joined cells`)
   if (cell.status === DIFFERS_BY_CONTEXT) throw new Error(`Analysis context ${key}/${featureId} reads ${cell.status}`)
@@ -327,7 +336,7 @@ function computeTerminalStats(
   data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
-  allTerminalResults: Map<string, { results: Record<string, FeatureResultStatus> }>,
+  allTerminalResults: Map<string, { results: Record<string, AnalysisStatus> }>,
 ): TerminalStats {
   const results = data.results
   const total = data.aggregate.denominator

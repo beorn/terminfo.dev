@@ -55,6 +55,16 @@ export interface FeatureRecord {
    * Absent is the default rule, Unsupported. The recorder applies it; the `probe` text states it.
    */
   silence?: SilenceDeclaration
+  /**
+   * Only an app window can measure this row (#38772, @cto e777b8ab): OS input injection or glyph drawing. Library
+   * rows show it as App only and leave it out of their counts; stored results stay as measured.
+   */
+  appOnly?: AppOnlyDeclaration
+}
+
+/** A row's App only scope: why a library cannot measure it (@cpo/term 20882c8a). */
+export interface AppOnlyDeclaration {
+  readonly reason: string
 }
 
 export type FeatureCatalog = Readonly<Record<string, FeatureRecord>>
@@ -206,6 +216,22 @@ function optionalSilence(path: string, id: string, value: unknown): SilenceDecla
   )
 }
 
+/** A declared App only scope: an object with a non-empty reason and nothing else; absent means graded everywhere. */
+function optionalAppOnly(path: string, id: string, value: unknown): AppOnlyDeclaration | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path}: entry "${id}" has an "appOnly" that is not an object`)
+  }
+  const { reason, ...extra } = value as Record<string, unknown>
+  if (typeof reason !== "string" || reason.trim() === "") {
+    throw new Error(`${path}: entry "${id}" declares appOnly without a non-empty "reason"`)
+  }
+  if (Object.keys(extra).length > 0) {
+    throw new Error(`${path}: entry "${id}" has unknown appOnly keys ${Object.keys(extra).sort().join(", ")}`)
+  }
+  return { reason }
+}
+
 function entries(path: string, root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
   const out: Array<[string, Record<string, unknown>]> = []
   for (const [id, value] of Object.entries(root)) {
@@ -233,6 +259,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
     probeStatus: optionalString(path, id, "probeStatus", raw.probeStatus),
     probeStatusReason: optionalString(path, id, "probeStatusReason", raw.probeStatusReason),
     silence: optionalSilence(path, id, raw.silence),
+    appOnly: optionalAppOnly(path, id, raw.appOnly),
   }
 }
 

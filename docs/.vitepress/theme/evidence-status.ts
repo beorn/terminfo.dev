@@ -8,7 +8,7 @@
  * #37631: one short message template per evidence kind for default result cards.
  */
 import type { FeatureResultStatus } from "../../../packages/probe-defs/src/types.ts"
-import { DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
+import { APP_ONLY, DIFFERS_BY_CONTEXT } from "../../data/app-cells.ts"
 import { categoryMark } from "../../data/result-categories.ts"
 
 export type EvidenceTone = "yes" | "no" | "ungraded" | "unknown" | "error" | "differs"
@@ -40,16 +40,24 @@ const STORED_STATUS: Readonly<Record<FeatureResultStatus, EvidenceStatus>> = {
  */
 export const DIFFERS_BY_CONTEXT_STATUS: EvidenceStatus = { text: "Differs by context", icon: "≠", tone: "differs" }
 
+/** What a library cell wears for a feature only an app window can measure (#38772): a label, never a grade. */
+export const APP_ONLY_STATUS: EvidenceStatus = {
+  text: "App only",
+  icon: categoryMark("app-only"),
+  tone: "ungraded",
+}
+
 /** What a cell derived from a refused parent wears (#33019): never the bare words of a direct measurement. */
 export const DERIVED_UNSUPPORTED_STATUS: EvidenceStatus = { text: "Unsupported, derived", icon: "✗", tone: "no" }
 
 export function evidenceStatus(
   _featureId: string,
-  status: FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | undefined,
+  status: FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY | undefined,
   derived = false,
 ): EvidenceStatus {
   if (status === undefined) return NO_RESULT_STATUS
   if (status === DIFFERS_BY_CONTEXT) return DIFFERS_BY_CONTEXT_STATUS
+  if (status === APP_ONLY) return APP_ONLY_STATUS
   if (status === "unsupported" && derived) return DERIVED_UNSUPPORTED_STATUS
   const shown = STORED_STATUS[status]
   if (shown === undefined) throw new Error(`evidenceStatus: unknown stored status ${JSON.stringify(status)}`)
@@ -67,13 +75,14 @@ export type CardEvidenceKind =
   | "reply"
   | "no-reply"
   | "untestable"
+  | "app-only"
   | "differs"
   | "no-result"
   | "derived"
   | "other"
 
 export interface CardMessageInput {
-  readonly status: FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | undefined
+  readonly status: FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY | undefined
   readonly derived?: boolean
   readonly assertionType?: string
   /** Evidence sentences already worded by evidence-messages.ts when the trace is loaded. */
@@ -89,6 +98,7 @@ export function cardEvidenceKind(input: CardMessageInput): CardEvidenceKind {
     return "no-result"
   }
   if (input.status === DIFFERS_BY_CONTEXT) return "differs"
+  if (input.status === APP_ONLY) return "app-only"
   if (input.status === "unsupported" && input.derived) return "derived"
   if (input.status === "untestable") return "untestable"
   const joined = input.traceEvidence?.join(" ") ?? ""
@@ -112,6 +122,7 @@ export function evidenceSummaryLine(input: CardMessageInput): string {
   if (kind === "no-result") return "No result yet for this release."
   if (kind === "differs") return "Results differ across measured contexts."
   if (kind === "derived") return "Unsupported because its required parent feature is unsupported."
+  if (kind === "app-only") return input.reason?.trim() || "App only: a library is not graded on this feature."
   if (input.traceEvidence && input.traceEvidence.length > 0) {
     return input.traceEvidence.join(" ")
   }

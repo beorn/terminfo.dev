@@ -78,11 +78,11 @@ describe("the real corpus publishes decided results only (Q4)", () => {
 })
 
 describe("every published card cites decided evidence (D5)", () => {
-  it("cites a decided entry of its run's public trace, or for a declared cell its review", () => {
+  it("cites a decided entry of its run's public trace, or for a declared or App only cell its reason", () => {
     const broken: string[] = []
     for (const [where, summary] of summaries()) {
       for (const [id, cell] of Object.entries(summary.featureResults)) {
-        if (cell.declared) continue
+        if (cell.declared || cell.appOnly) continue
         const entry = traceEntry(summary.sources[cell.origin.runId], cell.origin.resultId)
         if (!entry || !isPublishedStatus(entry.status)) broken.push(`${where}/${id}`)
       }

@@ -4,7 +4,7 @@
  */
 import type { CurrentAggregate } from "./release-scope.ts"
 
-export type CategoryId = "supported" | "unsupported" | "differs-by-context" | "untestable" | "no-result"
+export type CategoryId = "supported" | "unsupported" | "differs-by-context" | "untestable" | "app-only" | "no-result"
 
 export interface ResultCategory {
   readonly id: CategoryId
@@ -16,6 +16,8 @@ export interface ResultCategory {
   readonly meaning: string
   /** Shown as a tab only when it has members (a disagreement is rare; the other four always show). */
   readonly optional?: boolean
+  /** Never a bar segment: its features are outside the row's count (App only, #38772), so the bar never sizes them. */
+  readonly outsideBar?: boolean
 }
 
 const NO_RESULT_CATEGORY: ResultCategory = {
@@ -56,6 +58,15 @@ export const RESULT_CATEGORIES: readonly ResultCategory[] = [
     style: "partial",
     meaning: "We can't run this test in this terminal; each result says why.",
   },
+  {
+    id: "app-only",
+    label: "App only",
+    mark: "□",
+    style: "none",
+    meaning: "Only a terminal app can show this, so a library is not graded on it; each result says why.",
+    optional: true,
+    outsideBar: true,
+  },
   NO_RESULT_CATEGORY,
 ]
 
@@ -70,6 +81,7 @@ export function categoryIds(bar: Pick<CurrentAggregate, "idsByState">): Record<C
     unsupported: ids.unsupported,
     "differs-by-context": ids["differs-by-context"] ?? [],
     untestable: ids.untestable,
+    "app-only": ids["app-only"] ?? [],
     "no-result": [...ids["probe-todo"], ...ids["probe-invalid"], ...(ids["probe-conflict"] ?? [])],
   }
 }

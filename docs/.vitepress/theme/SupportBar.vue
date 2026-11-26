@@ -46,11 +46,13 @@ const props = defineProps<{
   href?: string
 }>()
 
-const total = computed(() => RESULT_CATEGORIES.reduce((sum, category) => sum + props.ids[category.id].length, 0))
+// App only features are outside the row's count (#38772): a tab lists them, the bar never sizes them.
+const barCategories = RESULT_CATEGORIES.filter((category) => !category.outsideBar)
+const total = computed(() => barCategories.reduce((sum, category) => sum + props.ids[category.id].length, 0))
 const segments = computed(() =>
-  RESULT_CATEGORIES.map((category) => ({ ...category, count: props.ids[category.id].length })).filter(
-    (segment) => segment.count > 0,
-  ),
+  barCategories
+    .map((category) => ({ ...category, count: props.ids[category.id].length }))
+    .filter((segment) => segment.count > 0),
 )
 const tabs = computed(() =>
   RESULT_CATEGORIES.filter((category) => !category.optional || props.ids[category.id].length > 0).map((category) => ({

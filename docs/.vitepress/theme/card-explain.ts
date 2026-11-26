@@ -1796,6 +1796,17 @@ export function buildCardModel(input: {
     }
   }
 
+  // Not graded: App only (#38772). Before any step building, so no library-card rule reads it (@dev/4 b4393d7f).
+  if (status === "app-only") {
+    return {
+      measured: false,
+      steps: [],
+      readouts: [],
+      closing: reason ?? "App only: a library is not graded on this feature.",
+      truncated: false,
+    }
+  }
+
   // Non-measured: Untestable (Rule 7: every Untestable card MUST give a specific reason)
   if (status === "untestable") {
     const cleanReview = reason

@@ -485,6 +485,7 @@ test("report renders reviewed outcomes, failures and missing cells", () => {
       "probe-todo": 1,
       "probe-invalid": 2,
       "probe-conflict": 0,
+      "app-only": 0,
       "differs-by-context": 0,
     })
 
