@@ -452,7 +452,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
     "tags": ["ecma-48", "vt100"],
     "body": "DSR 6 (Device Status Report) queries the current cursor position. The application sends <code>ESC [ 6 n</code> and the terminal responds with <code>ESC [ row ; col R</code>. This request-response mechanism is used by shell integration scripts, TUI frameworks, and applications that need to know where the cursor is before rendering content.",
-    "probe": "Move cursor to row 3, col 5 via <code>\\x1b[3;5H</code>, send DSR 6 (<code>\\x1b[6n</code>), verify response contains <code>3;5R</code>.",
+    "probe": "Move cursor to row 3, col 5 via <code>\\x1b[3;5H</code>, send DSR 6 (<code>\\x1b[6n</code>), verify response contains <code>3;5R</code>. A device attributes answer with no cursor-position reply before it is Unsupported.",
     "baseline": "modern",
     "sequence": "ESC [ 6 n → ESC [ row ; col R"
   },

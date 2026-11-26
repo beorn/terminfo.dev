@@ -293,6 +293,7 @@ it("strips callback-only reply metadata from stored result and draft serializati
 // Existing protocol fixtures pin grades, but did not pass these empty branches through the formatter.
 it.each([
   ["lib", "cursor.position-report"],
+  ["term", "cursor.position-report"],
   ["lib", "device.dsr-996-color-scheme"],
   ["term", "device.dsr-996-color-scheme"],
   ["lib", "device.status-report"],
@@ -363,6 +364,8 @@ it.each([
           ...(id === "device.decrqss" && { queryWithSentinelOutcome: outcome }),
         } as unknown as LibProbeSource)
       : await definition.term!({
+          rows: 24,
+          cols: 80,
           write(sequence: string) {
             const frame = /\x1b\]52;c;([^\x07]+)\x07/.exec(sequence)
             if (frame) clipboard = atob(frame[1]!)
@@ -404,7 +407,7 @@ it.each([
       expect.objectContaining({
         id: "criterion",
         status: "probe-todo",
-        reason: expect.stringContaining("default not established"),
+        reason: expect.stringContaining("timed out without a DA1 fence"),
       }),
     ])
     expect(callback.observation).toBeUndefined()
@@ -447,7 +450,6 @@ it.each([
   ["cursor.ansi-save", [[3, 5], [10, 15], null], "\x1b[u"],
   ["cursor.ansi-restore", [[4, 6], [12, 18], null], "\x1b[u"],
   ["cursor.save-restore", [[3, 5], null], "\x1b8"],
-  ["cursor.position-report", [null], undefined],
   ["cursor.reverse-wrap", [null], "\x1b[?45l"],
   ["cursor.cup-boundaries", [null], undefined],
   ["cursor.cup-boundaries", [[1, 1], null], undefined],

@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { cursorProbes } from "./cursor.ts"
-import { cursorProbe } from "./helpers.ts"
+import { cursorProbe, isFencedSilence, recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
 
 function byId(id: string) {
@@ -29,7 +29,13 @@ function app(position: { row: number; col: number } | null): TermProbeSource {
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence, pattern) => {
+      if (sequence === "\x1b[6n" && position !== null) {
+        const raw = `\x1b[${position.row};${position.col}R\x1b[?62;22c`
+        return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: "" }
+      }
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
     queryMode: async () => null,
     cols: 80,
     rows: 24,
@@ -60,6 +66,13 @@ function appReporter(): TermProbeSource {
       }
     },
     queryCursorPosition: async () => ({ row, col }),
+    queryWithSentinelOutcome: async (sequence, pattern) => {
+      if (sequence === "\x1b[6n") {
+        const raw = `\x1b[${row};${col}R\x1b[?62;22c`
+        return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: "" }
+      }
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
   }
 }
 
@@ -791,6 +804,52 @@ test("position report grades a text-induced cursor advance, not just a CUP echo"
   narrow.write = (sequence) => writes.push(sequence)
   expectExecutionOnly(await byId("cursor.position-report").term!(narrow), "probe-todo")
   expect(writes).toEqual([])
+})
+
+test("cursor.position-report grades DA1-fenced silence Unsupported and keeps raw timeout as replyFailure (#33200)", async () => {
+  const probe = byId("cursor.position-report")
+  const da1Silence = {
+    match: null,
+    reason: "sentinel" as const,
+    raw: "\x1b[?62;22c",
+    rawBase64: Buffer.from("\x1b[?62;22c").toString("base64"),
+    sentinel: { atMs: 3, graceMs: 250 },
+  }
+  const timeoutOutcome = { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+  // term arm: DA1-fenced silence -> marked fenced silence -> Unsupported; raw timeout -> no-response
+  const termFenced = await probe.term!({ ...app(null), queryWithSentinelOutcome: async () => da1Silence })
+  expect(isFencedSilence(termFenced.observation)).toBe(true)
+  expect(
+    recordExecutedProbe({
+      featureId: probe.id,
+      attempt: { scope: "probe", startedAt: "2026-11-26T00:00:00Z" },
+      observation: termFenced.observation ? { featureId: probe.id, ...termFenced.observation } : undefined,
+      assertions: (termFenced.assertions ?? []).map((a) => ({ featureId: probe.id, ...a })),
+    }).status,
+  ).toBe("unsupported")
+  const termTimeout = await probe.term!({ ...app(null), queryWithSentinelOutcome: async () => timeoutOutcome })
+  expect(isFencedSilence(termTimeout.observation)).toBe(false)
+  expectExecutionOnly(termTimeout, "probe-invalid")
+
+  // lib arm: DA1-fenced silence -> marked fenced silence -> Unsupported; valid CPR + trailing DA1 -> supported; raw timeout -> replyFailure
+  const baseLib = {
+    feed() {},
+    feedCapture: () => "",
+    getCursor: () => ({ x: 4, y: 2 }),
+  } as unknown as LibProbeSource
+  const libFenced = probe.lib!({ ...baseLib, queryWithSentinelOutcome: () => da1Silence })
+  expect(isFencedSilence(libFenced.observation)).toBe(true)
+  const libTimeout = probe.lib!({ ...baseLib, queryWithSentinelOutcome: () => timeoutOutcome })
+  expect(isFencedSilence(libTimeout.observation)).toBe(false)
+  expectExecutionOnly(libTimeout, "probe-invalid")
+  const libReply = probe.lib!({
+    ...baseLib,
+    queryWithSentinelOutcome: (_seq, pattern) => {
+      const raw = "\x1b[3;5R\x1b[?62;22c"
+      return { match: pattern.exec(raw), reason: "reply" as const, raw, rawBase64: "" }
+    },
+  })
+  expect(libReply.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test("remaining app cursor fixtures refuse undersized geometry without writing", async () => {

@@ -21,7 +21,8 @@ const BUILD_2026_10_10: ReviewedWezTermLinuxBuild = {
 const BUILD_2026_11_08: ReviewedWezTermLinuxBuild = {
   version: "0-unstable-2026-11-08",
   rev: "458a100c1bf4",
-  audit: "34932/34961 (@cto cc2dac5d, 146524d0): e2a98e1b8af1..458a100c1bf4 touches only docs/config/lua/config/ssh_backend.md and get-deps",
+  audit:
+    "34932/34961 (@cto cc2dac5d, 146524d0): e2a98e1b8af1..458a100c1bf4 touches only docs/config/lua/config/ssh_backend.md and get-deps",
 }
 
 const BUILD_2026_11_20: ReviewedWezTermLinuxBuild = {
@@ -32,10 +33,7 @@ const BUILD_2026_11_20: ReviewedWezTermLinuxBuild = {
 }
 
 /** Semantic-state report readers, DBus notification rows, OSC 133 declarations, and OSC 8 reader (22 rows/version). */
-export const WEZTERM_LINUX_SEMANTIC_BUILDS: readonly ReviewedWezTermLinuxBuild[] = [
-  BUILD_2026_11_08,
-  BUILD_2026_11_20,
-]
+export const WEZTERM_LINUX_SEMANTIC_BUILDS: readonly ReviewedWezTermLinuxBuild[] = [BUILD_2026_11_08, BUILD_2026_11_20]
 
 /** OSC 52 ? default posture citations (no clipboard-read reply or setting). */
 export const WEZTERM_LINUX_CLIPBOARD_READ_DEFAULTS = [
@@ -43,15 +41,17 @@ export const WEZTERM_LINUX_CLIPBOARD_READ_DEFAULTS = [
     posture: "absent" as const,
     version: BUILD_2026_11_08.version,
     source:
-      "wezterm 458a100c1bf4 wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as QuerySelection, and " +
-      "term/src/terminalstate/performer.rs:792 handles it as QuerySelection(_) => {}: no reply, no setting",
+      "wezterm 458a100c1bf4 (e2a98e1b8af1..458a100c1bf4) wezterm-escape-parser/src/osc.rs:176 parses OSC 52 ? as " +
+      "QuerySelection, term/src/terminalstate/performer.rs:792 handles it as OperatingSystemCommand::QuerySelection(_) => {}, " +
+      "and term/src/terminal.rs:13-19 defines a write-only clipboard: no reply, no prompt, no setting",
   },
   {
     posture: "absent" as const,
     version: BUILD_2026_11_20.version,
     source:
-      "wezterm ee6f3044d09f (audit 458a100c1bf4..ee6f3044d09f, @cto GO 146524d0): wezterm-escape-parser/src/osc.rs:176 " +
-      "and term/src/terminalstate/performer.rs:792 are byte-identical — OSC 52 ? QuerySelection(_) => {}: no reply, no setting",
+      "wezterm ee6f3044d09f (audit 458a100c1bf4..ee6f3044d09f, @cto GO 146524d0): wezterm-escape-parser/src/osc.rs:176, " +
+      "term/src/terminalstate/performer.rs:792 (OperatingSystemCommand::QuerySelection(_) => {}), and " +
+      "term/src/terminal.rs:13-19 (write-only clipboard) are byte-identical: no reply, no prompt, no setting",
   },
 ] as const
 
