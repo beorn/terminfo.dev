@@ -11,7 +11,27 @@
 
 import type { ProbeSubject } from "@terminfo/probe-defs"
 import type { LoadedRun } from "@terminfo/run-parser"
+import {
+  CLIPBOARD_READ_ALLOWED_KEY,
+  READ_ALLOWED_NOT_IN_FORCE,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
+  verifyReadAllowedInForce,
+  type AlacrittyReadAllowedReadback,
+  type ClipboardReadAllowedReadback,
+  type XtermReadAllowedReadback,
+} from "../../packages/terminfo.dev/src/clipboard-config.ts"
 import { SCREEN_TRUECOLOR_CONFIG, TMUX_SET_TITLES_CONFIG } from "../../packages/terminfo.dev/src/disposable-receipt.ts"
+
+export {
+  CLIPBOARD_READ_ALLOWED_KEY,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
+  verifyReadAllowedInForce,
+  type AlacrittyReadAllowedReadback,
+  type ClipboardReadAllowedReadback,
+  type XtermReadAllowedReadback,
+}
 
 /**
  * The config a default mux run records: the launcher's `--arg muxConfig` (scripts/linux-container-run.sh). The
@@ -66,7 +86,7 @@ export const READ_ALLOWED: ContextSupplement = {
     wezterm: "clipboard: read=no-setting,write=allow",
   },
   silentIgnore: ["alacritty", "xterm"],
-  notInForce: "read allowed by setting, not proved in force",
+  notInForce: READ_ALLOWED_NOT_IN_FORCE,
   declaredDefaults: {
     kitty: "by default: asks first (kitty clipboard_control default, 0.49.2)",
     ghostty: "by default: asks first (ghostty clipboard-read = ask, 1.4.0)",

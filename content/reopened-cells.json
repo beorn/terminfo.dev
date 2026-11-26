@@ -198,6 +198,253 @@
           "assertionIndex": 47
         }
       ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.overline",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 53
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 50
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline-color-indexed",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 55
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 52
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline-color-rgb",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 56
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 53
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline.color",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 54
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 51
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline.curly",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 46
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 43
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline.dashed",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 48
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 45
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline.dotted",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 47
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 44
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "sgr.underline.double",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 45
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 42
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "iterm2",
+      "os": "macos",
+      "featureId": "sgr.bg.bright",
+      "graded": "unsupported",
+      "reason": "an earlier version of our reply check read a reply that left this attribute out as Unsupported; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 02:43 PST (31a78f3f), 02:28 PST (b1b3b6c7), issue 38772: graded Unsupported by the pre-fix DECRQSS decider, fixed in 455b028f1",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "baafb08bace3486d4f97bacbae912412",
+          "assertionIndex": 59
+        }
+      ]
     }
   ]
 }

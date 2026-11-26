@@ -1,6 +1,8 @@
 import type { ProbeDefinition } from "./types.ts"
 import {
   activeScreenRow,
+  ambiguousWidthUnder,
+  declaredUntestableResult,
   replyFailure,
   parserStateResult,
   probe,
@@ -14,7 +16,10 @@ export const unicodeProbes: ProbeDefinition[] = [
     ...probe(
       "unicode.east-asian-ambiguous",
       (ctx) => {
-        const expected = "ASCII seed/control is preserved; ambiguous symbol advances one or two cells before X"
+        const locale = ctx.locale?.() ?? null
+        const under = ambiguousWidthUnder(locale)
+        if ("untestable" in under) return declaredUntestableResult(under.untestable, { locale })
+        const expected = `ASCII seed/control is preserved; ambiguous symbol advances ${under.expected} cell before X, as ${locale}'s wcwidth gives`
         if (!validSize(ctx.cols, 4)) {
           return {
             pass: false,
@@ -34,10 +39,22 @@ export const unicodeProbes: ProbeDefinition[] = [
         }
         ctx.feed("●X")
         const after = Array.from({ length: 4 }, (_, col) => ctx.getCell(0, col).char)
-        const pass = after[1] === "X" || after[2] === "X"
-        return parserStateResult(pass, expected, { before, setup, after })
+        const marker = after.indexOf("X")
+        if (marker < 0 || after.lastIndexOf("X") !== marker) {
+          return parserStateResult(
+            null,
+            expected,
+            { before, setup, after, locale },
+            "Sentinel X was not exposed exactly once after the sample",
+          )
+        }
+        const width = marker
+        return parserStateResult(width === under.expected, expected, { before, setup, after, locale, width })
       },
       async (ctx) => {
+        const locale = ctx.locale?.() ?? null
+        const under = ambiguousWidthUnder(locale)
+        if ("untestable" in under) return declaredUntestableResult(under.untestable, { locale })
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
@@ -52,18 +69,18 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (typeof width !== "number") {
           return renderedWidthFailure(width, "unicode.east-asian-ambiguous", "sample", JSON.stringify({ width }))
         }
-        const pass = width === 1 || width === 2
+        const pass = width === under.expected
         return {
           pass,
-          note: `width=${width} (ambiguous chars vary by terminal/locale)`,
-          response: String(width),
+          note: `width=${width}; ${locale}'s wcwidth gives ${under.expected}`,
+          response: JSON.stringify({ width, locale, expected: under.expected }),
           observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
               assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
-              expected: "width 1 or 2",
-              observed: String(width),
+              expected: `width ${under.expected}, as ${locale}'s wcwidth gives`,
+              observed: JSON.stringify({ width, locale }),
             },
           ],
         }

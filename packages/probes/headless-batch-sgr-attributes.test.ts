@@ -20,7 +20,16 @@ const sample = "AaBb 0123456789 - terminal text"
 const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 let captureClock = 1_700_000_000_000
-type Fault = "none" | "unknown+blind" | "blind+ignored" | "ignored" | "single" | "inverse" | "hidden" | "unstable"
+type Fault =
+  | "none"
+  | "unknown+blind"
+  | "blind+ignored"
+  | "ignored"
+  | "single"
+  | "italic-underline"
+  | "inverse"
+  | "hidden"
+  | "unstable"
 
 /** A tiny paint adapter, not a grader: independently supplied style failures change pixels.
  * The real callbacks own writes, geometry, control ordering, witnesses and result recording. */
@@ -48,6 +57,7 @@ async function measure(id: string, fault: Fault = "none", reply = true, mux?: "t
     if (style === target) {
       if (faults.includes("ignored")) return "plain"
       if (fault === "single") return "style:4"
+      if (fault === "italic-underline") return "style:4;3"
       if (fault === "inverse") return "style:7"
       if (fault === "hidden") return "wrong hidden ink"
     }
@@ -125,6 +135,8 @@ test.each([
   ["sgr.bold", "blind+ignored", "probe-todo", "handled"],
   ["sgr.overline", "ignored", "unsupported", "drew nothing"],
   ["sgr.underline.curly", "single", "unsupported", "drawn as single underline"],
+  // #38772 (card audit review-7): GNU Screen reads 4:3 as 4;3 and draws a straight underline under italic text.
+  ["sgr.underline.curly", "italic-underline", "unsupported", "drawn as italic text over a single underline"],
   ["sgr.bold", "inverse", "unsupported", "drawn as inverse"],
   ["sgr.hidden", "none", "supported", "blank"],
   ["sgr.hidden", "hidden", "probe-invalid", "hidden"],

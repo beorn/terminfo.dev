@@ -26,6 +26,8 @@ function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
     queryMode: async () => null,
     cols: 150,
     rows: 24,
+    // A UTF-8 run, as the collectors' own runs are; a test that needs no locale passes locale: undefined.
+    locale: () => "en_US.UTF-8",
     ...overrides,
   }
 }
@@ -34,6 +36,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     backendName: "scripted-model",
     kind: "live",
+    locale: () => "en_US.UTF-8",
     cols: 80,
     feed() {},
     feedCapture: () => "",
@@ -172,20 +175,14 @@ test("the combined tab fixture names a received wrong comparison stop as FAILURE
 })
 
 test("text width claims require an ASCII control and the named sample", async () => {
-  for (const id of [
-    "text.wide.emoji",
-    "text.wide.cjk",
-    "text.wide.emoji-flags",
-    "text.wide.emoji-vs16",
-    "text.wide.emoji-zwj",
-  ]) {
+  for (const id of ["text.wide.emoji", "text.wide.cjk", "text.wide.emoji-vs16", "text.wide.emoji-zwj"]) {
     const probe = byId(id)
     const samples: string[] = []
     const measured = await probe.term(
       app({
         measureRenderedWidth: async (sample) => {
           samples.push(sample)
-          return 2
+          return sample === "\u263A" ? 1 : sample === "\uFE0F" ? 0 : 2
         },
       }),
     )
@@ -199,12 +196,124 @@ test("text width claims require an ASCII control and the named sample", async ()
   }
 })
 
+// #38772 (@cpo/term 448f3c70): VS16 shows its effect only on a base that is narrow alone. A terminal that already draws
+// bare U+263A two columns wide passes the sample whether or not it reads the selector, so that run proves nothing.
+test("text.wide.emoji-vs16 needs the bare base to measure one column before its sample decides", async () => {
+  const probe = byId("text.wide.emoji-vs16")
+  const width = (base: number, sample: number) =>
+    probe.term(
+      app({
+        measureRenderedWidth: async (text) =>
+          text === "AA" ? 2 : text === "\u263A" ? base : text === "\uFE0F" ? 0 : sample,
+      }),
+    )
+  const wideBase = await width(2, 2)
+  expect(wideBase.tests).toContainEqual(
+    expect.objectContaining({ id: "criterion", status: "probe-invalid", reason: expect.stringMatching(/bare base/i) }),
+  )
+  expect(wideBase.assertions).toBeUndefined()
+  expect((await width(1, 2)).observation).toMatchObject({ outcome: "supported" })
+  expect((await width(1, 1)).observation).toMatchObject({ outcome: "unsupported" })
+  // The library arm reads the same control from the parser's cells.
+  const lib = byId("text.wide.emoji-vs16").lib
+  expect(lib(emojiTerminal("text.wide.emoji-vs16", 2)).observation).toMatchObject({ outcome: "supported" })
+  const libWide = lib(emojiTerminal("text.wide.emoji-vs16", 2, { baseWidth: 2 }))
+  expect(libWide.observation).toMatchObject({ outcome: "inconclusive", note: expect.stringMatching(/bare base/i) })
+  expect(libWide.assertions).toBeUndefined()
+})
+
+// #38772 (card audit review-7): GNU Screen gives a combining mark its own column, so U+263A + U+FE0F advances 1 + 1 = 2
+// with no widening. A lone selector that takes a column leaves the sample's two columns unexplained: not decided.
+test("text.wide.emoji-vs16 needs a lone selector to take no column before its sample decides", async () => {
+  const result = await byId("text.wide.emoji-vs16").term(
+    app({
+      measureRenderedWidth: async (text) => (text === "AA" ? 2 : text === "\u263A" ? 1 : text === "\uFE0F" ? 1 : 2),
+    }),
+  )
+  expect(result.tests).toContainEqual(
+    expect.objectContaining({
+      id: "criterion",
+      status: "probe-invalid",
+      reason: expect.stringMatching(/lone selector/i),
+    }),
+  )
+  expect(result.assertions).toBeUndefined()
+})
+
+// #38772 (@cpo/term 448f3c70): two columns are a flag or VS16 emoji only when the sample is one glyph in one cell. A
+// parser that keeps each scalar in its own one-column cell advances two columns with no flag and no widening.
+test("a library flag or VS16 sample split into one-column cells reads Unsupported, not a two-column glyph", () => {
+  for (const id of ["text.wide.emoji-flags", "text.wide.emoji-vs16"] as const) {
+    const split = byId(id).lib(emojiTerminal(id, 2, { split: true }))
+    expect(split.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
+    expect(String(split.observation?.note), id).toMatch(/own cell/)
+    expect(byId(id).lib(emojiTerminal(id, 2)).observation, id).toMatchObject({ outcome: "supported" })
+    // A blank spacer is a spacer however the adapter spells it: Alacritty pads with " ", not "" (@dev/review2).
+    expect(byId(id).lib(emojiTerminal(id, 2, { spacer: " " })).observation, id).toMatchObject({ outcome: "supported" })
+  }
+})
+
+// #38772 (@cpo/term 448f3c70): an app's cursor advance cannot tell one flag glyph from two narrow letters, and no
+// screenshot route draws it yet, so the app arm reads Untestable by name and writes nothing.
+test("text.wide.emoji-flags reads Untestable on an app until a screenshot route draws it, before any write", async () => {
+  const writes: string[] = []
+  const result = await byId("text.wide.emoji-flags").term(
+    app({
+      write: (text) => writes.push(text),
+      measureRenderedWidth: async () => {
+        throw new Error("flags measured an advance")
+      },
+    }),
+  )
+  expect(result.tests).toEqual([
+    expect.objectContaining({
+      id: "declared-untestable",
+      status: "untestable",
+      reason: expect.stringMatching(/screenshot route/),
+    }),
+  ])
+  expect(writes).toEqual([])
+})
+
+// #38772 (@cpo/term 448f3c70): Supported means the cursor advance equals the locale's wcwidth (1 for an ambiguous
+// glyph in a non-CJK UTF-8 locale), because a TUI lays out with wcwidth. With no named locale, or one whose wcwidth we
+// do not state, the row reads Untestable by name before any byte.
+test("unicode.east-asian-ambiguous grades the advance against the run's locale", async () => {
+  const term = (locale: string | null | undefined, width: number) => {
+    const writes: string[] = []
+    return byId("unicode.east-asian-ambiguous")
+      .term(
+        app({
+          locale: locale === undefined ? undefined : () => locale,
+          write: (text) => writes.push(text),
+          measureRenderedWidth: async () => width,
+        }),
+      )
+      .then((result) => ({ result, writes }))
+  }
+  expect((await term("en_US.UTF-8", 1)).result.observation).toMatchObject({ outcome: "supported" })
+  const wide = (await term("C.UTF-8", 2)).result
+  expect(wide.observation).toMatchObject({ outcome: "unsupported" })
+  expect(wide.response).toContain("C.UTF-8")
+  for (const [locale, why] of [
+    [undefined, /does not name its locale/],
+    [null, /does not name its locale/],
+    ["C", /not a UTF-8 locale/],
+    ["ja_JP.UTF-8", /CJK locale/],
+  ] as const) {
+    const { result, writes } = await term(locale, 1)
+    expect(result.tests, String(locale)).toEqual([
+      expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: expect.stringMatching(why) }),
+    ])
+    expect(writes, String(locale)).toEqual([])
+  }
+})
+
 // The one measurement API must reach every width family before any numeric predicate.
 test.each([
   "text.wide.emoji",
   "text.wide.cjk",
   "text.combining",
-  "text.wide.emoji-flags",
   "text.wide.emoji-vs16",
   "text.wide.emoji-zwj",
   "unicode.east-asian-ambiguous",
@@ -217,6 +326,7 @@ test.each([
   ] as const) {
     const result = await byId(id).term(
       app({
+        locale: () => "en_US.UTF-8",
         measureRenderedWidth: async (sample) => (sample === "AA" ? 2 : sample === "A" ? 1 : reading),
       }),
     )
@@ -242,7 +352,6 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
   for (const id of [
     "text.wide.emoji",
     "text.wide.cjk",
-    "text.wide.emoji-flags",
     "text.wide.emoji-vs16",
     "text.wide.emoji-zwj",
     "text.combining",
@@ -253,6 +362,7 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
     let widthCalls = 0
     const result = await probe.term(
       app({
+        locale: () => "en_US.UTF-8",
         utf8Decoding: async () => "8-bit",
         measureRenderedWidth: async () => {
           widthCalls += 1
@@ -968,7 +1078,6 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
       "text.reverse-index-scroll: no owned capture adapter is installed in this run, so the region fixture cannot be read back",
     ],
     ["text.combining", "Text fixture needs at least 1x3; measured 1x1"],
-    ["text.wide.emoji-flags", "Text fixture needs at least 1x4; measured 1x1"],
     ["text.wide.emoji-vs16", "Text fixture needs at least 1x3; measured 1x1"],
     ["text.wide.emoji-zwj", "Text fixture needs at least 1x4; measured 1x1"],
   ] as const) {
@@ -1232,6 +1341,12 @@ function emojiTerminal(
     staleCursor?: { x: number; y: number }
     cursorSkew?: number
     feeds?: string[]
+    /** Columns the bare base U+263A takes on its own (VS16's control); 1 unless set. */
+    baseWidth?: number
+    /** Keep each scalar of the sample in its own one-column cell, as a parser that never clusters them does. */
+    split?: boolean
+    /** What the wide sample's spacer cell holds; "" unless set (Alacritty pads blanks with " "). */
+    spacer?: string
   } = {},
 ): LibProbeSource {
   const cols = opts.cols ?? 80
@@ -1243,7 +1358,7 @@ function emojiTerminal(
     cells.set(`${row},${col}`, { ...blank, ...over })
   const glyph = (cluster: string, width: number) => {
     put(cursor.y, cursor.x, { char: cluster, wide: width === 2 })
-    for (let i = 1; i < width; i += 1) put(cursor.y, cursor.x + i, { char: "", wide: false })
+    for (let i = 1; i < width; i += 1) put(cursor.y, cursor.x + i, { char: opts.spacer ?? "", wide: false })
     cursor = { x: cursor.x + width, y: cursor.y }
   }
   const literal = (text: string) => {
@@ -1255,6 +1370,11 @@ function emojiTerminal(
       if (rest.startsWith(EMOJI_SUPPLEMENTARY)) {
         glyph(opts.controlSurrogate ? "\ud83c" : EMOJI_SUPPLEMENTARY, opts.controlSurrogate ? 1 : 2)
         index += Array.from(EMOJI_SUPPLEMENTARY).length
+        continue
+      }
+      if (rest.startsWith(sample) && opts.split) {
+        for (const scalar of Array.from(sample)) glyph(scalar, 1)
+        index += Array.from(sample).length
         continue
       }
       if (rest.startsWith(sample)) {
@@ -1269,7 +1389,7 @@ function emojiTerminal(
         index += 1
         continue
       }
-      glyph(scalar, scalar === "\u200D" ? 0 : 1)
+      glyph(scalar, scalar === "\u200D" ? 0 : scalar === "\u263A" ? (opts.baseWidth ?? 1) : 1)
       if (isSentinel && opts.markerMode === "double") glyph("X", 1)
       index += 1
     }

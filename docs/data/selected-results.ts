@@ -17,7 +17,9 @@ import {
   isDefaultOf,
   isSameSupplementPass,
   MUX_DEFAULT_CONFIG,
+  READ_ALLOWED,
   supplementOf,
+  verifyReadAllowedInForce,
   type ContextSupplement,
 } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
@@ -1295,11 +1297,18 @@ function applySupplements(
     // row is the deciding observation, not a note (#32593, @cto 2026-11-12 (a)). It still takes a supplement that
     // declares notesDecided, and only its own declared ids, so no other decided row moves.
     if (result.status !== "supported" && ignoresInSilence) {
-      // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
+      // No reply under a setting the terminal may have ignored proves nothing unless the same launch recorded an
+      // in-force read-back (#33134): the default cell stays open with the missing or contrary read-back reason. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
       // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).
-      if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: supplement.notInForce } }
-      continue
+      const proof =
+        supplement === READ_ALLOWED && result.status === "unsupported"
+          ? verifyReadAllowedInForce(run.subject.id, run.readRaw().rawReplies, supplement.notInForce)
+          : { inForce: false as const, reason: supplement.notInForce }
+      if (!proof.inForce) {
+        if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: proof.reason } }
+        continue
+      }
     }
     // The same one-probe fold remember() uses, so every consumer reads the filled cell as it reads any other.
     const classification = classifyResultMethod(result, run.subject, run.assertions)
