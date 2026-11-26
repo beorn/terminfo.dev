@@ -715,10 +715,15 @@ describe("probe method classification", () => {
             const published = Object.fromEntries(
               Object.entries(api.contexts[key]!.featureResults).map(([id, result]) => [id, result.status]),
             )
+            // An App only library cell publishes its label whatever it stored (#38772); the pin above shows it stored
+            // exactly what it did before.
             const expected = Object.fromEntries(
               Object.entries(context.cells)
-                .map(([id, cell]): [string, string | undefined] => [id, statusOf(cell, id)])
-                .filter((entry): entry is [string, string] => entry[1] !== undefined && decided.has(entry[1])),
+                .map(([id, cell]): [string, string | undefined] => [id, cell.appOnly ? "app-only" : statusOf(cell, id)])
+                .filter(
+                  (entry): entry is [string, string] =>
+                    entry[1] !== undefined && (entry[1] === "app-only" || decided.has(entry[1])),
+                ),
             )
             expect(published, key).toEqual(expected)
             for (const result of Object.values(api.contexts[key]!.featureResults)) {

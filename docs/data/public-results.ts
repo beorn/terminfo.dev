@@ -13,7 +13,14 @@ import { classifyProjectionSetups, type CurrentResult } from "./current-results.
 import { gitSourceHistory, type SourceHistory } from "./source-history.ts"
 import type { SetupStanding } from "./run-selection.ts"
 import type { AnalysisProgressReporter } from "./analysis-progress.ts"
-import { isPublishedStatus, standInGrade, type AppCellStatus, type JoinedApp } from "./app-cells.ts"
+import {
+  APP_ONLY,
+  isPublishedStatus,
+  publicAppOnlyReason,
+  standInGrade,
+  type AppCellStatus,
+  type JoinedApp,
+} from "./app-cells.ts"
 import type { FeatureResult, RollupCounts } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
@@ -251,6 +258,11 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
       /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
       declared?: SelectedContextCell["declared"]
       /**
+       * Present only on a library cell whose row declares App only (#38772): `status` reads app-only and `reason`
+       * says why; the stored result it cites stays as measured.
+       */
+      appOnly?: SelectedContextCell["appOnly"]
+      /**
        * Present only when this older decision was kept against a newer same-suite attempt whose harness reading did
        * not finish (34675). The cell's own status, reason and origin stay the older decision's; this names the newest
        * refused attempt, its time read from that run's own original.
@@ -371,7 +383,8 @@ function publishedDerived(derived: DerivedMarker): Omit<DerivedMarker, "ownStatu
 function decidedSummary(summary: PublicContextSummary): PublicContextSummary {
   const featureResults: PublicContextSummary["featureResults"] = {}
   for (const [id, cell] of Object.entries(summary.featureResults)) {
-    if (!isPublishedStatus(cell.status)) continue
+    // An App only cell is published as its label (#38772): it is no grade, so it is neither decided nor undecided.
+    if (!isPublishedStatus(cell.status) && cell.status !== APP_ONLY) continue
     featureResults[id] = cell.joined
       ? {
           ...cell,
@@ -384,12 +397,12 @@ function decidedSummary(summary: PublicContextSummary): PublicContextSummary {
 
 /**
  * #37341 D5 (@cto 97ba8eea): every published card cites an entry of its run's public trace that is itself decided, or,
- * for a reviewed declaration, its review (the cell's reason). A card whose citation is missing refuses here, at build
- * time, naming the cell, instead of failing in a reader's browser.
+ * for a reviewed declaration or an App only row (#38772), its reason. A card whose citation is missing refuses here, at
+ * build time, naming the cell, instead of failing in a reader's browser.
  */
 function checkCitations(where: string, summary: PublicContextSummary, documents: PublicDocuments): void {
   for (const [id, cell] of Object.entries(summary.featureResults)) {
-    if (cell.declared) continue
+    if (cell.declared || cell.appOnly) continue
     const receipt = summary.sources[cell.origin.runId]?.trace
     const document = receipt ? documents.get(receipt.url)?.document : undefined
     const entry =
@@ -531,6 +544,11 @@ export function publicResults(
               }),
               ...(cell.outerAbsent && { outerAbsent: cell.outerAbsent, reason: cell.outerAbsent.reason }),
               ...(cell.declared && { declared: cell.declared, reason: publicDeclaredReason(cell.declared) }),
+              ...(cell.appOnly && {
+                status: APP_ONLY,
+                appOnly: cell.appOnly,
+                reason: publicAppOnlyReason(cell.appOnly),
+              }),
               // 34675: qualified through the existing original-run store; a refusal-only run need not contribute.
               ...(cell.refusedAttempt && {
                 refusedAttempt: {
