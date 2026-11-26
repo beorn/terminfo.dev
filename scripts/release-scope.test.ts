@@ -664,7 +664,9 @@ describe("probe method classification", () => {
         // #38772 (@cto b1a8ecea): only a parent refused by its own effect read derives a child. In these 17 runs every one
         // of the 30 cells derived before was read from a parent refused only by a query's silence, so none derives now;
         // each reads its own status, which the pin below already held (ownStatus), so no other verdict moved.
-        expect(derived).toEqual([])
+        // #38772 (@cto 8cccf709): the OSC 52 umbrella is graded from its write and read rows; in these runs only
+        // VTerm's halves are both decided, so it is the one published cell graded from parts.
+        expect(derived).toEqual(["lib:vterm extensions.osc52-clipboard"])
         // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
         const outerAbsent = Object.entries(api.contexts)
           .flatMap(([key, context]) =>
