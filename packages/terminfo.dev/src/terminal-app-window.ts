@@ -926,9 +926,10 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
           }
           rounds.push({ closed, dismissal })
           if (dismissal.status === "refused") refused = dismissal.reason
-          // A tab that has already gone leaves a window AppleScript's close ignores and AX cannot see, so no sheet
-          // will ever appear for it. When the dismissal found none, close it with the Window menu's own shortcut.
-          if (dismissal.status === "no-sheet") {
+          // A tab that has already gone leaves a window AppleScript's close ignores and AX cannot see at all — the
+          // measured reply is status no-window with candidates 0 against the idle windows — so no sheet can appear.
+          // When the dismissal found neither a sheet nor the window, close it with the Window menu's own shortcut.
+          if (dismissal.status === "no-sheet" || dismissal.status === "no-window") {
             trace.forced = forceCloseTerminalAppWindow(window.windowId)
           }
           for (let attempt = 0; remaining !== 0 && attempt < 30; attempt += 1) {

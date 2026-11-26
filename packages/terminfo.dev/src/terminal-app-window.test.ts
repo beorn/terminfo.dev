@@ -862,6 +862,7 @@ describe("37257 Terminal.app close sheet", () => {
     sheet: boolean
     trusted?: boolean
     noSheet?: boolean
+    noWindow?: boolean
   }) =>
     vi.fn((command: string, args?: readonly string[]) => {
       if (command === "sleep") return ok("")
@@ -876,6 +877,18 @@ describe("37257 Terminal.app close sheet", () => {
         return ok(JSON.stringify({ status: "pressed", tabs: 0 }))
       }
       if (script.includes("AXSheet")) {
+        if (state.noWindow) {
+          return ok(
+            JSON.stringify({
+              status: "no-window",
+              candidates: 0,
+              sheets: 0,
+              pressed: 0,
+              matchedBy: null,
+              windows: [{ title: "codi — -zsh — 120×30", sheets: 0 }],
+            }),
+          )
+        }
         if (state.noSheet) return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
         if (state.trusted === false) {
           return ok(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" }))
@@ -951,6 +964,21 @@ describe("37257 Terminal.app close sheet", () => {
     expect(state.windows).toBe(0)
     expect(result.remaining).toBe(0)
     expect(result.rounds[0]?.dismissal.status).toBe("no-sheet")
+    expect(result.forced).toEqual({ status: "pressed", tabs: 0 })
+  })
+
+  test("a window AX cannot see at all still closes through the Window menu shortcut", () => {
+    const state = { windows: 1, processes: 0, sheet: false, noWindow: true }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      forced: { status: string }
+      rounds: { dismissal: { status: string } }[]
+    }
+    expect(state.windows).toBe(0)
+    expect(result.remaining).toBe(0)
+    expect(result.rounds[0]?.dismissal.status).toBe("no-window")
     expect(result.forced).toEqual({ status: "pressed", tabs: 0 })
   })
 })
