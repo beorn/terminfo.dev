@@ -12,10 +12,14 @@ import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
 import {
   assertClipboardProfile,
+  CLIPBOARD_ALLOW_ARGS,
+  CLIPBOARD_READ_ALLOWED_KEY,
+  CLIPBOARD_READ_DEFAULTS,
   clipboardReadDefault,
   clipboardReadProfile,
-  CLIPBOARD_ALLOW_ARGS,
-  CLIPBOARD_READ_DEFAULTS,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
+  verifyReadAllowedInForce,
   type ClipboardApp,
 } from "./linux-clipboard.ts"
 
@@ -156,4 +160,129 @@ test("WezTerm's Mac release tag has its own absent citation, distinct from the L
   expect(clipboardReadDefault("wezterm", "default", "20240203-110809-5046fc23").readDefaultRefusal).toContain(
     "this run measured 20240203-110809-5046fc23",
   )
+})
+
+test("xterm OSC 61 ; allowWindowOps ST read-back proves GetSelection absent under allow and present under default (#33134)", () => {
+  const allowRaw =
+    "\x1b]61;GetIconTitle,GetWinTitle,SetXprop,GetChecksum\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c"
+  const allowParsed = parseXtermReadAllowedReply({
+    reason: "reply",
+    raw: allowRaw,
+    rawBase64: Buffer.from(allowRaw).toString("base64"),
+  })
+  expect(allowParsed).toMatchObject({
+    target: "xterm",
+    method: "OSC 61 ; allowWindowOps ST",
+    sequence: "\x1b]61;allowWindowOps\x1b\\",
+    disallowedWindowOps: ["GetIconTitle", "GetWinTitle", "SetXprop", "GetChecksum"],
+    getSelectionAbsent: true,
+    inForce: true,
+  })
+  expect(
+    verifyReadAllowedInForce("xterm", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(allowParsed),
+    }),
+  ).toEqual({
+    inForce: true,
+    summary:
+      "OSC 61 ; allowWindowOps ST disallowedWindowOps=GetIconTitle,GetWinTitle,SetXprop,GetChecksum (GetSelection absent)",
+  })
+
+  const defaultRaw =
+    "\x1b]61;GetIconTitle,GetWinTitle,SetXprop,GetSelection,SetSelection,GetChecksum\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c"
+  const defaultParsed = parseXtermReadAllowedReply({
+    reason: "reply",
+    raw: defaultRaw,
+    rawBase64: Buffer.from(defaultRaw).toString("base64"),
+  })
+  expect(defaultParsed.getSelectionAbsent).toBe(false)
+  expect(defaultParsed.inForce).toBe(false)
+  expect(
+    verifyReadAllowedInForce("xterm", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(defaultParsed),
+    }),
+  ).toEqual({
+    inForce: false,
+    reason:
+      "read allowed by setting, not proved in force (OSC 61 ; allowWindowOps ST lists GetSelection in disallowedWindowOps: GetIconTitle,GetWinTitle,SetXprop,GetSelection,SetSelection,GetChecksum)",
+  })
+
+  const silentParsed = parseXtermReadAllowedReply({
+    reason: "sentinel",
+    raw: "\x1b[?64;1;2c",
+    rawBase64: Buffer.from("\x1b[?64;1;2c").toString("base64"),
+  })
+  expect(silentParsed.inForce).toBe(false)
+  expect(
+    verifyReadAllowedInForce("xterm", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(silentParsed),
+    }),
+  ).toEqual({
+    inForce: false,
+    reason:
+      "read allowed by setting, not proved in force (OSC 61 ; allowWindowOps ST returned no disallowedWindowOps reply)",
+  })
+})
+
+test("Alacritty msg get-config -w -1 read-back over ALACRITTY_SOCKET proves terminal.osc52 = CopyPaste (#33134)", () => {
+  const allowParsed = parseAlacrittyReadAllowedConfig({
+    socket: "/tmp/Alacritty-:0-150.sock",
+    exitStatus: 0,
+    stdout: JSON.stringify({ terminal: { osc52: "copypaste", shell: null } }),
+    stderr: "",
+  })
+  expect(allowParsed).toMatchObject({
+    target: "alacritty",
+    method: "alacritty msg get-config -w -1",
+    command: ["alacritty", "msg", "get-config", "-w", "-1"],
+    socket: "/tmp/Alacritty-:0-150.sock",
+    exitStatus: 0,
+    osc52: "CopyPaste",
+    rawOsc52: "copypaste",
+    setting: "terminal.osc52 = CopyPaste",
+    inForce: true,
+  })
+  expect(
+    verifyReadAllowedInForce("alacritty", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(allowParsed),
+    }),
+  ).toEqual({
+    inForce: true,
+    summary: "alacritty msg get-config -w -1 over ALACRITTY_SOCKET: terminal.osc52 = CopyPaste",
+  })
+
+  const defaultParsed = parseAlacrittyReadAllowedConfig({
+    socket: "/tmp/Alacritty-:0-150.sock",
+    exitStatus: 0,
+    stdout: JSON.stringify({ terminal: { osc52: "onlycopy", shell: null } }),
+    stderr: "",
+  })
+  expect(defaultParsed.osc52).toBe("OnlyCopy")
+  expect(defaultParsed.inForce).toBe(false)
+  expect(
+    verifyReadAllowedInForce("alacritty", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(defaultParsed),
+    }),
+  ).toEqual({
+    inForce: false,
+    reason:
+      "read allowed by setting, not proved in force (alacritty msg get-config -w -1 reported terminal.osc52 = OnlyCopy, expected CopyPaste)",
+  })
+
+  const missingSocket = parseAlacrittyReadAllowedConfig({
+    socket: null,
+    exitStatus: null,
+    stdout: "",
+    stderr: "",
+    error: "ALACRITTY_SOCKET is not set",
+  })
+  expect(missingSocket.inForce).toBe(false)
+  expect(
+    verifyReadAllowedInForce("alacritty", {
+      [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(missingSocket),
+    }),
+  ).toEqual({
+    inForce: false,
+    reason: "read allowed by setting, not proved in force (alacritty msg get-config -w -1 had no ALACRITTY_SOCKET)",
+  })
 })
