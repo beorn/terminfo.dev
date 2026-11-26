@@ -2117,10 +2117,13 @@ async function runProbeBatchInRun(
             : events.some((event) => event.kind === "write") ||
                 queries.length ||
                 captureAttempted ||
-                clipboardEvents.length ||
-                appSemanticRead
+                clipboardEvents.length
               ? probe.id
-              : undefined
+              : appSemanticRead
+                ? result.response !== undefined
+                  ? `${probe.id}.callbackResponse`
+                  : probe.id
+                : undefined
         const post = geometryCheck?.post
         const resized =
           preGeometry?.status === "measured" &&

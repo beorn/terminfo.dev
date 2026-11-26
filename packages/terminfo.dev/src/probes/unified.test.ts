@@ -939,8 +939,15 @@ it("binds an App state assertion whose reader never wrote through the publishabl
     sourceRevision,
   ).run
   expect(decoded.results.find((row) => row.featureId === id)?.status).toBe("supported")
+  expect(decoded.results.find((row) => row.featureId === id)?.rawReplyRef).toBe(`${id}.callbackResponse`)
+  expect(JSON.parse(decoded.rawReplies[`${id}.callbackResponse`] ?? "{}")).toMatchObject({
+    status: "measured",
+    reader: "state",
+    handled: { after: "handled", expected: "handled" },
+    target: { after: "target", expected: "target" },
+  })
   expect(decoded.assertions).toContainEqual(
-    expect.objectContaining({ featureId: id, kind: "positive", rawReplyRef: id }),
+    expect.objectContaining({ featureId: id, kind: "positive", rawReplyRef: `${id}.callbackResponse` }),
   )
 })
 
