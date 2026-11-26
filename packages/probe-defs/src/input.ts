@@ -976,15 +976,19 @@ function sgrMouseCoords(report: string): { x: number; y: number } | undefined {
   return { x: Number(match[1]), y: Number(match[2]) }
 }
 
+/**
+ * The 1-based cell's pixel span, counted from 0 (kitty) or from 1: a cell of width w at column c covers
+ * (c-1)w..cw-1 from 0 and (c-1)w+1..cw from 1, so either origin's report lies in (c-1)w..cw (#38772).
+ */
 function pixelCoordsWithin(control: string, report: string, geometry: PixelGeometry): boolean {
   const cell = sgrMouseCoords(control)
   const pixel = sgrMouseCoords(report)
   return (
     cell !== undefined &&
     pixel !== undefined &&
-    pixel.x > (cell.x - 1) * geometry.cellWidth &&
+    pixel.x >= (cell.x - 1) * geometry.cellWidth &&
     pixel.x <= cell.x * geometry.cellWidth &&
-    pixel.y > (cell.y - 1) * geometry.cellHeight &&
+    pixel.y >= (cell.y - 1) * geometry.cellHeight &&
     pixel.y <= cell.y * geometry.cellHeight
   )
 }

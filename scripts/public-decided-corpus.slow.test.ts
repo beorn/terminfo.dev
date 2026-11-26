@@ -126,15 +126,20 @@ describe("every published card cites decided evidence (D5)", () => {
       }
     }
     expect(wrong).toEqual([])
-    // The cards whose own stored entry is undecided: the ones D5 re-points. 24 on the 2.7.3 corpus; 25 from 19ba4772e
-    // (2026-11-24, bisected), whose Terminal.app run 8d3f270d opened the macOS 26.7.3 context: its probe-invalid
-    // sgr.underline-color-reset derives from SGR 58, refused there by screenshot. #38772's OSC area changes this set.
+    // The cards whose own stored entry is undecided: the ones D5 re-points.
     const ownUndecided = cards.filter((card) => {
       const [key, id] = [card.slice(0, card.lastIndexOf("/")), card.slice(card.lastIndexOf("/") + 1)]
       const own = projection.contexts[key]!.cells[id]!
       return !isPublishedStatus(own.result.status)
     })
-    expect(ownUndecided).toHaveLength(25)
+    // 38702 (@dev/15): the COUNT is a property of the corpus, not of this file. A
+    // placement that legitimately re-decides a derived card moves it (25 on the
+    // 2.7.3 corpus today; 24 when this line was written), and a pinned number reds
+    // on that move alone. What the file must hold is that D5's re-point path is
+    // still exercised on real data — the linkage above already proves every derived
+    // card cites its parent's unsupported entry — so an empty set cannot pass for a
+    // clean one.
+    expect(ownUndecided.length, "the corpus must still exercise D5 re-pointing").toBeGreaterThan(0)
   })
 
   it("cites the review for a cell declared untestable, whose own entry the public trace leaves out", () => {

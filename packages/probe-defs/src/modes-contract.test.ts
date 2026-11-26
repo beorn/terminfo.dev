@@ -27,16 +27,32 @@ import {
 
 /** The 29 Modes features of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
 const MODES_CONTRACT: GroupContract = [
-  { id: "modes.alt-screen.enter", expected: "decided", claim: "DECRPM 1049 recognizes alt-screen enter" },
+  {
+    id: "modes.alt-screen.enter",
+    expected: "decided",
+    claim: "The alternate-buffer marker read decides; DECRPM 1049 alone reads Recognized",
+  },
   {
     id: "modes.alt-screen.exit",
     expected: "inconclusive",
     claim: "Alt-screen exit buffer restore needs pixel review; CPR after exit does not measure the buffer",
   },
-  { id: "modes.bracketed-paste", expected: "decided", claim: "DECRPM 2004 recognizes bracketed paste" },
-  { id: "modes.application-cursor", expected: "decided", claim: "DECRPM 1 recognizes application cursor keys" },
-  { id: "modes.auto-wrap", expected: "decided", claim: "DECRPM 7 recognizes auto-wrap" },
-  { id: "modes.mouse-tracking", expected: "decided", claim: "DECRPM 1000 recognizes mouse tracking" },
+  {
+    id: "modes.bracketed-paste",
+    expected: "decided",
+    claim: "The paste-delimiter read decides; DECRPM 2004 alone reads Recognized",
+  },
+  {
+    id: "modes.application-cursor",
+    expected: "decided",
+    claim: "The Up-key encoding read decides; DECRPM 1 alone reads Recognized",
+  },
+  { id: "modes.auto-wrap", expected: "decided", claim: "The wrap cursor read decides; DECRPM 7 alone never passes" },
+  {
+    id: "modes.mouse-tracking",
+    expected: "decided",
+    claim: "The click-report read decides; DECRPM 1000 alone reads Recognized",
+  },
   {
     id: "modes.focus-tracking",
     expected: "inconclusive",
@@ -54,8 +70,16 @@ const MODES_CONTRACT: GroupContract = [
     expected: "inconclusive",
     claim: "Insert/replace mode needs a measured cell-shift fixture, not DECRPM alone",
   },
-  { id: "modes.mouse-sgr", expected: "decided", claim: "DECRPM 1006 recognizes SGR mouse" },
-  { id: "modes.mouse-all", expected: "decided", claim: "DECRPM 1003 recognizes all-motion mouse" },
+  {
+    id: "modes.mouse-sgr",
+    expected: "decided",
+    claim: "The SGR click-encoding read decides; DECRPM 1006 alone reads Recognized",
+  },
+  {
+    id: "modes.mouse-all",
+    expected: "decided",
+    claim: "The buttonless-motion read decides; DECRPM 1003 alone reads Recognized",
+  },
   {
     id: "modes.application-keypad",
     expected: "decided",
@@ -202,6 +226,16 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
 }
 
 /** Every private DECRQM answers Ps; queryMode keeps the fold for the arms that only ask whether a mode is on. */
+const RECOGNIZED_ONLY_UNDER_REPLAY: ReadonlySet<string> = new Set([
+  "modes.alt-screen.enter",
+  "modes.application-cursor",
+  "modes.bracketed-paste",
+  "modes.deccolm",
+  "modes.mouse-all",
+  "modes.mouse-sgr",
+  "modes.mouse-tracking",
+])
+
 function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
   const reply = (sequence: string) => {
     const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
@@ -346,6 +380,30 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.observation).toBeUndefined()
       expect(result?.notTested).toMatchObject({ reason: "no-semantic-observable" })
       expect(result?.notTested?.noObservable).toContain("owned")
+      continue
+    }
+    // #38772 (@cpo/term 56269cef): DECRPM replay has no effect route, so a mode it recognizes reads Untestable,
+    // "Recognized; effect not tested", never Supported. Auto-wrap always has its cursor route and stays an open probe.
+    if (RECOGNIZED_ONLY_UNDER_REPLAY.has(row.id)) {
+      const result = await probe.term?.(term)
+      expect(result?.observation, row.id).toBeUndefined()
+      expect(result?.tests, row.id).toEqual([
+        expect.objectContaining({
+          status: "untestable",
+          reason: expect.stringMatching(/^Recognized; effect not tested: DECRPM mode \d+ returned set \(Ps 1\)/),
+        }),
+      ])
+      continue
+    }
+    if (row.id === "modes.auto-wrap") {
+      const result = await probe.term?.(term)
+      expect(result?.observation).toBeUndefined()
+      expect(result?.tests).toMatchObject([
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
+        }),
+      ])
       continue
     }
     if (row.id === "modes.alt-screen.exit") {

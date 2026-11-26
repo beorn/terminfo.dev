@@ -131,6 +131,18 @@ test("a surface whose designation is inert reads charsets.dec-special unsupporte
   expect(graded.after, "charsets.dec-special detects an inert designation").toBe("unsupported")
 })
 
+// #38772, the audit of build c73de477: the vt220 library decoded e-acute and U+4E16 into their cells and left the seeded
+// cell after the wide glyph as it was. That cell is text.wide.*'s claim; charsets.utf8 claims only the decoding.
+test("charsets.utf8 reads supported from a surface that decodes UTF-8 but keeps a wide glyph's follower cell", async () => {
+  const row = CHARSET_CONTRACT.find((entry) => entry.id === "charsets.utf8")
+  const probe = charsetsProbes.find((entry) => entry.id === "charsets.utf8")
+  if (!row || !probe) throw new Error("the Character Sets contract names charsets.utf8")
+  const graded = await regradeRow(probe, row, {
+    headless: libProbeSource(createSemanticSurface({ mutations: ["wide-follower-kept"] })),
+  })
+  expect(graded.after).toBe("supported")
+})
+
 test("the Character Sets two-sided control table covers every charsets contract row", () => {
   expect(CHARSET_SEMANTIC_SURFACE_CONTROLS.map((entry) => entry.id)).toEqual(CHARSET_CONTRACT.map((entry) => entry.id))
 })

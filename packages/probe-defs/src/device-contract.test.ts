@@ -96,7 +96,7 @@ const DEVICE_CONTRACT: GroupContract = [
   {
     id: "device.xtgetxres",
     expected: "decided",
-    claim: "XTGETXRES returns a complete status-1 termName resource value",
+    claim: "XTGETXRES returns a complete status-1 saveLines resource value",
   },
 ]
 

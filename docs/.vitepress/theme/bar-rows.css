@@ -190,7 +190,8 @@
   display: flex;
   flex-direction: column;
   width: min(440px, calc(100vw - 32px));
-  max-height: min(60vh, 420px);
+  /* SupportBar lowers --pop-max-height to the room beside the bar, so the list scrolls inside the viewport (#38757). */
+  max-height: min(60vh, 420px, var(--pop-max-height, 100vh));
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   background: var(--vp-c-bg);
@@ -245,14 +246,17 @@
   color: var(--vp-c-text-1);
   background: var(--vp-c-default-soft);
 }
+/* SupportBar sets --detail-max-height to what the viewport holds (#38757); the card inside scrolls past it. */
 .support-pop-detail {
   position: absolute;
   top: 0;
   z-index: 9502;
   isolation: isolate;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: min(430px, calc(100vw - 32px));
-  max-height: min(74vh, 560px);
+  max-height: var(--detail-max-height, min(74vh, 560px));
   overflow: visible;
   padding: 16px 16px 14px;
   border: 1px solid var(--vp-c-text-3);
@@ -265,8 +269,8 @@
   opacity: 1;
 }
 /* Scrollable interior inside the elevated child pane so the seam arrow on the outer box is never clipped. */
-.support-pop-detail > .result-evidence__inline-card {
-  max-height: calc(min(74vh, 560px) - 30px);
+.support-pop-detail > .rc-card--inline {
+  min-height: 0;
   overflow: auto;
 }
 /* Invisible pointer bridge spanning the gap between the hovered row and the child detail pane. */
@@ -617,7 +621,7 @@ a.result-row:focus-visible {
     gap: 10px;
     min-height: 24px;
   }
-  .term-version {
+  .term-row .term-version {
     display: none;
   }
   .term-row-card,

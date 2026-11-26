@@ -1316,26 +1316,43 @@ describe("device contracts without prior coverage", () => {
     },
   )
 
-  test("XTGETXRES binds a status-1 termName value and reads status 0 as a refusal", async () => {
+  // #38772, the audit of build c73de477: xterm 411/412 answered termName with status 0 because termName is a string
+  // resource left unset by default (charproc.c vt100ResourceToString returns NULL for it), so xterm was graded
+  // Unsupported. saveLines is an integer resource, and xterm answers every integer resource with its value.
+  test("XTGETXRES asks saveLines, binds a status-1 decimal value and reads status 0 as a refusal", async () => {
     const probe = callback("device.xtgetxres")
-    const frame = "\x1bP1+r7465726d4e616d65=787465726d\x1b\\"
-    for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
+    const asked: string[] = []
+    const asking = (raw: string): TermProbeSource => {
+      const ctx = app(raw)
+      const query = ctx.queryWithSentinelOutcome
+      return {
+        ...ctx,
+        queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => (
+          asked.push(sequence),
+          query(sequence, pattern)
+        ),
+      } as TermProbeSource
+    }
+    const frame = "\x1bP1+R736176654c696e6573=31303234\x1b\\"
+    for (const result of [probe.headless(headless(frame)), await probe.terminal(asking(frame))]) {
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     }
+    expect(asked).toEqual(["\x1bP+Q736176654c696e6573\x1b\\"])
     // The contract asks exactly one name, so a status-0 refusal is this probe's measured negative
     // (27914) — unlike the shared refusal branch, which stays inconclusive for multi-subject probes.
-    const refusal = "\x1bP0+r7465726d4e616d65\x1b\\"
+    const refusal = "\x1bP0+R736176654c696e6573\x1b\\"
     for (const result of [probe.headless(headless(refusal)), await probe.terminal(app(refusal))]) {
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
     }
-    // XTGETXRES encodes two hex digits per character: missing ST, empty and odd-length values are malformed.
+    // Two hex digits per character, and the value is xterm's %d: missing ST, empty, odd-length and non-decimal
+    // values are malformed.
     for (const raw of [
-      "\x1bP1+r7465726d4e616d65",
-      "\x1bP1+r7465726d4e616d65=\x1b\\",
-      "\x1bP1+R7465726d4e616d65=7\x1b\\",
-      "\x1bP1+r7465726d4e616d65=787\x1b\\",
+      "\x1bP1+R736176654c696e6573",
+      "\x1bP1+R736176654c696e6573=\x1b\\",
+      "\x1bP1+R736176654c696e6573=3\x1b\\",
+      "\x1bP1+R736176654c696e6573=787465726d\x1b\\",
     ]) {
       for (const result of [probe.headless(headless(raw)), await probe.terminal(app(raw))]) {
         expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })

@@ -8,17 +8,20 @@ let dismissedUntil = 0
 // Segment-anchored popover with zero pointer gap, Esc close from anywhere, visible close button for touch,
 // cascading right-side result pane (inline below the item on <600px viewports) reusing ResultEvidenceCell,
 // and click-to-scroll when the feature's row is present on the current page.
-import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { RESULT_CATEGORIES, type CategoryId } from "../../data/result-categories.ts"
 import type { PublicContextSummary, PublicRunMetadata } from "../../data/public-results.ts"
 import { publicResultFor } from "../../data/release-scope.ts"
 import { data } from "../../data/probes.data"
 import {
   clearActivePopover,
+  DETAIL_PANE_MAX_HEIGHT,
+  detailPanePlacement,
   detailPaneSide,
   featureAnchorId,
   HOVER_CLOSE_GRACE_MS,
   HOVER_OPEN_DELAY_MS,
+  popoverVerticalPlacement,
   registerActivePopover,
   segmentPopoverShift,
   type DetailPaneSide,
@@ -66,18 +69,26 @@ const tabId = (categoryId: CategoryId) => `${barId}-tab-${categoryId}`
 const root = ref<HTMLElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
 const pop = ref<HTMLElement | null>(null)
+const detail = ref<HTMLElement | null>(null)
 const open = ref(false)
 const pinned = ref(false)
 const engaged = ref(false)
 /** Pixels from the bar's start to the popover's left edge (anchored to the active segment, clamped to the page). */
 const shift = ref(0)
 /** Fixed viewport coordinates for the teleported popover so it always stacks above sticky table headers (#38269). */
-const popCoords = ref<{ left: number; top: number; flipped: boolean }>({ left: 16, top: 0, flipped: false })
+const popCoords = ref<{ left: number; top: number; flipped: boolean; maxHeight?: number }>({
+  left: 16,
+  top: 0,
+  flipped: false,
+})
 const tab = ref<CategoryId>("supported")
 const activeFeatureId = ref<string | null>(null)
 const paneSide = ref<DetailPaneSide>("right")
 const detailTop = ref(0)
 const detailNotchTop = ref(24)
+const detailMaxHeight = ref(DETAIL_PANE_MAX_HEIGHT)
+/** The hovered row the pane sits beside, kept so a pane that grows (evidence loading) is placed again. */
+let detailRow: HTMLElement | null = null
 const current = computed(() => RESULT_CATEGORIES.find((category) => category.id === tab.value) ?? RESULT_CATEGORIES[0]!)
 const items = computed(() =>
   open.value
@@ -118,14 +129,13 @@ function place(anchor?: HTMLElement | null) {
   })
   const left = Math.max(16, Math.min(Math.round(box.left + shift.value), Math.max(16, page - popWidth - 16)))
   const popHeight = pop.value?.getBoundingClientRect().height || Math.min(Math.round(viewH * 0.6), 420)
-  const belowTop = Math.round(box.bottom + 6)
-  const roomBelow = viewH - belowTop - 12
-  const roomAbove = box.top - 18
-  const flipped = roomBelow < Math.min(popHeight, 260) && roomAbove > roomBelow
-  const top = flipped
-    ? Math.max(12, Math.round(box.top - 6 - Math.min(popHeight, roomAbove)))
-    : Math.max(12, Math.min(belowTop, Math.max(12, viewH - 120)))
-  popCoords.value = { left, top, flipped }
+  const { top, flipped, maxHeight } = popoverVerticalPlacement({
+    barTop: box.top,
+    barBottom: box.bottom,
+    popHeight,
+    viewportHeight: viewH,
+  })
+  popCoords.value = { left, top, flipped, maxHeight }
 }
 
 function onViewportChange() {
@@ -136,9 +146,11 @@ function onViewportChange() {
     return
   }
   place()
+  if (activeFeatureId.value) void nextTick(() => updateDetailPlacement())
 }
 
 function updateDetailPlacement(rowEl?: HTMLElement | null) {
+  if (rowEl !== undefined) detailRow = rowEl
   const page = document.documentElement.clientWidth
   const box = pop.value?.getBoundingClientRect()
   const popLeft = box?.left ?? popCoords.value.left
@@ -149,18 +161,33 @@ function updateDetailPlacement(rowEl?: HTMLElement | null) {
     detailWidth: 420,
     pageWidth: page,
   })
-  if (box && rowEl) {
-    const rowBox = rowEl.getBoundingClientRect()
-    const rowCenter = rowBox.top - box.top + rowBox.height / 2
-    // Align the child pane's top near the hovered row while keeping it within the popover's vertical span.
-    const desiredTop = Math.max(0, Math.min(rowBox.top - box.top - 10, Math.max(0, box.height - 160)))
-    detailTop.value = Math.round(desiredTop)
-    detailNotchTop.value = Math.round(Math.max(16, Math.min(rowCenter - desiredTop, 240)))
+  if (box && detailRow) {
+    const rowBox = detailRow.getBoundingClientRect()
+    // Beside the hovered row, moved up only as far as the whole pane needs to stay inside the viewport (#38757).
+    const placed = detailPanePlacement({
+      popTop: box.top,
+      popHeight: box.height,
+      rowTop: rowBox.top,
+      rowHeight: rowBox.height,
+      paneHeight: detail.value?.offsetHeight ?? 0,
+      viewportHeight: window.innerHeight,
+    })
+    detailTop.value = placed.top
+    detailNotchTop.value = placed.notchTop
+    detailMaxHeight.value = placed.maxHeight
   } else {
     detailTop.value = 0
     detailNotchTop.value = 24
   }
 }
+
+// The pane's height changes as its evidence and screenshots load: place it again whenever it resizes.
+watch(detail, (pane, _old, onCleanup) => {
+  if (!pane || typeof ResizeObserver === "undefined") return
+  const observer = new ResizeObserver(() => updateDetailPlacement())
+  observer.observe(pane)
+  onCleanup(() => observer.disconnect())
+})
 
 function onOutside(event: PointerEvent) {
   const target = event.target as Node | null
@@ -250,6 +277,7 @@ function close(explicitDismiss = false) {
   engaged.value = false
   activeFeatureId.value = null
   lastAnchor = null
+  detailRow = null
   document.removeEventListener("pointerdown", onOutside, true)
   document.removeEventListener("keydown", onDocKeydown, true)
   window.removeEventListener("scroll", onViewportChange, true)
@@ -414,7 +442,11 @@ onBeforeUnmount(close)
         ref="pop"
         class="support-pop"
         :class="{ 'support-pop--flipped': popCoords.flipped }"
-        :style="{ left: `${popCoords.left}px`, top: `${popCoords.top}px` }"
+        :style="{
+          left: `${popCoords.left}px`,
+          top: `${popCoords.top}px`,
+          ...(popCoords.maxHeight ? { '--pop-max-height': `${popCoords.maxHeight}px` } : {}),
+        }"
         role="dialog"
         :aria-label="`${label} feature support breakdown`"
         @mouseenter="onPopEnter"
@@ -484,9 +516,14 @@ onBeforeUnmount(close)
         <div
           v-if="version && activeItem && paneSide !== 'below'"
           :id="detailId"
+          ref="detail"
           class="support-pop-detail"
           :class="'support-pop-detail--' + paneSide"
-          :style="{ top: `${detailTop}px`, '--detail-notch-top': `${detailNotchTop}px` }"
+          :style="{
+            top: `${detailTop}px`,
+            '--detail-notch-top': `${detailNotchTop}px`,
+            '--detail-max-height': `${detailMaxHeight}px`,
+          }"
           role="region"
           :aria-label="`${activeItem.name} result for ${label}`"
           aria-live="polite"
