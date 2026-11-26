@@ -50,6 +50,7 @@ import {
   completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  auditedLibvtermR1Sources,
   auditedKittyIdentity,
   sameFrame,
   sameRgb as sameRgbCells,
@@ -10768,7 +10769,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       const r1Report =
         ctx.backendName === "libvterm" &&
         hasAuditedOscInterfaceAbsence(ctx, "libvterm-r1") &&
-        auditedAdapterSources(identity, "libvtermR1")
+        auditedLibvtermR1Sources(identity)
       const target =
         r1Report && libvtermTarget
           ? libvtermTarget
