@@ -871,12 +871,14 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       # session and the client, when the collector exits. The config turns off the first-run tips and release notes,
       # which would otherwise cover the pane; ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home.
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
-      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/zellij-sockets"
+      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/zellij-sockets" SHELL="$(command -v bash)"
       mkdir -m 700 "$ZELLIJ_SOCKET_DIR"
       printf 'show_startup_tips false\nshow_release_notes false\n' > "$mux_config"
       mux_layout="$mux_output/mux-layout.kdl"
       {
-        printf 'layout {\n    pane command="bun" close_on_exit=true {\n'
+        # The server's own environment names no SHELL in the container (its log: "Cannot read SHELL env, falling back
+        # to use /bin/sh") and the pane opened /bin/sh, not the collector; name bun by its resolved path.
+        printf 'layout {\n    pane command="%s" close_on_exit=true {\n' "$(readlink -f "$(command -v bun)")"
         printf '        args "%s" "test" "--serve"\n' "$TERMINFO_RUNNER"
         printf '    }\n}\n'
       } > "$mux_layout"
