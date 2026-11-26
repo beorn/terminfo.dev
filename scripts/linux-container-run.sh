@@ -870,10 +870,15 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       # that runs the layout's one pane, the collector, as its direct child. close_on_exit ends the pane, then the
       # session and the client, when the collector exits. The config turns off the first-run tips and release notes,
       # which would otherwise cover the pane; ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home.
+      # The config reaches Zellij through --config-dir, whose config.kdl links to the receipt's config file: with
+      # --config <file>, Zellij 0.46.0 ignores the layout's pane command and opens the default shell instead, on the
+      # host as in the container (#38759, run 9513c657: the collector never registered).
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
       export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/zellij-sockets" SHELL="$(command -v bash)"
       mkdir -m 700 "$ZELLIJ_SOCKET_DIR"
       printf 'show_startup_tips false\nshow_release_notes false\n' > "$mux_config"
+      mkdir "$mux_output/zellij-config"
+      ln -s "$mux_config" "$mux_output/zellij-config/config.kdl"
       mux_layout="$mux_output/mux-layout.kdl"
       {
         # The server's own environment names no SHELL in the container (its log: "Cannot read SHELL env, falling back
@@ -911,7 +916,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       ( while :; do [[ -d "$zellij_log_dir" ]] && cp -r "$zellij_log_dir/." "$mux_output/zellij-log/" 2>/dev/null; sleep 1; done ) &
       zellij_log_mirror=$!
       mkdir -p "$mux_output/zellij-log"
-      zellij --config "$mux_config" --session "$mux_session" --new-session-with-layout "$mux_layout"
+      zellij --config-dir "$mux_output/zellij-config" --session "$mux_session" --new-session-with-layout "$mux_layout"
       kill "$zellij_log_mirror" 2>/dev/null
       wait "$mux_watcher" || { echo "Owned Zellij socket watcher failed" >&2; exit 2; }
       ;;
