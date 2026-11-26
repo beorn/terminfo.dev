@@ -94,11 +94,13 @@ export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
   project: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
+  onRunLoaded?: (loaded: number, total: number) => void,
 ): T[]
 export function loadStoredRuns<T>(
   contentDir: string,
   catalog: readonly string[],
   project?: (run: LoadedRun, reread: () => RunTraceFacts, suites: ReadonlyMap<string, ProbeSuiteManifest>) => T,
+  onRunLoaded?: (loaded: number, total: number) => void,
 ): Array<LoadedRun | T> {
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
@@ -114,18 +116,22 @@ export function loadStoredRuns<T>(
       suites.set(manifest.probeHash, manifest)
     }
   }
-  const runs: Array<LoadedRun | T> = []
+  const runPaths: string[] = []
   for (const dir of [RUN_DIRS.term, RUN_DIRS.mux, RUN_DIRS.lib]) {
     const path = join(contentDir, dir)
     if (!existsSync(path)) throw new Error(`${path}: missing required probe directory`)
     for (const file of readdirSync(path)
       .filter((name) => name.endsWith(".json") && name !== "unified.json")
       .sort()) {
-      const runPath = join(path, file)
-      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
-      runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256), suites) : run)
-      if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
+      runPaths.push(join(path, file))
     }
+  }
+  const runs: Array<LoadedRun | T> = []
+  for (const runPath of runPaths) {
+    const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
+    runs.push(project ? project(run, storedRunReader(runPath, run.runId, run.sha256), suites) : run)
+    onRunLoaded?.(runs.length, runPaths.length)
+    if (runs.length % RUNS_PER_COLLECTION === 0) collectGarbage()
   }
   // A projecting load holds only the compact facts its project returns, so a collection at this boundary reclaims
   // the last batch's parsed runs before the caller projects, verifies and renders on top of them. #34946: collecting
