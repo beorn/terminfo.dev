@@ -1334,6 +1334,49 @@ test("the retained Warp pill inside the declared title-bar band calibrates and r
   expect(origin.basis).toContain("restore identical outside the declared chrome band confirmed")
 })
 
+// @failure confirmedFrame's stage-advance witness (!equal(current, changedFrom)) stayed whole-window strict, so a
+//   band-only Warp pill repaint landing before the next stage painted was accepted as that stage's paint (#33432).
+// @level l1
+// @consumer calibrateCaptureOrigin -> confirmedFrame stage-advance witness with declared chromeBand.
+test("a band-only Warp pill repaint before solid or column paint is not taken as the next stage's paint", async () => {
+  const requireFrame = (name: string): CapturedFrame => {
+    const frame = retainedFrame(name)
+    if (!frame) throw new Error(`missing retained Warp frame ${name}`)
+    return frame
+  }
+  const before = requireFrame("before")
+  const solid = requireFrame("solid")
+  const columns = requireFrame("columns")
+  const rows = requireFrame("rows")
+  const restore = requireFrame("restore")
+  const bandBytes = 40 * before.width * 4
+  const withPill = (frame: CapturedFrame): CapturedFrame => {
+    const copy = cloneFrame(frame)
+    copy.rgba.set(rows.rgba.subarray(0, bandBytes), 0)
+    return copy
+  }
+  const beforeWithPill = withPill(before)
+  const solidWithPill = withPill(solid)
+  const columnsWithPill = withPill(columns)
+  const origin = await calibration({
+    rows: 39,
+    cols: 123,
+    collectorLaunched: true,
+    chromeBand: WARP_TITLE_BAR,
+    frames: {
+      "before grid paint": [before, before],
+      "solid grid paint": [beforeWithPill, beforeWithPill, solid, solid],
+      "column edge paint": [solidWithPill, solidWithPill, columnsWithPill, columnsWithPill],
+      "row edge paint": [rows, rows],
+      "restore grid paint": [restore, restore],
+    },
+  }).promise
+  expect(origin.pixelGeometry).toEqual({ cellWidth: 8, cellHeight: 16, textWidth: 984, textHeight: 624 })
+  expect(origin.basis).toContain(
+    "declared chrome band y 0..39 full width (Warp title bar), changed px excused: solid 0 px, columns 797 px, rows 797 px; restore 797 px",
+  )
+})
+
 test("a change outside both the grid and the declared band still refuses", async () => {
   const rows = rasterFrame("rows")
   rows.rgba.set([255, 255, 255, 255], (11 * 12 + 0) * 4)
