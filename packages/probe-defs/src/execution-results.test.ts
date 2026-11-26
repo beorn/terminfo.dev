@@ -1231,6 +1231,7 @@ it("preserves native callback note fallback for unmeasured widths and TERM_FEATU
     if (!row.term) continue
     const callback = await row.term({
       cols: 80,
+      locale: () => "en_US.UTF-8",
       measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     } as unknown as TermProbeSource)
     expect(record(callback)).toMatchObject({
