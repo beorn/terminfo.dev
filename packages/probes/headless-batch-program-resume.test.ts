@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { afterEach, expect, test, vi } from "vitest"
+import { readFileSync } from "node:fs"
 import {
   readTermFeaturesEnvironment,
   readTerminalChildEnvironment,
@@ -31,14 +32,15 @@ async function grade(reading: ProgramResumeTokenReading) {
 }
 
 function status(result: Awaited<ReturnType<typeof grade>>) {
+  const featureId = "extensions.osc7577-token"
   return recordExecutedProbe({
-    featureId: "extensions.osc7577-token",
+    featureId,
     attempt: { scope: "probe", startedAt: "2026-11-26T01:00:00.000Z" },
-    assertions: result.assertions ?? [],
+    assertions: (result.assertions ?? []).map((assertion) => ({ ...assertion, featureId })),
     tests: result.tests,
-    ...(result.observation && { observation: result.observation }),
-    ...(result.notTested && { coverage: result.notTested }),
-  } as Parameters<typeof recordExecutedProbe>[0]).status
+    ...(result.observation && { observation: { ...result.observation, featureId } }),
+    ...(result.notTested && { coverage: { ...result.notTested, featureId, rawReplyRef: `${featureId}.response` } }),
+  }).status
 }
 
 test("one reader binds both variables to the same run; TERM_FEATURES readings are unchanged", () => {
@@ -111,3 +113,64 @@ test("no reader, an unbound child or a library context never decides the row", a
   expect(lib.observation).toBeUndefined()
   expect(JSON.stringify(lib)).toContain("spawns no application child")
 })
+
+// Row 2 (#38699): a report, valid or invalid, must leave the screen as it was. A fixture that swallows OSC strings, one
+// that prints their bodies and one whose screen reader shows nothing prove both outcomes and the missing control.
+type Mode = "consume" | "leak" | "dead"
+const OSC = /\x1b\](\d+);([^\x07\x1b]*)(?:\x07|\x1b\\)/g
+
+function headlessScreen(mode: Mode): LibProbeSource {
+  let text = ""
+  return {
+    backendName: "fixture",
+    kind: "lib",
+    feed(bytes: string) {
+      if (bytes.startsWith("\x1b[2J\x1b[H")) text = ""
+      const shown = bytes.replace("\x1b[2J\x1b[H", "").replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : ""))
+      if (mode !== "dead") text += shown
+    },
+    getText: () => text,
+    getCursor: () => ({ x: text.length, y: 0, visible: true, style: null }),
+  } as unknown as LibProbeSource
+}
+
+function appScreen(mode: Mode): TermProbeSource {
+  let col = 1
+  return {
+    write(bytes: string) {
+      if (bytes === "\x1b[1;1H\x1b[2K") col = 1
+      else if (mode !== "dead") col += bytes.replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : "")).length
+    },
+    queryCursorPosition: async () => (mode === "dead" ? null : { row: 1, col }),
+  } as unknown as TermProbeSource
+}
+
+function silent(id: string) {
+  const found = extensionsProbes.find((item) => item.id === id)
+  if (!found?.term || !found.lib) throw new Error(`missing ${id} arms`)
+  return found as typeof found & { term: NonNullable<typeof found.term>; lib: NonNullable<typeof found.lib> }
+}
+
+test.each(["extensions.osc7577-silent", "extensions.osc88-silent"])(
+  "%s: swallowed reports read Supported, printed ones Unsupported, a blind reader no result",
+  async (id) => {
+    const row = silent(id)
+    for (const [arm, run] of [
+      ["lib", async (mode: Mode) => row.lib(headlessScreen(mode))],
+      ["term", async (mode: Mode) => row.term(appScreen(mode))],
+    ] as const) {
+      const consumed = await run("consume")
+      expect(consumed.observation, `${arm} consume`).toMatchObject({ outcome: "supported" })
+      const leaked = await run("leak")
+      expect(leaked.observation, `${arm} leak`).toMatchObject({ outcome: "unsupported" })
+      expect(leaked.note).toContain("visible")
+      const blind = await run("dead")
+      expect(blind.observation, `${arm} dead`).toBeUndefined()
+    }
+    expect(JSON.stringify(definitionText(id))).toContain(id.includes("7577") ? "revision 0.5" : "osc-88")
+  },
+)
+
+function definitionText(id: string) {
+  return (JSON.parse(readFileSync(new URL("../../content/features.json", import.meta.url), "utf8")) as Record<string, unknown>)[id]
+}
