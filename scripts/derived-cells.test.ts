@@ -433,6 +433,23 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
     expect(invalid.cells[C]!.featureResult!.status).toBe("probe-todo")
   })
 
+  it("an Unsupported half decides first, even while the other half is open (@cpo/term 3ad6dc0e)", () => {
+    const refusedWrite = osc52({
+      [W]: { status: "unsupported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    }).ctx.cells[C]!
+    expect(refusedWrite.featureResult!.status).toBe("unsupported")
+    expect(refusedWrite.derived).toMatchObject({ cites: W, words: "copy does not work (OSC 52 write)" })
+    const refusedRead = osc52({
+      [W]: { status: "probe-todo", reason: "Not run" },
+      [R]: { status: "unsupported" },
+      [C]: { status: "supported" },
+    }).ctx.cells[C]!
+    expect(refusedRead.featureResult!.status).toBe("unsupported")
+    expect(refusedRead.derived).toMatchObject({ cites: R, words: "reading does not answer at default settings (OSC 52 read)" })
+  })
+
   it("a half that is itself Untestable makes it Untestable", () => {
     const { ctx } = osc52({
       [W]: { status: "supported" },

@@ -105,14 +105,28 @@ export function readSetting(reason: string | null): { setting: string; by: "app"
 }
 
 /**
- * OSC 52's umbrella from its write and read rows (@cpo/term f281df2f, 5483ec82). A half that is not decided leaves it
- * To do; a half that is Untestable makes it Untestable; a refused write is Unsupported. With the write working, a read
- * refused at defaults is Unsupported; a read that needs a setting is Unsupported on an app (judged at shipped defaults)
- * and Supported on a library (judged with its embedder's setting enabled); a read at defaults is Supported.
+ * OSC 52's umbrella from its write and read rows (@cpo/term f281df2f, 5483ec82, 3ad6dc0e). An Unsupported half decides
+ * first: a refused write, then a read refused at defaults. Then a half not decided leaves it To do, and an Untestable
+ * half makes it Untestable. With both working, a read that needs a setting is Unsupported on an app (judged at shipped
+ * defaults) and Supported on a library (judged with its embedder's setting enabled); a read at defaults is Supported.
  */
 export function gradeOsc52Clipboard(parts: readonly PartReading[], kind: string): PartsGrade {
   const [write, read] = parts
   if (!write || !read) throw new Error("The OSC 52 umbrella reads exactly two parts: write, then read")
+  // @cpo/term 3ad6dc0e: an Unsupported half decides first, either half; the umbrella cannot be Supported once it fails.
+  if (write.status === "unsupported") {
+    return { status: "unsupported", words: `copy does not work (${write.name})`, decidedBy: [0] }
+  }
+  if (read.status === "unsupported") {
+    return {
+      status: "unsupported",
+      words:
+        write.status === "supported"
+          ? `copy works (${write.name}); reading does not answer at default settings, see ${read.name}`
+          : `reading does not answer at default settings (${read.name})`,
+      decidedBy: [1],
+    }
+  }
   const open = parts.filter((part) => !DECIDED_PART.has(part.status))
   if (open.length > 0) {
     return {
@@ -127,16 +141,6 @@ export function gradeOsc52Clipboard(parts: readonly PartReading[], kind: string)
       status: "untestable",
       words: `${untestable.name} is untestable here`,
       decidedBy: [parts.indexOf(untestable)],
-    }
-  }
-  if (write.status === "unsupported") {
-    return { status: "unsupported", words: `copy does not work (${write.name})`, decidedBy: [0] }
-  }
-  if (read.status === "unsupported") {
-    return {
-      status: "unsupported",
-      words: `copy works (${write.name}); reading does not answer at default settings, see ${read.name}`,
-      decidedBy: [1],
     }
   }
   const setting = readSetting(read.reason)
