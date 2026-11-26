@@ -126,13 +126,15 @@ describe("every published card cites decided evidence (D5)", () => {
       }
     }
     expect(wrong).toEqual([])
-    // The cards whose own stored entry is undecided: the ones D5 re-points (24 on the 2.7.3 corpus).
+    // The cards whose own stored entry is undecided: the ones D5 re-points. 24 on the 2.7.3 corpus; 25 from 19ba4772e
+    // (2026-11-24, bisected), whose Terminal.app run 8d3f270d opened the macOS 26.7.3 context: its probe-invalid
+    // sgr.underline-color-reset derives from SGR 58, refused there by screenshot. #38772's OSC area changes this set.
     const ownUndecided = cards.filter((card) => {
       const [key, id] = [card.slice(0, card.lastIndexOf("/")), card.slice(card.lastIndexOf("/") + 1)]
       const own = projection.contexts[key]!.cells[id]!
       return !isPublishedStatus(own.result.status)
     })
-    expect(ownUndecided).toHaveLength(24)
+    expect(ownUndecided).toHaveLength(25)
   })
 
   it("cites the review for a cell declared untestable, whose own entry the public trace leaves out", () => {
