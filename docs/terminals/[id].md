@@ -254,6 +254,7 @@ const breadcrumbParent = (() => {
   <dl>
     <dt>Terminal</dt><dd>{{ p.terminalName }}</dd>
     <dt>OS</dt><dd>{{ displayOs(selectedRun.subject?.os) }} {{ selectedRun.subject?.osVersion || '' }}</dd>
+    <template v-if="observerSwitches"><dt>Observer-only switches</dt><dd><code>{{ observerSwitches }}</code> <a href="/how-it-works/how-we-measure">(changes nothing measured)</a></dd></template>
   </dl>
 </details>
 

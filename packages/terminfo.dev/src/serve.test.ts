@@ -3476,6 +3476,8 @@ describe("private finite daemon startup", () => {
           process.exit(0)
         }
         const run = await collectProbeRun({ ids: [expectation === "timeout" || nativeQualification ? "erase.character" : "device.xtversion"], out })
+        if (pixelApp === "iterm2") assert.deepEqual(run.observers, ["iterm2: EnableAPIServer true"])
+        else assert.equal(run.observers, undefined)
         if (pixelApp && expectation !== "closure") {
           assert.equal(captureKind, "absent", "qualification replaced the primary pixel adapter")
           assert.equal(calibrations, 1, "text qualification skipped pixel calibration")

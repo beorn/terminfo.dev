@@ -76,9 +76,11 @@ export {
   ASSERTION_TYPES,
   HOST_INPUT_NAMES,
   SILENCE_RULES,
+  KNOWN_OBSERVERS,
   frameDigests,
   type SilenceDeclaration,
   type SilenceRule,
+  type KnownObserver,
 } from "./types.ts"
 export type {
   ObservationOutcome,
