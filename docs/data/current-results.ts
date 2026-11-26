@@ -26,6 +26,7 @@ import { definitionDiffers, gitSourceHistory, type SourceHistory } from "./sourc
 import { cellEntryHashes, suiteEntryHashes, type RunEntryHashes } from "./legacy-entry-hashes.ts"
 import { parseJsonStrict, type LoadedRun } from "@terminfo/run-parser"
 import { scoredFeatureIds } from "@terminfo/probe-defs"
+import type { AnalysisProgressReporter } from "./analysis-progress.ts"
 import { loadTerminals } from "@terminfo/catalog"
 
 export interface CurrentResult {
@@ -159,6 +160,7 @@ export function loadCurrentResults(
     artifactDir?: string
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
+    progress?: AnalysisProgressReporter
   } = {},
 ): CurrentResults {
   // Explicit working evidence is not a cached corpus reading, including an explicit empty input.

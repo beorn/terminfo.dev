@@ -1323,6 +1323,11 @@ export interface UnhandledSequence {
 
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
+  /**
+   * The locale of the process that owns this run (LC_ALL, else LC_CTYPE, else LANG): the one a program laying out
+   * text in this context reads its wcwidth from (#38772). null: none is set; absent: this source does not read it.
+   */
+  locale?: () => string | null
   /** Own keys of a live native cell before adapter normalization. A failed read throws. */
   nativeCellKeys?(row: number, col: number): readonly string[]
   /** Existing adapter name, retained only for human-readable binding diagnostics. */
@@ -1835,6 +1840,11 @@ export interface TermProbeSource {
    * feature negative (#28752).
    */
   utf8Decoding?: () => Promise<Utf8DecodingReading>
+  /**
+   * The locale of the process that owns this run (LC_ALL, else LC_CTYPE, else LANG): the one a program laying out
+   * text in this context reads its wcwidth from (#38772). null: none is set; absent: this source does not read it.
+   */
+  locale?: () => string | null
   /**
    * Present exactly when this run's owned capture pre-flight measured the cell-to-pixel geometry and
    * REFUSED it, by name (28785): a row that finds no capture adapter names this cause — the terminal

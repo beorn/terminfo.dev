@@ -10,6 +10,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
+import { SINGLE_CLICK_SPACING_MS } from "./input-fixture.ts"
 import { createLinuxInput } from "./linux-input.ts"
 
 const temporary: string[] = []
@@ -347,5 +348,26 @@ test.runIf(process.platform === "linux")(
     expect(lines).toContain("mouseup --window 0 --clearmodifiers 1")
     expect(lines.some((line) => /^mousedown /.test(line) && /--window 42/.test(line))).toBe(false)
     expect(lines.some((line) => /^mouseup /.test(line) && /--window 42/.test(line))).toBe(false)
+  },
+)
+
+// #33990 (@cto e387bb82): consecutive button-1 clicks and drags on the same cell must be spaced
+// past tmux's 300 ms DOUBLE_CLICK_TIME so control and target clicks read as single clicks.
+test.runIf(process.platform === "linux")(
+  "injectClick and injectDrag space consecutive button-1 gestures past tmux's 300 ms double-click window (#33990)",
+  async () => {
+    fixture()
+    const input = await createLinuxInput(liveExecutable())
+    await input.injectClick(1)
+    const firstFinishedAt = Date.now()
+    await input.injectClick(4)
+    const wheelElapsed = Date.now() - firstFinishedAt
+    expect(wheelElapsed).toBeLessThan(SINGLE_CLICK_SPACING_MS)
+    await input.injectClick(1)
+    const secondFinishedAt = Date.now()
+    expect(secondFinishedAt - firstFinishedAt).toBeGreaterThanOrEqual(SINGLE_CLICK_SPACING_MS - 15)
+    await input.injectDrag!(1)
+    const dragFinishedAt = Date.now()
+    expect(dragFinishedAt - secondFinishedAt).toBeGreaterThanOrEqual(SINGLE_CLICK_SPACING_MS - 15)
   },
 )

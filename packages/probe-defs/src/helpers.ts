@@ -835,6 +835,31 @@ export function colorReadbackReviewResult(noObservable: string, state: object): 
   return reviewResult("color-readback-review", `${noObservable}, so this run cannot decide it`, noObservable, state)
 }
 
+/** The locale a process's environment names, by POSIX precedence; null when none is set (#38772). */
+export function localeOf(env: Readonly<Record<string, string | undefined>>): string | null {
+  for (const name of ["LC_ALL", "LC_CTYPE", "LANG"]) {
+    const value = env[name]
+    if (value) return value
+  }
+  return null
+}
+
+/**
+ * The width an East Asian Ambiguous glyph takes under a locale's wcwidth (#38772, @cpo/term 448f3c70): one column in a
+ * UTF-8 locale that is not Chinese, Japanese or Korean. Any other locale gets the reason it cannot be graded, because
+ * C libraries disagree there and this probe states no width for them.
+ */
+export function ambiguousWidthUnder(locale: string | null | undefined): { expected: 1 } | { untestable: string } {
+  if (!locale) return { untestable: "The run does not name its locale, so the width a program expects is unknown" }
+  if (!/\.utf-?8(@|$)/i.test(locale)) {
+    return { untestable: `${locale} is not a UTF-8 locale, so wcwidth gives no width for this sample` }
+  }
+  if (/^(ja|ko|zh)([_.@]|$)/i.test(locale)) {
+    return { untestable: `${locale} is a CJK locale, where C libraries disagree on ambiguous width` }
+  }
+  return { expected: 1 }
+}
+
 /**
  * A row whose claim compares plainly written glyphs against a sequence of pixels assumes the
  * terminal decodes plain UTF-8 — a CONTEXT, measured once per run and never assumed (#28752). A
@@ -2551,6 +2576,36 @@ const DECRPM_WORDS: Record<DecrpmPs, string> = {
 /** A DECRPM reading as a cell stores it: the word and the numeric Ps, so a stored "reset" never hides a Ps 4 (#30557). */
 export function decrpmReading(ps: DecrpmPs): string {
   return `${DECRPM_WORDS[ps]} (Ps ${ps})`
+}
+
+/**
+ * The DECRPM reading a mode's effect route names beside its own result (#38772): the answer is context for the
+ * effect, never the verdict.
+ */
+export function decrpmEffectNote(ps: DecrpmPs | null, modeNum: number): string {
+  if (ps === null) return `No usable DECRPM reply for mode ${modeNum}`
+  return ps === 0 ? `DECRPM mode ${modeNum} returned Ps 0` : `DECRPM mode ${modeNum} returned ${decrpmReading(ps)}`
+}
+
+/**
+ * A context with no route to a mode's effect (#38772, @cpo/term 56269cef rule A: a pass has to mean the effect
+ * happened). When the terminal said it knows the mode (Ps 1, 2 or 3), the cell is a declared Untestable whose reason
+ * starts "Recognized; effect not tested", never Supported; otherwise it stays the open probe it was.
+ */
+export function noEffectRoute(
+  ps: DecrpmPs | null,
+  modeNum: number,
+  missing: string,
+  query = "DECRPM",
+): ProbeCallbackResult {
+  if (ps === 1 || ps === 2 || ps === 3) {
+    const reading =
+      query === "DECRPM" ? decrpmEffectNote(ps, modeNum) : `${query} mode ${modeNum} returned ${decrpmReading(ps)}`
+    return declaredUntestableResult(`Recognized; effect not tested: ${reading}, and ${missing}`, {
+      decrpm: decrpmReading(ps),
+    })
+  }
+  return methodUnavailable(`${decrpmEffectNote(ps, modeNum)}; ${missing}`)
 }
 
 /**

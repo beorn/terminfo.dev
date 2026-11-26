@@ -1,6 +1,7 @@
 /** Stored selection and projection for terminal observations. */
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
+import type { AnalysisProgressReporter } from "./analysis-progress.ts"
 import {
   aggregateCurrentResults,
   type RollupCounts,
@@ -16,7 +17,9 @@ import {
   isDefaultOf,
   isSameSupplementPass,
   MUX_DEFAULT_CONFIG,
+  READ_ALLOWED,
   supplementOf,
+  verifyReadAllowedInForce,
   type ContextSupplement,
 } from "./context-supplements.ts"
 import { cellLabel, loadReopenedCells, type ReopenedCell, type ReopenedMarker } from "./reopened-cells.ts"
@@ -555,6 +558,7 @@ export function projectResults(
     declared?: readonly DeclaredUntestableCell[]
     /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
     derived?: readonly DerivedPair[]
+    onProgress?: (completed: number, total: number) => void
   },
   archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
@@ -712,6 +716,7 @@ export function projectResults(
       policy.reopened ?? [],
       policy.derived ?? DERIVED_UNSUPPORTED,
       policy.declared ?? [],
+      policy.onProgress,
     ),
   }
 }
@@ -898,6 +903,7 @@ function composeContextSummaries(
   reopened: readonly ReopenedCell[] = [],
   derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
   declared: readonly DeclaredUntestableCell[] = [],
+  onProgress?: (completed: number, total: number) => void,
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
   const declaredApplied = new Set<DeclaredUntestableCell>()
@@ -939,7 +945,10 @@ function composeContextSummaries(
     attemptsByContext.set(key, [...(attemptsByContext.get(key) ?? []), input])
   }
   const summaries: Record<string, SelectedContextSummary> = {}
+  let composedContexts = 0
   for (const [contextKey, candidates] of groups) {
+    composedContexts += 1
+    onProgress?.(composedContexts, groups.size)
     const cells: Record<string, SelectedContextCell> = {}
     const ids = [...new Set(candidates.flatMap((run) => run.catalogIds ?? []))]
     // No measured run exists for a pre-start refusal: the explicit catalogue remains visible as
@@ -1269,11 +1278,18 @@ function applySupplements(
     // row is the deciding observation, not a note (#32593, @cto 2026-11-12 (a)). It still takes a supplement that
     // declares notesDecided, and only its own declared ids, so no other decided row moves.
     if (result.status !== "supported" && ignoresInSilence) {
-      // No reply under a setting the terminal may have ignored proves nothing: the default cell stays open. A
+      // No reply under a setting the terminal may have ignored proves nothing unless the same launch recorded an
+      // in-force read-back (#33134): the default cell stays open with the missing or contrary read-back reason. A
       // schema-4 default run records every catalog id, so a prior cell is present; were one absent, there is no cell
       // to mark and the id stays absent, which every reader already reads as probe-todo (statesFor).
-      if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: supplement.notInForce } }
-      continue
+      const proof =
+        supplement === READ_ALLOWED && result.status === "unsupported"
+          ? verifyReadAllowedInForce(run.subject.id, run.readRaw().rawReplies, supplement.notInForce)
+          : { inForce: false as const, reason: supplement.notInForce }
+      if (!proof.inForce) {
+        if (prior) cells[id] = { ...prior, supplement: { ...marker, filled: false, open: proof.reason } }
+        continue
+      }
     }
     // The same one-probe fold remember() uses, so every consumer reads the filled cell as it reads any other.
     const classification = classifyResultMethod(result, run.subject, run.assertions)
@@ -1398,6 +1414,7 @@ export function loadSelectedResults(
     artifactDir?: string
     workingRuns?: readonly LoadedRun[]
     workingAttempts?: readonly SelectedAttemptInput[]
+    progress?: AnalysisProgressReporter
   } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
@@ -1406,40 +1423,53 @@ export function loadSelectedResults(
   const catalog = Object.keys(features)
   // #34617: one rule fingerprint per build; each stored run is checked once against this build's identity rule.
   const ruleRevision = identityRuleRevision()
-  const runs = loadStoredRuns(contentDir, catalog, (run, readRaw, suites): ProjectionRun => {
-    const check = currentIdentityRuleCheck(run)
-    // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
-    if ("refused" in check && run.identity !== "unverified") {
-      console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
-    }
-    const selection = readCollectorSelection(run.rawReplies)
-    const cohort = run.probeHash === null ? undefined : suites.get(run.probeHash)?.probes[run.subject.kind]
-    const selectionCoversSuite = selectionCoversCohort(selection, cohort)
-    return {
-      ...compactRun(run, readRaw),
-      readArtifact: createArtifactReader(contentDir, run.path, "screenshot"),
-      readTextArtifact: createArtifactReader(contentDir, run.path, "text-snapshot"),
-      ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
-      traceMemo: {},
-      ...("matched" in check && {
-        identityRuleCheck: { checkedAt: "build" as const, ...check.matched, ruleRevision },
-      }),
-    }
-  })
+  options.progress?.phase("load-stored-runs")
+  const runs = loadStoredRuns(
+    contentDir,
+    catalog,
+    (run, readRaw, suites): ProjectionRun => {
+      const check = currentIdentityRuleCheck(run)
+      // #34719: an unverified run records no identity claim, so there is none to refuse; verified and disputed runs print.
+      if ("refused" in check && run.identity !== "unverified") {
+        console.error(`${run.path}: current identity rule refused (${check.refused}); no trace claim`)
+      }
+      const selection = readCollectorSelection(run.rawReplies)
+      const cohort = run.probeHash === null ? undefined : suites.get(run.probeHash)?.probes[run.subject.kind]
+      const selectionCoversSuite = selectionCoversCohort(selection, cohort)
+      return {
+        ...compactRun(run, readRaw),
+        readArtifact: createArtifactReader(contentDir, run.path, "screenshot"),
+        readTextArtifact: createArtifactReader(contentDir, run.path, "text-snapshot"),
+        ...(selectionCoversSuite !== undefined && { selectionCoversSuite }),
+        traceMemo: {},
+        ...("matched" in check && {
+          identityRuleCheck: { checkedAt: "build" as const, ...check.matched, ruleRevision },
+        }),
+      }
+    },
+    (loaded, total) => options.progress?.tick(loaded, total),
+  )
+  options.progress?.phase("verify-artifacts", runs.length)
   const verifiedArtifacts = new Set<string>()
   const textSnapshots = new Map<string, Uint8Array>()
-  for (const run of runs) {
+  for (let index = 0; index < runs.length; index++) {
+    const run = runs[index]
+    if (!run) continue
     for (const ref of run.screenshotRefs) {
       if (verifiedArtifacts.has(`screenshot:${ref}`)) continue
       readVerifiedArtifact(contentDir, ref, run.path, "screenshot")
       verifiedArtifacts.add(`screenshot:${ref}`)
+      options.progress?.tick(index + 1, runs.length)
     }
     for (const ref of run.textSnapshotRefs ?? []) {
       if (verifiedArtifacts.has(`text-snapshot:${ref}`)) continue
       textSnapshots.set(ref, readVerifiedArtifact(contentDir, ref, run.path, "text-snapshot"))
       verifiedArtifacts.add(`text-snapshot:${ref}`)
+      options.progress?.tick(index + 1, runs.length)
     }
+    options.progress?.tick(index + 1, runs.length)
   }
+  options.progress?.phase("project-results")
   return projectResults(
     runs,
     catalog,
@@ -1452,6 +1482,7 @@ export function loadSelectedResults(
       log: (line) => console.error(line),
       reopened: loadReopenedCells(contentDir, features),
       declared: loadDeclaredUntestable(contentDir),
+      onProgress: (completed, total) => options.progress?.tick(completed, total),
     },
     loadArchivedExclusions(contentDir),
   )

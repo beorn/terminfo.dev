@@ -18,11 +18,12 @@ import { displayMeasuredDate, displayOs, displayVersion } from "./display-versio
 import {
   buildCardModel,
   expectedVisualSpecimen,
-  formatWhoLine,
   shortTerminalName,
   vendorExtensionOrigin,
+  whoLineParts,
 } from "./card-explain"
 import { clearActivePopover, HOVER_CLOSE_GRACE_MS, HOVER_OPEN_DELAY_MS, registerActivePopover } from "./bar-layout"
+import PlatformIcon from "./PlatformIcon.vue"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -151,15 +152,16 @@ const featureMeta = computed(() => data.featureDescriptions[props.featureId])
 const shortName = computed(() => shortTerminalName(props.subjectName, sourceRun.value?.subject.kind))
 const vendorTag = computed(() => vendorExtensionOrigin(props.featureId, undefined, shortName.value))
 
-const whoLine = computed(() => {
+const who = computed(() => {
   const run = sourceRun.value
   const osName = run?.subject.os ? displayOs(run.subject.os) : undefined
   const version = run ? displayVersion(run.subject.version) : undefined
   const measuredDate = !blank.value && run?.measuredAt ? displayMeasuredDate(run.measuredAt) : undefined
-  return formatWhoLine({
+  return whoLineParts({
     subjectName: props.subjectName,
     version,
     subjectKind: run?.subject.kind,
+    os: run?.subject.os ?? undefined,
     osName,
     measuredDate,
   })
@@ -227,6 +229,13 @@ const cardModel = computed(() => {
     joinedFrom: joined.value?.from,
   })
 })
+
+/**
+ * A captured expected frame that only repaints the color under test shows the requested color instead (#38777):
+ * the card model names the specimen, and the repaint is not shown as Expected.
+ */
+const expectedCapture = computed(() => (cardModel.value.expectedPicture ? undefined : captures.value?.expected))
+const expectedSpecimen = computed(() => cardModel.value.expectedPicture ?? expectedVisual.value)
 
 const tracePaneCopy = computed(() => {
   if (!cellTrace.value) return undefined
@@ -696,7 +705,14 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="rc-who">
-      <span>{{ whoLine }}</span>
+      <span class="rc-who-name"
+        >{{ who.name }}
+        <PlatformIcon :os="who.os" :platform="who.osName"
+          ><template v-if="who.osName">({{ who.osName }})</template></PlatformIcon
+        >
+        <span v-if="who.version" class="term-version">{{ who.version }}</span></span
+      >
+      <span v-for="detail in who.details" :key="detail">· {{ detail }}</span>
     </div>
 
     <p v-if="blank || isUntestable || isDiffers" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
@@ -749,14 +765,14 @@ onBeforeUnmount(() => {
               "
             >
               <img
-                v-if="captures?.expected"
-                :src="withBase(captures.expected.url)"
-                :width="captures.expected.width"
-                :height="captures.expected.height"
-                :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                v-if="expectedCapture"
+                :src="withBase(expectedCapture.url)"
+                :width="expectedCapture.width"
+                :height="expectedCapture.height"
+                :class="{ 'rc-term-img--small': isSmallCrop(expectedCapture) }"
                 alt="Expected terminal rendering"
               />
-              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
               <img
                 v-else-if="expectedIllustration"
                 :src="expectedIllustration"
@@ -905,13 +921,13 @@ onBeforeUnmount(() => {
             <span class="rc-bytes-label">Expected</span>
             <div class="rc-term rc-term--enlarged">
               <img
-                v-if="captures?.expected"
-                :src="withBase(captures.expected.url)"
-                :width="captures.expected.width"
-                :height="captures.expected.height"
+                v-if="expectedCapture"
+                :src="withBase(expectedCapture.url)"
+                :width="expectedCapture.width"
+                :height="expectedCapture.height"
                 alt="Expected terminal rendering (enlarged)"
               />
-              <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+              <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
               <img
                 v-else-if="expectedIllustration"
                 :src="expectedIllustration"
@@ -1022,7 +1038,14 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="rc-who">
-          <span>{{ whoLine }}</span>
+          <span class="rc-who-name"
+            >{{ who.name }}
+            <PlatformIcon :os="who.os" :platform="who.osName"
+              ><template v-if="who.osName">({{ who.osName }})</template></PlatformIcon
+            >
+            <span v-if="who.version" class="term-version">{{ who.version }}</span></span
+          >
+          <span v-for="detail in who.details" :key="detail">· {{ detail }}</span>
         </div>
 
         <p v-if="isUntestable || isDiffers" class="rc-answer">{{ evidenceError || cardModel.closing }}</p>
@@ -1075,14 +1098,14 @@ onBeforeUnmount(() => {
                   "
                 >
                   <img
-                    v-if="captures?.expected"
-                    :src="withBase(captures.expected.url)"
-                    :width="captures.expected.width"
-                    :height="captures.expected.height"
-                    :class="{ 'rc-term-img--small': isSmallCrop(captures.expected) }"
+                    v-if="expectedCapture"
+                    :src="withBase(expectedCapture.url)"
+                    :width="expectedCapture.width"
+                    :height="expectedCapture.height"
+                    :class="{ 'rc-term-img--small': isSmallCrop(expectedCapture) }"
                     alt="Expected terminal rendering"
                   />
-                  <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                  <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
                   <img
                     v-else-if="expectedIllustration"
                     :src="expectedIllustration"
@@ -1236,13 +1259,13 @@ onBeforeUnmount(() => {
               <span class="rc-bytes-label">Expected</span>
               <div class="rc-term rc-term--enlarged">
                 <img
-                  v-if="captures?.expected"
-                  :src="withBase(captures.expected.url)"
-                  :width="captures.expected.width"
-                  :height="captures.expected.height"
+                  v-if="expectedCapture"
+                  :src="withBase(expectedCapture.url)"
+                  :width="expectedCapture.width"
+                  :height="expectedCapture.height"
                   alt="Expected terminal rendering (enlarged)"
                 />
-                <span v-else-if="expectedVisual" :style="expectedVisual.style">{{ expectedVisual.text }}</span>
+                <span v-else-if="expectedSpecimen" :style="expectedSpecimen.style">{{ expectedSpecimen.text }}</span>
                 <img
                   v-else-if="expectedIllustration"
                   :src="expectedIllustration"

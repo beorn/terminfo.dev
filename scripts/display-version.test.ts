@@ -162,7 +162,7 @@ describe("displayVersion at each call site that prints a version (D11)", () => {
   it("7. ResultEvidenceCell.vue popover: the compact context line", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
     expect(cell).toContain("const version = run ? displayVersion(run.subject.version) : undefined")
-    expect(cell).toContain("formatWhoLine")
+    expect(cell).toContain("whoLineParts")
     expect(cell.match(/\{\{ sourceRun\.subject\.version \}\}/g)).toBeNull()
   })
 

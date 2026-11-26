@@ -14,7 +14,10 @@ import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
 import {
   checkSupplement,
+  CLIPBOARD_READ_ALLOWED_KEY,
   MUX_DEFAULT_CONFIG,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
   READ_ALLOWED,
   SCREEN_TRUECOLOR_CONFIG,
   SET_TITLES_ON,
@@ -57,6 +60,7 @@ function run(
   measuredAt = at,
   mux?: { config: string },
   catalog: { ids: string[]; suite: ProbeSuiteManifest & { schemaVersion: 4 } } = { ids, suite },
+  extraRawReplies: Readonly<Record<string, string>> = {},
 ) {
   const kind = mux ? "mux" : "term"
   const draft = initializeRunDraft({
@@ -81,7 +85,10 @@ function run(
   draft.measuredAt = measuredAt
   draft.origin = { kind: "collector" }
   const entries = Object.entries(measured)
-  draft.rawReplies = Object.fromEntries(entries.map(([id]) => [id, UNANSWERED_QUERY]))
+  draft.rawReplies = {
+    ...Object.fromEntries(entries.map(([id]) => [id, UNANSWERED_QUERY])),
+    ...extraRawReplies,
+  }
   draft.results = catalog.ids.map((featureId): ProbeResult => {
     const index = entries.findIndex(([id]) => id === featureId)
     const status = measured[featureId]
@@ -208,7 +215,7 @@ describe("read-allowed supplement (33119)", () => {
     expect(context.cells[ROUND_TRIP]?.origin.runId).toBe("supplement-run")
   })
 
-  it("leaves a silently-ignoring terminal's no-reply open, and takes its reply", () => {
+  it("leaves a silently-ignoring terminal's no-reply open when no read-back is recorded, and takes its reply", () => {
     const xterm = run("xterm", "xterm-default", {}, null)
     const silent = run("xterm", "xterm-allow", { [READ]: "unsupported", [ROUND_TRIP]: "supported" }, allowed)
     const context = project([xterm, silent]).contexts["term:xterm"]!
@@ -221,6 +228,134 @@ describe("read-allowed supplement (33119)", () => {
     })
     expect(context.cells[ROUND_TRIP]?.origin.runId).toBe("xterm-allow")
     expect(context.cells[ROUND_TRIP]?.result.status).toBe("supported")
+  })
+
+  it("decides Unsupported when the same launch records an in-force read-back and keeps the cell open on a missing or contrary read-back (#33134)", () => {
+    const xtermBase = run("xterm", "xterm-default", {}, null)
+    const xtermInForceRaw =
+      "\x1b]61;GetIconTitle,GetWinTitle,SetXprop,GetChecksum\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c"
+    const xtermInForce = run(
+      "xterm",
+      "xterm-allow-in-force",
+      { [READ]: "unsupported" },
+      allowed,
+      at,
+      undefined,
+      { ids, suite },
+      {
+        [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(
+          parseXtermReadAllowedReply({
+            reason: "reply",
+            raw: xtermInForceRaw,
+            rawBase64: Buffer.from(xtermInForceRaw).toString("base64"),
+          }),
+        ),
+      },
+    )
+    const xtermDecided = project([xtermBase, xtermInForce]).contexts["term:xterm"]!
+    expect(xtermDecided.cells[READ]?.origin.runId).toBe("xterm-allow-in-force")
+    expect(xtermDecided.cells[READ]?.result.status).toBe("unsupported")
+    expect(xtermDecided.cells[READ]?.supplement).toEqual({
+      name: "read-allowed",
+      qualifier: "with clipboard read allowed",
+      runId: "xterm-allow-in-force",
+      declaredDefault: READ_ALLOWED.declaredDefaults.xterm,
+      filled: true,
+    })
+
+    const xtermContraryRaw =
+      "\x1b]61;GetIconTitle,GetWinTitle,SetXprop,GetSelection,SetSelection,GetChecksum\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c"
+    const xtermContrary = run(
+      "xterm",
+      "xterm-allow-contrary",
+      { [READ]: "unsupported" },
+      allowed,
+      at,
+      undefined,
+      { ids, suite },
+      {
+        [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(
+          parseXtermReadAllowedReply({
+            reason: "reply",
+            raw: xtermContraryRaw,
+            rawBase64: Buffer.from(xtermContraryRaw).toString("base64"),
+          }),
+        ),
+      },
+    )
+    const xtermOpen = project([xtermBase, xtermContrary]).contexts["term:xterm"]!
+    expect(xtermOpen.cells[READ]?.origin.runId).toBe("xterm-default")
+    expect(xtermOpen.cells[READ]?.result.status).toBe("probe-todo")
+    expect(xtermOpen.cells[READ]?.supplement).toEqual({
+      name: "read-allowed",
+      qualifier: "with clipboard read allowed",
+      runId: "xterm-allow-contrary",
+      declaredDefault: READ_ALLOWED.declaredDefaults.xterm,
+      filled: false,
+      open: "read allowed by setting, not proved in force (OSC 61 ; allowWindowOps ST lists GetSelection in disallowedWindowOps: GetIconTitle,GetWinTitle,SetXprop,GetSelection,SetSelection,GetChecksum)",
+    })
+
+    const alacrittyBase = run("alacritty", "alacritty-default", {}, null)
+    const alacrittyInForce = run(
+      "alacritty",
+      "alacritty-allow-in-force",
+      { [READ]: "unsupported", [ROUND_TRIP]: "supported" },
+      allowed,
+      at,
+      undefined,
+      { ids, suite },
+      {
+        [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(
+          parseAlacrittyReadAllowedConfig({
+            socket: "/tmp/Alacritty-:0-150.sock",
+            exitStatus: 0,
+            stdout: JSON.stringify({ terminal: { osc52: "copypaste", shell: null } }),
+            stderr: "",
+          }),
+        ),
+      },
+    )
+    const alacrittyDecided = project([alacrittyBase, alacrittyInForce]).contexts["term:alacritty"]!
+    expect(alacrittyDecided.cells[READ]?.origin.runId).toBe("alacritty-allow-in-force")
+    expect(alacrittyDecided.cells[READ]?.result.status).toBe("unsupported")
+    expect(alacrittyDecided.cells[READ]?.supplement).toEqual({
+      name: "read-allowed",
+      qualifier: "with clipboard read allowed",
+      runId: "alacritty-allow-in-force",
+      declaredDefault: READ_ALLOWED.declaredDefaults.alacritty,
+      filled: true,
+    })
+
+    const alacrittyContrary = run(
+      "alacritty",
+      "alacritty-allow-contrary",
+      { [READ]: "unsupported" },
+      allowed,
+      at,
+      undefined,
+      { ids, suite },
+      {
+        [CLIPBOARD_READ_ALLOWED_KEY]: JSON.stringify(
+          parseAlacrittyReadAllowedConfig({
+            socket: "/tmp/Alacritty-:0-150.sock",
+            exitStatus: 0,
+            stdout: JSON.stringify({ terminal: { osc52: "onlycopy", shell: null } }),
+            stderr: "",
+          }),
+        ),
+      },
+    )
+    const alacrittyOpen = project([alacrittyBase, alacrittyContrary]).contexts["term:alacritty"]!
+    expect(alacrittyOpen.cells[READ]?.origin.runId).toBe("alacritty-default")
+    expect(alacrittyOpen.cells[READ]?.result.status).toBe("probe-todo")
+    expect(alacrittyOpen.cells[READ]?.supplement).toEqual({
+      name: "read-allowed",
+      qualifier: "with clipboard read allowed",
+      runId: "alacritty-allow-contrary",
+      declaredDefault: READ_ALLOWED.declaredDefaults.alacritty,
+      filled: false,
+      open: "read allowed by setting, not proved in force (alacritty msg get-config -w -1 reported terminal.osc52 = OnlyCopy, expected CopyPaste)",
+    })
   })
 
   // 33324: a non-mux no-reply publishes probe-invalid, never unsupported, so this is the case notInForce exists for.

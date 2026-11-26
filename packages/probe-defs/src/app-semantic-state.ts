@@ -1,5 +1,9 @@
 import type { AppSemanticReading, ProbeCallbackResult, ProbeDefinition } from "./types.ts"
-import { parserStateResult, reportsDecidedOutcome } from "./helpers.ts"
+import { declaredUntestableResult, parserStateResult, reportsDecidedOutcome } from "./helpers.ts"
+
+/** Why OSC 0 reads Untestable when it set the title on a terminal that keeps no icon label (#38772, the probe's text). */
+const OSC0_NO_ICON_LABEL =
+  "OSC 0 set the window title; this terminal keeps no icon label apart from the title, so the icon half cannot be read"
 
 const reportFeatures = new Set([
   "extensions.osc176-app-id",
@@ -60,6 +64,12 @@ export function gradeIconNameReading(featureId: string, reading: AppSemanticRead
   const seen = { titleA, iconBefore, titleAfter, iconAfter, payloadB }
   const note = `Seen title ${JSON.stringify(titleAfter)}, icon ${JSON.stringify(iconAfter)}`
   const osc1 = featureId === "extensions.osc1-icon"
+  // OSC 0's title clause first (#38772, card audit review-7): the probe's text makes a title OSC 0 left unset
+  // Unsupported whatever the icon reads, and a set title over a declared icon absence Untestable with that cause.
+  if (!osc1 && titleAfter !== payloadB) {
+    return parserStateResult(false, "OSC 0 must set the window title to its payload", seen, note)
+  }
+  if (!osc1 && iconAfter === null) return declaredUntestableResult(OSC0_NO_ICON_LABEL, seen)
   if (osc1 && titleAfter === payloadB) {
     return parserStateResult(false, "OSC 1 must not change the window title to its icon payload", seen, note)
   }

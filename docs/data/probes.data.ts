@@ -286,12 +286,12 @@ export type ClientWorkingView = Omit<WorkingView, "contexts"> & { contexts: Clie
 declare const data: ClientProbeData
 export { data }
 
-export function loadFullProbes(): ProbeData {
+export function loadFullProbes(progress?: import("./analysis-progress.ts").AnalysisProgressReporter): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
   const subjects = compatibilitySubjects(projection, contentDir)
   const joined = joinedAppCells(projection, subjects, contentDir)
-  const published = publicResults(projection, subjects, joined)
+  const published = publicResults(projection, subjects, joined, undefined, progress)
   const bySubject = new Map(Object.entries(published.selectedByBackend))
   // Q2 (@cpo/term f16a5a52): pages list the public catalogue, so the nine environment positions leave features,
   // categories, the client payload, results, notes and baselines here. No count moves: the folds grade the graded
@@ -510,16 +510,18 @@ function compactClientSelection(selectedByBackend: ProbeData["selectedByBackend"
 }
 
 /** #30759 + #38451: build the compact client payload and optional lazy working-history sidecar in one pass. */
-export function loadClientProbesWithHistory(): {
+export function loadClientProbesWithHistory(progress?: import("./analysis-progress.ts").AnalysisProgressReporter): {
   client: ClientProbeData
   workingHistoryPayload: WorkingHistoryPayload | null
 } {
-  const { selected, releaseTable: _unusedReleaseTable, ...rawClient } = loadFullProbes()
+  const { selected, releaseTable: _unusedReleaseTable, ...rawClient } = loadFullProbes(progress)
+  progress?.phase("compact-client-probes", 1)
   const compactClient: ClientProbeData = {
     ...rawClient,
     selectedByBackend: compactClientSelection(rawClient.selectedByBackend),
   }
-  const workingHistory = siteWorkingHistory(contentDir)
+  progress?.tick(1, 1)
+  const workingHistory = siteWorkingHistory(contentDir, process.env, progress)
   if (!workingHistory) return { client: compactClient, workingHistoryPayload: null }
   // Reuse the projection already built once; emit to /assets/working-history.json instead of theme.*.js.
   // Normalize undecided internal statuses ("probe-todo", "probe-invalid", "probe-conflict") to "no-result"

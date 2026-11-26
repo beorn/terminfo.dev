@@ -15,6 +15,7 @@ import {
   underlineBandAttempts,
   type OuterColourControl,
   finalizeProbeResult,
+  localeOf,
   finalizeVisualResult,
   fontLigatureMuxCoverage,
   withReplyFailureEvidence,
@@ -184,6 +185,7 @@ export function createTermProbeSource({
       return size().rows
     },
     utf8Decoding,
+    locale: () => localeOf(process.env),
     captureGeometryRefusal,
   }
 }
