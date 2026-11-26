@@ -385,8 +385,15 @@ export async function buildLanding(
     recordSiteRebuildFailure(failure ?? mismatch ?? "unknown build failure", markerEnv)
     return false
   }
+  const was = readServedStamp(served)
   swapStagedDist(served, stagedDist, join(args.outRoot, "dist.previous"))
   clearMarker?.()
+  // #30205: the swap is said once, as the hourly path says "now serving"; a beside rebuild otherwise lands silently.
+  const build = (stamp: ServedStamp): string =>
+    stamp.sourceCommit === null ? "none" : `${stamp.sourceCommit.slice(0, 12)} run ${stamp.workingRunId ?? "none"}`
+  console.log(
+    `terminfo-site: swapped in build ${build(staged)} for landing ${args.target.slice(0, 12)} (was ${build(was)})`,
+  )
   return true
 }
 

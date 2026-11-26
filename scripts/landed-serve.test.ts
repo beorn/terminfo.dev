@@ -527,6 +527,31 @@ describe("landed-serve hourly-run rebuild", () => {
     expect(existsSync(join(out, "rebuild.json"))).toBe(false)
   })
 
+  // #30205: a landing build that swaps in beside the served build says so on one line, naming the landing and both
+  // builds. Before, only the hourly path said "now serving", and this swap showed only in /build.json and the dist mtime.
+  it("a landing build swapped in beside the served build logs one line naming the landing and the old and new builds", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
+    stamp(join(out, "dist"), RUN_A)
+    const target = "b".repeat(40)
+    const ok = await buildLanding({
+      outRoot: out,
+      target,
+      beside: true,
+      runBuild: async (env) => {
+        stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_B, target)
+        return 0
+      },
+    })
+    expect(ok).toBe(true)
+    const swapped = (quiet?.mock.calls ?? [])
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("swapped in"))
+    expect(swapped).toEqual([
+      `terminfo-site: swapped in build ${target.slice(0, 12)} run ${RUN_B} for landing ${target.slice(0, 12)} ` +
+        `(was ${CODE.slice(0, 12)} run ${RUN_A})`,
+    ])
+  })
+
   it("a successful run rebuild swaps the staged build in and clears the marker", async () => {
     const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
     stamp(join(out, "dist"), RUN_A)
