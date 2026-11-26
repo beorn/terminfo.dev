@@ -1417,6 +1417,38 @@ function linuxOutput(out: NodeJS.WriteStream): LinuxBinding {
   throw new Error(`Owned output device ${outputDevice.rdev} differs from controlling tty_nr ${controlling}`)
 }
 
+const LINUX_CONTROLLING_PTS_TTY = /^\/dev\/pts\/[0-9]+$/u
+
+function readLinuxWezTermControllingTty(controllingTtyNr: number): {
+  readonly ttyPath: string
+  readonly inputDevice: Device
+} {
+  const ttyPath = realpathSync("/proc/self/fd/0")
+  if (!LINUX_CONTROLLING_PTS_TTY.test(ttyPath)) {
+    throw new Error(
+      `Owned Linux WezTerm controlling TTY ${JSON.stringify(ttyPath)} does not match admitted ${String(LINUX_CONTROLLING_PTS_TTY)}`,
+    )
+  }
+  const inputDevice = device(fstatSync(0, { bigint: true }))
+  if (inputDevice.rdev !== String(controllingTtyNr)) {
+    throw new Error(
+      `Owned Linux WezTerm fd 0 device rdev ${inputDevice.rdev} differs from controlling tty_nr ${controllingTtyNr}`,
+    )
+  }
+  const ttyDevice = device(statSync(ttyPath, { bigint: true }))
+  if (ttyDevice.rdev !== String(controllingTtyNr)) {
+    throw new Error(
+      `Owned Linux WezTerm controlling TTY ${ttyPath} rdev ${ttyDevice.rdev} differs from controlling tty_nr ${controllingTtyNr}`,
+    )
+  }
+  if (!sameDevice(ttyDevice, inputDevice)) {
+    throw new Error(
+      `Owned Linux WezTerm controlling TTY ${ttyPath} device ${JSON.stringify(ttyDevice)} differs from fd 0 device ${JSON.stringify(inputDevice)}`,
+    )
+  }
+  return { ttyPath, inputDevice }
+}
+
 /** Darwin's ps name is paired with a same-read stat of that named PTY. Both Darwin claim arms bind
  * through this one function: they differ in how the TTY was proven, never in the device binding. */
 function darwinOutput(out: NodeJS.WriteStream, assertedTty: string): DarwinBinding {
@@ -2382,10 +2414,33 @@ export async function createOwnedTerminal(options: {
         : undefined
     // The Darwin pasteboard adapter is not a WezTerm proof, even when the launcher hint names WezTerm.
     // Process-owned arms retain their independent live process-owner check.
+    const linuxWezTermTty =
+      binding.platform === "linux" && ownedAppId === "wezterm" && appClipboard !== undefined
+        ? readLinuxWezTermControllingTty(binding.controllingTtyNr)
+        : undefined
+    const assertLinuxWezTermTty =
+      binding.platform === "linux" && linuxWezTermTty !== undefined
+        ? () => {
+            const current = readLinuxWezTermControllingTty(binding.controllingTtyNr)
+            if (current.ttyPath !== linuxWezTermTty.ttyPath) {
+              throw new Error(
+                `Owned Linux WezTerm controlling TTY changed from ${JSON.stringify(linuxWezTermTty.ttyPath)} to ${JSON.stringify(current.ttyPath)}`,
+              )
+            }
+            if (!sameDevice(current.inputDevice, linuxWezTermTty.inputDevice)) {
+              throw new Error(
+                `Owned Linux WezTerm fd 0 device changed from ${JSON.stringify(linuxWezTermTty.inputDevice)} to ${JSON.stringify(current.inputDevice)}`,
+              )
+            }
+          }
+        : undefined
     const wezTermOwnerCheck =
       hostedWezTermOwnerCheck ??
       (binding.platform !== "darwin" && appClipboard !== undefined
-        ? () => appClipboard.assertOwned()
+        ? async () => {
+            await appClipboard.assertOwned()
+            assertLinuxWezTermTty?.()
+          }
         : processOwnerCheck === undefined
           ? undefined
           : () => Promise.resolve(processOwnerCheck()))
@@ -2400,6 +2455,7 @@ export async function createOwnedTerminal(options: {
     // borrow another binary's proof, so a Linux arm that skipped the proof would record an identity check with
     // no executable at all (@cto REVISE at f1b0a7ffe).
     const ownedWezTermIdentity = wezTermHistoryIdentity(ownedWezTermCli)
+    const measuredWezTermTty = binding.platform === "darwin" ? binding.tabTty : linuxWezTermTty?.ttyPath
     const ownedWezTermHistory =
       wezTermOwnerCheck !== undefined && ownedWezTermCli !== undefined
         ? async (): Promise<TerminalScrollbackReading> => {
@@ -2411,12 +2467,12 @@ export async function createOwnedTerminal(options: {
             const pane = process.env.WEZTERM_PANE
             const socket = process.env.WEZTERM_UNIX_SOCKET
             const read =
-              binding.platform === "darwin"
+              binding.platform === "darwin" || binding.platform === "linux"
                 ? readOwnedWezTermHistory({
                     executable: ownedWezTermCli,
                     pane,
                     socket,
-                    ...(binding.tabTty === undefined ? {} : { tty: binding.tabTty }),
+                    ...(measuredWezTermTty === undefined ? {} : { tty: measuredWezTermTty }),
                     rows: geometry.rows,
                   })
                 : (() => {
@@ -3115,8 +3171,10 @@ export async function createOwnedTerminal(options: {
               if (read.status === "refused") throw new Error(read.reason)
               retainNative(read.privateTranscript)
               if (read.matchingPanes !== 1) throw new Error("WezTerm OSC7 owned pane is ambiguous")
-              if (binding.platform === "darwin" && ttyName(read.tty) !== ttyName(binding.tabTty)) {
-                throw new Error("WezTerm OSC7 pane TTY differs from the measured owner")
+              if (measuredWezTermTty !== undefined && ttyName(read.tty) !== ttyName(measuredWezTermTty)) {
+                throw new Error(
+                  `WezTerm OSC7 pane TTY differs from the measured owner (${JSON.stringify(read.tty ?? null)} vs ${JSON.stringify(measuredWezTermTty)})`,
+                )
               }
               if (
                 typeof read.cwd !== "string" ||
@@ -3130,7 +3188,7 @@ export async function createOwnedTerminal(options: {
                 surface: "wezterm",
                 pane,
                 listedTty: read.tty,
-                measuredTty: binding.platform === "darwin" ? binding.tabTty : undefined,
+                measuredTty: measuredWezTermTty,
                 socketPresent: true,
                 executable: ownedWezTermCli,
               })
