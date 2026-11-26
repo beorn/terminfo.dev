@@ -115,6 +115,24 @@ test("throws when an optional field carries the wrong type", () => {
   expect(() => loadTerminals(dir)).toThrow(/t1.*"year"/)
 })
 
+// #38772 (@cto e777b8ab, @cpo/term 20882c8a): a row that only an app window can measure declares `appOnly` with its
+// reason; the projection shows it as App only on library rows. A reasonless or misspelt declaration would hide a graded
+// library cell behind a label nobody can explain, so loading refuses it, naming the row.
+test("reads a declared appOnly scope with its reason, and refuses a malformed one by name", () => {
+  const row = { name: "N", slug: "n", body: "b", probe: "p", baseline: "x" }
+  const load = (name: string, appOnly: unknown) =>
+    loadFeatures(fixture(`app-only-${name}`, { "features.json": { "a.one": { ...row, appOnly } } }))
+  expect(
+    required(loadFeatures(fixture("app-only-absent", { "features.json": { "a.one": row } })), "a.one").appOnly,
+  ).toBeUndefined()
+  const reason = "OS input reaches only an app window; a library gets no OS keys or clicks."
+  expect(required(load("declared", { reason }), "a.one").appOnly).toEqual({ reason })
+  expect(() => load("not-object", true)).toThrow(/a\.one.*"appOnly" that is not an object/)
+  expect(() => load("no-reason", {})).toThrow(/a\.one.*appOnly without a non-empty "reason"/)
+  expect(() => load("blank-reason", { reason: " " })).toThrow(/a\.one.*appOnly without a non-empty "reason"/)
+  expect(() => load("extra-key", { reason, kinds: ["lib"] })).toThrow(/a\.one.*unknown appOnly keys kinds/)
+})
+
 // #33165 (@cto be3fb080, 767c9bcd): a row's silence rule is what the recorder applies to a fenced silence. An unknown
 // rule, or a non-default rule with no reason, would grade silence under a rule nobody declared; and while no route
 // carries a declared rule to the collectors, even a well-formed one would silently grade as the default. Loading
@@ -222,6 +240,8 @@ test("enumerates FeatureRecord keys against FEATURE_ENTRY_PROSE_DENYLIST and omi
     probeStatus: true,
     probeStatusReason: true,
     silence: true,
+    // Bound like every key outside the prose denylist: declaring App only re-dates the row's entry (#38772).
+    appOnly: true,
   } satisfies Record<keyof FeatureRecord, boolean>
   expect(FEATURE_ENTRY_PROSE_DENYLIST).toEqual(["body"])
   const denylisted = new Set<string>(FEATURE_ENTRY_PROSE_DENYLIST)

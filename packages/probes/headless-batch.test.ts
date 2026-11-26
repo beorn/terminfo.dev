@@ -261,7 +261,9 @@ test.runIf(OWNED_LAYOUT)(
       expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("passed to the app")
     }
     for (const id of ["extensions.kitty-graphics.display", "extensions.kitty-graphics.transmit"]) {
-      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain("ghostty-vt forces oniguruma off")
+      expect(batch.results.find((row) => row.featureId === id)?.reason).toContain(
+        "Ghostty 1.4.0 libghostty-vt compiles kitty_graphics on",
+      )
     }
   },
 )
@@ -712,7 +714,7 @@ for (const scenario of [
         const status = nativeDeclaration ? "untestable" : scenario.name === "alacritty" ? "supported" : "probe-todo"
         const reason = nativeDeclaration
           ? featureId === "extensions.osc0-icon-title"
-            ? "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.3.1 updates the window title but ignores icon names and keeps no icon label."
+            ? "Untestable (no way): the library offers no reading or input our test could use for this feature: Ghostty 1.4.0 updates the window title but ignores icon names and keeps no icon label."
             : `Untestable (app): the app supplies Ghostty's initial ${colour} colour. This headless library starts without one; a colour set later can be read, but it does not reveal the app's default.`
           : scenario.name === "alacritty"
             ? "buffered effect measured; rendered tearing unmeasured"

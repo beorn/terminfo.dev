@@ -1,6 +1,7 @@
 import type { AssertionType, ProbeDefinition, ProbeCallbackResult, LibProbeSource } from "./types.ts"
 import {
   activeScreenRow,
+  declaredUntestableResult,
   isBlank,
   parserStateResult,
   replyFailure,
@@ -311,7 +312,25 @@ type DeclaredWidthSample = {
   sample: string
   /** Worst-case columns the sample's scalars may occupy when the terminal does not combine them. */
   maxColumns: number
+  /**
+   * A base that must take one column on its own before the sample decides (#38772, @cpo/term 448f3c70): a selector's
+   * effect shows only on a base that is narrow alone, so a base already drawn wide leaves the sample undecided.
+   */
+  narrowBase?: string
+  /**
+   * The sample must be one glyph in one cell, the next column its spacer (#38772): a parser that keeps each scalar in
+   * its own one-column cell advances the same two columns with no flag and no widening.
+   */
+  oneCell?: boolean
 }
+
+/** Why an app's flag row is not graded (#38772, @cpo/term 448f3c70). */
+const FLAGS_NEED_SCREENSHOT =
+  "Flag drawing needs a screenshot route: a cursor advance of two cannot tell one flag from two narrow letters"
+
+/** Why a sample whose base is already wide alone proves nothing about the selector after it. */
+const WIDE_BASE_REASON =
+  "Bare base control: the base alone is not one column, so the sample's width cannot show the selector"
 
 /** A lone UTF-16 surrogate half means the scalar was split rather than decoded faithfully. */
 function isLoneSurrogate(value: string): boolean {
@@ -329,7 +348,10 @@ function isLoneSurrogate(value: string): boolean {
  * being discarded as insufficient evidence, while constant/stale/wrapped/ambiguous readbacks stay
  * inconclusive. Width two is claimed only for the declared sample, never for a rendered glyph.
  */
-function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredWidthSample): ProbeCallbackResult {
+function emojiWidthResult(
+  ctx: LibProbeSource,
+  { sample, maxColumns, narrowBase, oneCell }: DeclaredWidthSample,
+): ProbeCallbackResult {
   const expected = "Declared-width sample occupies two parser columns after qualified setup"
   const home = "\x1b[1;1H\x1b[2K"
   const marker = "X"
@@ -398,6 +420,17 @@ function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredW
     }
     ctx.feed(home)
 
+    // 2b. Narrow-base control: the base alone, then the sentinel, which must land in the very next column.
+    if (narrowBase !== undefined) {
+      ctx.feed(narrowBase + marker)
+      const base = Array.from({ length: 3 }, (_, col) => ctx.getCell(0, col).char)
+      const baseCursor = ctx.getCursor()
+      ctx.feed(home)
+      if (base[1] !== marker || baseCursor.y !== 0 || baseCursor.x !== 2) {
+        return parserStateResult(null, expected, { narrowBase, base, baseCursor }, WIDE_BASE_REASON)
+      }
+    }
+
     // 3. Target: exact sample plus unique sentinel, located wherever it actually landed.
     const cursorBefore = ctx.getCursor()
     ctx.feed(sample + marker)
@@ -447,6 +480,14 @@ function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredW
       )
     }
     const width = markerColumn
+    if (oneCell && width === 2 && !isBlank(target[1] ?? "")) {
+      return parserStateResult(
+        false,
+        expected,
+        { ...state, width },
+        "The sample split into one-column cells, each scalar in its own cell, so no two-column glyph was drawn",
+      )
+    }
     return parserStateResult(
       width === 2,
       expected,
@@ -1479,49 +1520,9 @@ export const textProbes: ProbeDefinition[] = [
   {
     ...probe(
       "text.wide.emoji-flags",
-      (ctx) => emojiWidthResult(ctx, { sample: "\u{1F1FA}\u{1F1F8}", maxColumns: 4 }),
-      async (ctx) => {
-        const refusal = tooSmall(ctx, 1, 4)
-        if (refusal) return refusal
-        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-flags")
-        if (decoding) return decoding
-        const ascii = await ctx.measureRenderedWidth("AA")
-        const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
-        if (typeof ascii !== "number") {
-          return renderedWidthFailure(ascii, "text.wide.emoji-flags", "ASCII", JSON.stringify({ ascii, width }))
-        }
-        if (ascii !== 2) {
-          const reason = `ASCII width control: expected 2, got ${ascii}`
-          return {
-            pass: false,
-            response: JSON.stringify({ ascii, width }),
-            tests: [{ id: "criterion", status: "probe-invalid", reason }],
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              assertionType: "query_reply",
-              note: reason,
-            },
-          }
-        }
-        if (typeof width !== "number") {
-          return renderedWidthFailure(width, "text.wide.emoji-flags", "sample", JSON.stringify({ ascii, width }))
-        }
-        const pass = width === 2
-        return {
-          pass,
-          response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
-          assertions: [
-            {
-              assertionType: "query_reply" as const,
-              kind: pass ? "positive" : "negative",
-              expected: "Flag sample occupies two columns after ASCII calibration",
-              observed: JSON.stringify({ ascii, width }),
-            },
-          ],
-        }
-      },
+      (ctx) => emojiWidthResult(ctx, { sample: "\u{1F1FA}\u{1F1F8}", maxColumns: 4, oneCell: true }),
+      // #38772 (@cpo/term 448f3c70): no pass from an advance alone, and no screenshot route draws a flag yet.
+      () => Promise.resolve(declaredUntestableResult(FLAGS_NEED_SCREENSHOT, {})),
     ),
     termNeedsGeometry: true,
   },
@@ -1529,16 +1530,23 @@ export const textProbes: ProbeDefinition[] = [
   {
     ...probe(
       "text.wide.emoji-vs16",
-      (ctx) => emojiWidthResult(ctx, { sample: "\u263A\uFE0F", maxColumns: 2 }),
+      (ctx) => emojiWidthResult(ctx, { sample: "\u263A\uFE0F", maxColumns: 2, narrowBase: "\u263A", oneCell: true }),
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
         const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-vs16")
         if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
+        const base = await ctx.measureRenderedWidth("\u263A")
+        const selector = await ctx.measureRenderedWidth("\uFE0F")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
         if (typeof ascii !== "number") {
-          return renderedWidthFailure(ascii, "text.wide.emoji-vs16", "ASCII", JSON.stringify({ ascii, width }))
+          return renderedWidthFailure(
+            ascii,
+            "text.wide.emoji-vs16",
+            "ASCII",
+            JSON.stringify({ ascii, base, selector, width }),
+          )
         }
         if (ascii !== 2) {
           const reason = `ASCII width control: expected 2, got ${ascii}`
@@ -1554,20 +1562,69 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
+        if (typeof base !== "number") {
+          return renderedWidthFailure(
+            base,
+            "text.wide.emoji-vs16",
+            "base",
+            JSON.stringify({ ascii, base, selector, width }),
+          )
+        }
+        if (typeof selector !== "number") {
+          return renderedWidthFailure(
+            selector,
+            "text.wide.emoji-vs16",
+            "selector",
+            JSON.stringify({ ascii, base, selector, width }),
+          )
+        }
+        if (selector !== 0) {
+          const reason = `Lone selector control: U+FE0F alone took ${selector} column(s), so the sample's width may be the base plus a separate selector cell`
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, base, selector, width }),
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
+          }
+        }
+        if (base !== 1) {
+          const reason = `${WIDE_BASE_REASON}: U+263A alone measured ${base}`
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, base, selector, width }),
+            tests: [{ id: "criterion", status: "probe-invalid", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note: reason,
+            },
+          }
+        }
         if (typeof width !== "number") {
-          return renderedWidthFailure(width, "text.wide.emoji-vs16", "sample", JSON.stringify({ ascii, width }))
+          return renderedWidthFailure(
+            width,
+            "text.wide.emoji-vs16",
+            "sample",
+            JSON.stringify({ ascii, base, selector, width }),
+          )
         }
         const pass = width === 2
         return {
           pass,
-          response: JSON.stringify({ ascii, width }),
+          response: JSON.stringify({ ascii, base, selector, width }),
           observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
               assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
-              expected: "VS16 sample occupies two columns after ASCII calibration",
-              observed: JSON.stringify({ ascii, width }),
+              expected: "VS16 sample occupies two columns after ASCII calibration and a one-column bare base",
+              observed: JSON.stringify({ ascii, base, selector, width }),
             },
           ],
         }

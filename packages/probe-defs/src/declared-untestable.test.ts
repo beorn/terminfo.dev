@@ -1523,8 +1523,23 @@ describe("audited OSC interface absence", () => {
             },
           }),
         )
-        const declared = scenario.label === "audited" || scenario.label === "public" || scenario.label === "rebuilt"
+        const audited = scenario.label === "audited" || scenario.label === "public" || scenario.label === "rebuilt"
+        // #38772 (@cpo/term f281df2f): the library answers a palette query once a colour is set, and its embedder owns
+        // the starting palette, so on the library row OSC 4 is Supported by the seeded reply and names that limit.
+        const palette = id === "extensions.osc4-palette"
+        const declared = audited && !palette
         expect(isDeclaredUntestable(result), `${id}: ${scenario.label}`).toBe(declared)
+        if (audited && palette) {
+          // fold() here records no assertions, so a pass is read from the result, as "initial positive" below is.
+          expect(result.pass, `${id}: ${scenario.label}`).toBe(true)
+          expect(result.observation?.outcome).toBe("supported")
+          expect(result.observation?.note).toBe(
+            "Answers once a colour is set; the embedding app supplies the starting palette",
+          )
+          expect(result.assertions).toEqual([
+            expect.objectContaining({ assertionType: "query_reply", kind: "positive", observed: reply }),
+          ])
+        }
         if (declared) {
           expect(fold(id, result).status).toBe("untestable")
           expect(result.hostRecipeCauses).toMatchObject([

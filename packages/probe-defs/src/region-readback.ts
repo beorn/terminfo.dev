@@ -2463,6 +2463,9 @@ export async function sgrAttributeCaptureResult(
     id === "sgr.strikethrough"
       ? [{ name: "single underline", sequence: "\x1b[4m", sample }]
       : []),
+    // #38772 (card audit review-7, @cpo/term 448f3c70): a parser that splits 4:3 into 4;3 draws a straight underline
+    // under italic text, which differs from both plain and SGR 4 without drawing a curl.
+    ...(id === "sgr.underline.curly" ? [{ name: "italic underline", sequence: "\x1b[4;3m", sample }] : []),
     ...(id === "sgr.hidden" ? [{ name: "blank", sequence: "", sample: " ".repeat(sample.length) }] : []),
   ]
   const finish = (
@@ -2528,6 +2531,9 @@ export async function sgrAttributeCaptureResult(
         // A multiplexer negative stays on this branch so the collector's outer command read can
         // decide it (@cto 429f006d c); finalizeVisualResult keeps it open when that read is absent.
         return finish(run, "unsupported", `${id}: drawn as single underline`)
+      }
+      if (phases.some(({ name }) => name === "italic underline") && target === digest("italic underline")) {
+        return finish(run, "unsupported", `${id}: drawn as italic text over a single underline (4:3 read as 4;3)`)
       }
       if (id !== "sgr.inverse" && target === digest("inverse")) {
         return finish(run, "unsupported", `${id}: drawn as inverse`)

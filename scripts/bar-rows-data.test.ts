@@ -73,8 +73,13 @@ describe("bar categories (#37761 items 6-7)", () => {
       expect(ids.supported.length, key).toBe(bar.counts.supported)
       expect(ids.unsupported.length, key).toBe(bar.counts.unsupported)
       expect(ids.untestable.length, key).toBe(bar.counts.untestable)
-      const total = RESULT_CATEGORIES.reduce((sum, category) => sum + ids[category.id].length, 0)
-      expect(total, `${key}: the tabs cover every graded position`).toBe(bar.denominator)
+      // App only lists the library rows no library can measure (#38772): its own tab, outside every position.
+      expect(ids["app-only"].length, key).toBe(bar.counts["app-only"])
+      const total = RESULT_CATEGORIES.filter((category) => !category.outsideBar).reduce(
+        (sum, category) => sum + ids[category.id].length,
+        0,
+      )
+      expect(total, `${key}: the bar's tabs cover every graded position`).toBe(bar.denominator)
     }
   })
 

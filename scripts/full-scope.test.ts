@@ -38,6 +38,7 @@ describe("current full-catalogue scope arithmetic", () => {
       "probe-todo": 1,
       "probe-invalid": 1,
       "probe-conflict": 0,
+      "app-only": 0,
       "differs-by-context": 0,
     })
     expect(value.complete).toBe(false)

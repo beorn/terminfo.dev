@@ -30,6 +30,9 @@ import {
   type DeclaredUntestableCell,
 } from "./declared-untestable.ts"
 import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
+import { applyAppOnly, catalogAppOnly } from "./app-only-cells.ts"
+import { APP_ONLY } from "./app-cells.ts"
+import type { AppOnlyDeclaration } from "@terminfo/catalog"
 import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./held-negatives.ts"
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
 import type { CurrentTraceDocument, TraceIdentityRuleCheck } from "./run-trace.ts"
@@ -343,6 +346,11 @@ export interface SelectedContextCell {
    */
   derived?: DerivedMarker
   /**
+   * Set only on a library cell whose row declares App only (#38772): the cell reads App only and is uncounted, while
+   * `result`, `run` and `origin` stay exactly as measured.
+   */
+  appOnly?: { reason: string }
+  /**
    * Set only when a held-negatives row (held-negatives.ts, #33034) found this negative unwitnessed: no run under the
    * same suite reads the feature Supported, so the cell reads probe-invalid while `result` stays the original.
    */
@@ -385,6 +393,8 @@ export interface SelectedContextSummary {
   counts: RollupCounts
   /** Cells counted in `counts.unsupported` only by derivation (#33019); never direct measurements. */
   derivedIds: string[]
+  /** Library cells shown as App only (#38772); counted in `counts["app-only"]`, outside every denominator. */
+  appOnlyIds: string[]
   /** Of `counts.untestable`, the cells a reviewed declaration made untestable (@cto b0d3cd4e condition 5). */
   byReview: number
   score: { supported: number; all: number }
@@ -558,6 +568,8 @@ export function projectResults(
     declared?: readonly DeclaredUntestableCell[]
     /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
     derived?: readonly DerivedPair[]
+    /** App only rows (#38772); absent means the catalogue's own declarations, content/features.json `appOnly`. */
+    appOnly?: ReadonlyMap<string, AppOnlyDeclaration>
     onProgress?: (completed: number, total: number) => void
   },
   archivedExclusions: readonly SelectedExclusion[],
@@ -717,6 +729,7 @@ export function projectResults(
       policy.derived ?? DERIVED_UNSUPPORTED,
       policy.declared ?? [],
       policy.onProgress,
+      policy.appOnly ?? catalogAppOnly(),
     ),
   }
 }
@@ -904,6 +917,7 @@ function composeContextSummaries(
   derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
   declared: readonly DeclaredUntestableCell[] = [],
   onProgress?: (completed: number, total: number) => void,
+  appOnlyRows: ReadonlyMap<string, AppOnlyDeclaration> = catalogAppOnly(),
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
   const declaredApplied = new Set<DeclaredUntestableCell>()
@@ -1148,6 +1162,8 @@ function composeContextSummaries(
     for (const refusal of outerAbsentRefusals) log?.(refusal)
     // After reopening, so a reopened parent reads probe-todo and entails nothing (#33019, @cto 6588ac5f).
     const derivedIds = applyDerived(contextKey, cells, derivedPairs)
+    // Last: App only labels a library cell; it decides no other cell and stays out of the counts (#38772).
+    const appOnlyIds = applyAppOnly(cells, candidates[0]?.subject, appOnlyRows, viewIds)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -1162,7 +1178,9 @@ function composeContextSummaries(
       // Environment groups have retained run metadata but no computed feature result.
       viewIds.map((featureId) => ({
         featureId,
-        status: cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo",
+        status: cells[featureId]?.appOnly
+          ? APP_ONLY
+          : (cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo"),
         ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),
         ...(cells[featureId]?.declared && { declared: cells[featureId]?.declared }),
       })),
@@ -1189,6 +1207,7 @@ function composeContextSummaries(
       attempts,
       counts: aggregate.counts,
       derivedIds,
+      appOnlyIds,
       byReview: aggregate.byReview,
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,

@@ -39,17 +39,26 @@ test.runIf(OWNED_LAYOUT).each(["ignores-mode", "ignores-reset"] as const)(
               const text = active && candidate !== "ignores-mode" ? "\x1b[27;5;105~" : "\x1b[105;5u"
               return new TextEncoder().encode(text)
             }
+            // Ghostty 1.4.0 (termless b5cf58eb) also changes Ctrl+a under level 2, so the fault must cover every key it
+            // fakes: an encoder that ignores the mode keeps Ctrl+a at 0x01, and one that ignores the reset keeps it
+            // encoded. Faking only Ctrl+I would leave the real Ctrl+a as a live discriminator.
+            if (event.key === "a" && event.ctrl) {
+              const text = active && candidate !== "ignores-mode" ? "\x1b[27;5;97~" : "\x01"
+              return new TextEncoder().encode(text)
+            }
             return source.encodeKey!(event)
           },
         })
         const result = definition.lib!(candidate === "real" ? source : faulted)
         if (candidate === "real") {
           expect(result.observation, JSON.stringify(result)).toMatchObject({ outcome: "supported" })
-          expect(result.observation?.note).toMatch(/Ctrl\+a stays \[1\].*xterm.*level 2/)
+          // Ghostty 1.4.0 (termless b5cf58eb) changes Ctrl+a under level 2 as xterm does, so the "Ctrl+a stays" note
+          // that Ghostty 1.3.1 earned is gone (/hh/var/@dev2/31079-mok2-obs.json).
+          expect(result.observation?.note).toBeUndefined()
           expect(JSON.parse(result.response!)).toMatchObject({
-            off: { ctrlI: { text: "\x1b[105;5u" } },
-            on: { ctrlI: { text: "\x1b[27;5;105~" } },
-            reset: { ctrlI: { text: "\x1b[105;5u" } },
+            off: { ctrlA: { text: "\x01" }, ctrlI: { text: "\x1b[105;5u" } },
+            on: { ctrlA: { text: "\x1b[27;5;97~" }, ctrlI: { text: "\x1b[27;5;105~" } },
+            reset: { ctrlA: { text: "\x01" }, ctrlI: { text: "\x1b[105;5u" } },
           })
         } else {
           expect(result.observation?.outcome, JSON.stringify(result)).not.toBe("supported")
