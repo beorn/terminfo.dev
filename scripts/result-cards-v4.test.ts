@@ -24,13 +24,14 @@ import {
   buildCardModel,
   countVerdictWords,
   expectedVisualSpecimen,
+  explainReplyCommand,
   formatWhoLine,
   shortTerminalName,
   truncateCode,
   vendorExtensionOrigin,
 } from "../docs/.vitepress/theme/card-explain.ts"
 import { validateMeasuredCard, validateUntestableCard } from "./validate-style5-cards.ts"
-import { readCellTrace } from "../docs/data/evidence-reader.ts"
+import { formatControlBytes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import {
@@ -185,18 +186,16 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
         ],
       },
     })
+    // #38757: the screen decides a screenshot row, so the DECRQSS read is a grey context step carrying its answer,
+    // and Expected/Received describe the screen check the verdict names.
     expect(overline.steps).toEqual([
       { num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" },
-      { num: 2, code: "ESC P $ q m ESC \\", words: "Ask the current text style" },
+      { num: 2, code: "ESC P $ q m ESC \\", setup: true, words: "Ask the current text style → “Style: plain”" },
     ])
-    expect(overline.expected).toEqual({
-      code: "ESC P 1 $ r 53 m …",
-      words: "“Style: overline”",
-    })
-    expect(overline.received).toEqual({
-      code: "ESC P 1 $ r m ESC \\",
-      words: "“Style: plain”",
-    })
+    expect(overline.replyFamily).toBeUndefined()
+    expect(overline.expected).toEqual({ words: "Line drawn above the text" })
+    expect(overline.received).toEqual({ words: "Plain text with no line above" })
+    expect(overline.readout).toEqual({ label: "Reply", text: "“Style: plain”", code: "ESC P 1 $ r m ESC \\" })
     expect(overline.verdict).toEqual({ tone: "no", text: "Overline didn’t stick" })
     expect(validateMeasuredCard(overline, "overline")).toEqual([])
     expect(expectedVisualSpecimen("sgr.overline")?.style.textDecoration).toBe("overline")
@@ -823,5 +822,129 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
       expect(weakRun.deref()).toBeUndefined()
     }
     expect(typeof reader).toBe("function")
+  })
+})
+
+/**
+ * #38757: operator review of the Ghostty 1.4.0 Linux result cards (2.7.4 preview). Every card here is built from the
+ * real recorded run the preview selected for that context (measured 2026-11-25), through the same trace projection
+ * the page uses, so a regression in the card rules shows up against the evidence the operator actually read.
+ */
+describe("card-explain #38757 — true send order, named SGR replies, context queries (real Ghostty 1.4.0 Linux run)", () => {
+  const ghosttyRunFile = "ghostty-1.4.0-linux-ae8dfd2fdc04b5aae4ddbf220049a4c3.json"
+  const ghosttyCells = (() => {
+    let cached: ReturnType<typeof currentTrace> | undefined
+    return () => {
+      if (cached) return cached
+      const runPath = join(contentDir, "probes-apps", ghosttyRunFile)
+      const runRaw = readFileSync(runPath, "utf8")
+      const parsedProbeHash = (JSON.parse(runRaw) as { probeHash: string }).probeHash
+      const suitePath = join(contentDir, "suites", `${parsedProbeHash}.json`)
+      const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+      const catalog = manifest.catalogIds!
+      const run = parseRun(runPath, runRaw, catalog, new Map([[manifest.probeHash, manifest]]))
+      const projection = projectResults(
+        [run],
+        catalog,
+        { currentProbeHash: manifest.probeHash, workingRuns: [run] },
+        [],
+      )
+      const ghostty = Object.values(projection.versions).flat()[0]!
+      ghostty.readArtifact = (ref: string) => readVerifiedArtifact(contentDir, ref, runPath, "screenshot")
+      cached = currentTrace(ghostty)
+      expect(cached).toBeDefined()
+      return cached
+    }
+  })()
+  const ghosttyCard = (featureId: string, featureName: string) => {
+    const cell = ghosttyCells()!.document.featureResults[featureId]
+    expect(cell?.status).toBe("unsupported")
+    return buildCardModel({
+      status: "unsupported",
+      featureId,
+      featureName,
+      shortSubjectName: "Ghostty",
+      subjectKind: "term",
+      assertionType: cell?.assertionType,
+      traceEvidence: cell?.evidence,
+      exchange: { writes: cell?.writes, queries: cell?.queries, events: cell?.events },
+      captures: cell?.captures,
+      hasExpectedPicture: Boolean(cell?.captures?.expected),
+    })
+  }
+
+  // Finding 2: the recorded events are plain a, ESC =, KP_Add -> "+", ESC >, KP_Add -> "+". The restore went out
+  // after the decisive key press, so the card must not show it before "Send test key press".
+  it("keypad (DECKPAM): a mode restore after the decisive key press is teardown, never a grey setup row before it", () => {
+    const events = ghosttyCells()!.document.featureResults["modes.application-keypad"]!.events!
+    expect(events.map((e) => `${e.kind}:${e.sequence || e.match?.[0]}`)).toEqual([
+      "query:a",
+      "write:\x1b=",
+      "query:+",
+      "write:\x1b>",
+      "query:+",
+    ])
+    const card = ghosttyCard("modes.application-keypad", "Application keypad (DECKPAM)")
+    expect(card.steps).toEqual([
+      { num: 1, code: "ESC =", words: "Turn on application keypad" },
+      { num: 2, code: "", codeMuted: "no bytes", words: "Send test key press" },
+    ])
+    expect(card.received).toMatchObject({ code: "+", words: "Plain text “+”" })
+    expect(validateMeasuredCard(card, "ghostty-keypad", { assertionType: "input_bytes" })).toEqual([])
+  })
+
+  // Finding 3: DECRQSS 0;5 means "reset, then blink" — blink is on. The row is decided by the screen (no blink seen in
+  // 16 samples), so the reply is context and the card names the screen check as the one that failed.
+  it("blink (SGR 5): names the DECRQSS reply's SGR parameters and says the screen check failed", () => {
+    expect(explainReplyCommand("\x1bP1$r0;5m\x1b\\").words).toBe("“Style: blink (after a reset)”")
+    expect(explainReplyCommand("\x1bP1$r5m\x1b\\").words).toBe("“Style: blink”")
+    expect(explainReplyCommand("\x1bP1$r1;4:3m\x1b\\").words).toBe("“Style: bold, curly underline”")
+    expect(explainReplyCommand("\x1bP1$r0;38;5;196m\x1b\\").words).toBe("“Style: text color 196 (after a reset)”")
+    expect(explainReplyCommand("\x1bP1$r0m\x1b\\").words).toBe("“Style: plain”")
+
+    const card = ghosttyCard("sgr.blink", "Blink (SGR 5)")
+    const all = JSON.stringify(card)
+    expect(all).not.toContain("0;5m”")
+    expect(card.steps).toEqual([
+      { num: 1, code: "ESC [ 5 m", words: "Turn on blink and draw text" },
+      {
+        num: 2,
+        code: "ESC P $ q m ESC \\",
+        setup: true,
+        words: "Ask the current text style → “Style: blink (after a reset)”",
+      },
+    ])
+    expect(card.replyFamily).toBeUndefined()
+    expect(card.expected).toEqual({ words: "Text blinks on and off" })
+    expect(card.received).toEqual({ words: "Screen cells never changed between samples (no blink)" })
+    expect(card.verdict).toEqual({ tone: "no", text: "Screen did not match" })
+    expect(validateMeasuredCard(card, "ghostty-blink", { featureId: "sgr.blink" })).toEqual([])
+  })
+
+  // Finding 5: DECSSCLS. The probe (packages/probe-defs/src/modes.ts DECSSCLS_JUMP / DECSSCLS_SLOW) runs a jump-scroll
+  // control with CSI 9 SP p, then the target at 9 lines per second with CSI 0 SP p; the DECRQM ?4 read only records
+  // the smooth-scroll mode to restore. The write under test is never hidden and the context query is styled as context.
+  it("DECSSCLS: lists the scroll-speed write under test, styles the mode-4 question as context, says what the frames show", () => {
+    expect(formatControlBytes("\x1b[0 p")).toBe("ESC [ 0 SP p")
+    const card = ghosttyCard("modes.decsscls", "DECSSCLS — set scroll speed")
+    const codes = card.steps.map((s) => s.code)
+    expect(codes).not.toContain("CR")
+    expect(codes).not.toContain("LF")
+    const question = card.steps.find((s) => s.code === "ESC [ ?4 $ p")
+    expect(question).toMatchObject({ setup: true, words: "Ask: do you know mode 4? → “Yes, it is off right now”" })
+    const underTest = card.steps.find((s) => s.code === "ESC [ 0 SP p")
+    expect(underTest).toEqual(expect.objectContaining({ words: "Set scroll speed: 9 lines per second (DECSSCLS 0)" }))
+    expect(underTest?.setup).toBeUndefined()
+    expect(card.steps.find((s) => s.code === "ESC [ 9 SP p")).toMatchObject({
+      words: "Set scroll speed: jump (DECSSCLS 9)",
+    })
+    expect(codes.indexOf("ESC [ 9 SP p")).toBeLessThan(codes.indexOf("ESC [ 0 SP p"))
+    expect(card.replyFamily).toBeUndefined()
+    expect(card.expected?.words).toBe("Red marker still moving at the first check")
+    expect(card.received?.words).toBe(
+      "The content was already settled after 876 ms, inside the 3889 ms throttled window",
+    )
+    expect(card.verdict).toEqual({ tone: "no", text: "Screen did not match" })
+    expect(validateMeasuredCard(card, "ghostty-decsscls", { featureId: "modes.decsscls" })).toEqual([])
   })
 })
