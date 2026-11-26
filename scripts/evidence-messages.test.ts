@@ -19,7 +19,13 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import { runTraceFacts } from "@terminfo/run-parser"
-import { replyFailureSentence } from "../docs/data/evidence-messages.ts"
+import {
+  evidenceFacts,
+  evidenceSentences,
+  replyFailureSentence,
+  replyValue,
+  type StoredEvidence,
+} from "../docs/data/evidence-messages.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { currentTrace } from "../docs/data/run-trace.ts"
 import type { CurrentSelectedVersion } from "../docs/data/selected-results.ts"
@@ -519,5 +525,89 @@ describe("a public card never reads an undecided test's reason (#37341)", () => 
       const text = describeTracePanes(loaded, { subjectKind: "term" }).tested.text
       for (const reason of reasons) expect(text).not.toContain(reason)
     }
+  })
+})
+
+describe("OSC 7501 program-status rows (#38743)", () => {
+  const RUN = "e8221a05f29086c82a14f5a95d06a71a"
+  const record = (featureId: string, extra: Partial<StoredEvidence>): StoredEvidence => ({
+    runId: RUN,
+    featureId,
+    subjectKind: "term",
+    os: "linux",
+    status: "unsupported",
+    frameKinds: [],
+    writes: [],
+    queries: [],
+    exchangeExtra: {},
+    assertions: [],
+    ...extra,
+  })
+
+  test("extensions.osc7501-query words detection replies with states and kinds, saying 'all five states' and 'all three kinds' when omitted", () => {
+    const querySentences = (reply: string) =>
+      evidenceSentences(
+        "extensions.osc7501-query",
+        evidenceFacts(
+          record("extensions.osc7501-query", {
+            status: "supported",
+            assertionType: "query_reply",
+            queries: [{ sequence: "\x1b]7501;?\x1b\\\x1b[c", reason: "reply", match: [reply] }],
+          }),
+        ),
+      )
+
+    expect(querySentences("\x1b]7501;?\x1b\\")).toEqual([
+      "The terminal sent back ESC ]7501;? ESC \\ (all five states; all three kinds).",
+    ])
+    expect(querySentences("\x1b]7501;?:states=working,done,error\x1b\\")).toEqual([
+      "The terminal sent back ESC ]7501;?:states=working,done,error ESC \\ (states: working, done, error; all three kinds).",
+    ])
+    expect(querySentences("\x1b]7501;?:kinds=permission,question\x07")).toEqual([
+      "The terminal sent back ESC ]7501;?:kinds=permission,question BEL (all five states; kinds: permission, question).",
+    ])
+    expect(querySentences("\x1b]7501;?:states=working,done,error:kinds=permission:future=1\x1b\\")).toEqual([
+      "The terminal sent back ESC ]7501;?:states=working,done,error:kinds=permission:future=1 ESC \\ (states: working, done, error; kinds: permission).",
+    ])
+  })
+
+  test("extensions.osc7501-silent words the cursor reading and admits CPR replies through the control shape", () => {
+    const read = (shown: string, status: "supported" | "unsupported") =>
+      evidenceSentences(
+        "extensions.osc7501-silent",
+        evidenceFacts(
+          record("extensions.osc7501-silent", {
+            status,
+            assertionType: "buffer_state",
+            callback: {
+              control: "cursor row 1 col 3",
+              readings: [
+                { label: "working report (ST)", shown },
+                { label: "blocked report (BEL)", shown: "cursor row 1 col 1" },
+                { label: "largest-legal report (~3300 bytes, ST)", shown: "cursor row 1 col 1" },
+                { label: "over-cap report (>4096 bytes, ST)", shown: "cursor row 1 col 1" },
+              ],
+            },
+            assertions: [
+              {
+                kind: status === "supported" ? "positive" : "negative",
+                expected: "every report leaves cursor row 1 col 1",
+                observed: "{}",
+              },
+            ],
+          }),
+        ),
+      )
+
+    expect(read("cursor row 1 col 1", "supported")).toEqual([
+      "Printed two letters, which moved the cursor to row 1 col 3; then sent each OSC 7501 program-status report form, 4 reports in all.",
+      "None of them moved the cursor, so none was shown on screen.",
+    ])
+    expect(read("cursor row 1 col 40", "unsupported")[1]).toBe(
+      "Of those, 1 moved the cursor, so the terminal showed it on screen.",
+    )
+    expect(replyValue(record("extensions.osc7501-silent", { status: "supported" }), "\u001b[1;3R")).toHaveProperty(
+      "shown",
+    )
   })
 })

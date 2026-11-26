@@ -209,7 +209,7 @@ const population = ALL_PROBES.filter(
 
 describe("every query_reply row's criterion text states the silence rule the recorder applies", () => {
   test("the exemption list is exactly the rows that do not mark a fenced silence, each for its stated reason", async () => {
-    expect(population.length).toBe(105)
+    expect(population.length).toBe(106)
     const unmarked: string[] = []
     const wrongReason: string[] = []
     for (const probe of population) {
