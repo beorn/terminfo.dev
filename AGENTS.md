@@ -389,9 +389,9 @@ Execution-only refusals retain PROBE TODO or PROBE INVALID tests with reasons, w
 
 ## Content Enrichment
 
-Content files support optional enrichment fields (pages render them when present):
+Content files support optional enrichment fields where templates read them:
 
-- **features.json**: `history`, `pitfalls[]`, `relatedFeatures[]`, `examples[]`, `aliases[]`
+- **features.json**: cross-links and related-protocol notes belong in `body` prose (for example `<a href="/extensions/..." class="hover-link">…</a>`, as on `extensions.osc133-a`), not in separate metadata fields
 - **terminals.json**: `history`, `founded`, `language`, `license`, `renderer`, `pitfalls[]`
 - **standards.json**: `history`, `yearPublished`, `organization`, `parent`, `children[]`
 - **categories.json**: `history`, `seeAlso[]`
