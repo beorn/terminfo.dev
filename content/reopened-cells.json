@@ -455,7 +455,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 4 colour query, a neighbouring feature: a reply, or its absence, never decides",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group D), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -478,7 +478,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -501,7 +501,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Untestable",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -524,7 +524,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version run d153d57f reads Untestable",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group C), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group C), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -547,7 +547,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 13 colour query, a neighbouring feature: a reply, or its absence, never decides",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group D), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -570,7 +570,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Untestable",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -593,7 +593,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version run d153d57f reads Untestable",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group C), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group C), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -616,7 +616,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 14 colour query, a neighbouring feature: a reply, or its absence, never decides",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group D), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -639,7 +639,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -662,7 +662,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: harness defect fixed in 3fa8ddf9 (#32582): the press was read in place of the report",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group E), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group E), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -690,7 +690,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, ce4f24d2 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group B), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -718,7 +718,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, 8a04af6f, ce4f24d2 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group B), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -741,7 +741,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: harness defect fixed in 3fa8ddf9 (#32582): modes 1000 and 1006 stayed on before ?9h",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group E), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group E), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -769,7 +769,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -792,7 +792,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, ce4f24d2 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group B), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
@@ -815,7 +815,7 @@
       "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
       "reopenedOn": "2026-11-26",
       "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
-      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "evidence": "@dev/2 issue 38772 var/@dev2/38772-stale-proposed.tsv (group A), from var/@dev2/38772-stale-mixed.tsv",
       "exit": {
         "kind": "remeasured",
         "suiteIds": [
