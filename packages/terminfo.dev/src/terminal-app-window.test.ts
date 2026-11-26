@@ -856,12 +856,27 @@ describe("37257 Terminal.app close sheet", () => {
   const ok = (stdout: string) => ({ status: 0, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
 
   /** A small Terminal model: two live processes, one sheet per close, Terminate ends one process per press. */
-  const scripted = (state: { windows: number; processes: number; sheet: boolean; trusted?: boolean }) =>
+  const scripted = (state: {
+    windows: number
+    processes: number
+    sheet: boolean
+    trusted?: boolean
+    noSheet?: boolean
+  }) =>
     vi.fn((command: string, args?: readonly string[]) => {
       if (command === "sleep") return ok("")
       if (args?.[0] === "-e") return ok(state.windows === 0 ? "0\n" : "1\n")
       const script = String(args?.[3] ?? "")
+      if (script.includes("System Events")) {
+        if (state.windows > 0) {
+          state.windows = 0
+          state.processes = 0
+          state.sheet = false
+        }
+        return ok(JSON.stringify({ status: "pressed", tabs: 0 }))
+      }
       if (script.includes("AXSheet")) {
+        if (state.noSheet) return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
         if (state.trusted === false) {
           return ok(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" }))
         }
@@ -872,7 +887,7 @@ describe("37257 Terminal.app close sheet", () => {
         return ok(JSON.stringify({ status: "pressed", candidates: 1, sheets: 1, pressed: 1 }))
       }
       if (script.includes("windows[w].close()")) {
-        if (state.windows > 0) state.sheet = true
+        if (state.windows > 0 && !state.noSheet) state.sheet = true
         return ok(state.windows > 0 ? "1" : "0")
       }
       return ok(String(state.windows))
@@ -899,7 +914,7 @@ describe("37257 Terminal.app close sheet", () => {
       if (args?.[0] === "-e") return ok("1\n")
       const script = String(args?.[3] ?? "")
       if (script.includes("AXSheet")) {
-        return ok(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 }))
+        return ok(JSON.stringify({ status: "no-terminate", candidates: 1, sheets: 1, pressed: 0 }))
       }
       return script.includes("windows[w].close()") ? ok("1") : ok("1")
     }) as never)
@@ -922,6 +937,21 @@ describe("37257 Terminal.app close sheet", () => {
     const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as { remaining: number; rounds?: unknown }
     expect(result.remaining).toBe(0)
     expect(result.rounds).toBeUndefined()
+  })
+
+  test("a window whose tab is already gone is closed with the Window menu shortcut", () => {
+    const state = { windows: 1, processes: 0, sheet: false, noSheet: true }
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockImplementation(scripted(state) as never)
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      forced: { status: string }
+      rounds: { dismissal: { status: string } }[]
+    }
+    expect(state.windows).toBe(0)
+    expect(result.remaining).toBe(0)
+    expect(result.rounds[0]?.dismissal.status).toBe("no-sheet")
+    expect(result.forced).toEqual({ status: "pressed", tabs: 0 })
   })
 })
 

@@ -658,18 +658,20 @@ function run(argv) {
     if (Number(running.count) !== 1) return JSON.stringify({ status: "refused", reason: Number(running.count) + " running Terminal processes" });
     var list = attribute($.AXUIElementCreateApplication(Number(running.objectAtIndex(0).processIdentifier)), "AXWindows");
     if (list.error !== 0) return JSON.stringify({ status: "refused", reason: "AXWindows AXError " + list.error });
-    var windows = ObjC.castRefToObject(list.value), candidates = 0, sheets = 0, pressed = 0;
-    for (var i = 0; i < Number(windows.count); i++) {
-      var win = windows.objectAtIndex(i);
-      if (text(attribute(win, "AXTitle").value) !== name) continue;
-      candidates += 1;
+    // The window's own title is the composite and is NOT unique: a fresh login shell and the run's own tab can carry
+    // the same text, so matching every window by title can name several windows (measured 2026-11-26: candidates 4,
+    // sheets 0 while the close sheet was on the owned window). Press on the title matches, fall back to the single
+    // window that actually has a sheet (the one this run just asked Terminal to close), and report what was seen.
+    var windows = ObjC.castRefToObject(list.value), candidates = 0, sheets = 0, pressed = 0, matchedBy = null;
+    var observed = [], withSheet = [];
+    function sheetButtons(win) {
       var children = attribute(win, "AXChildren");
-      if (children.error !== 0) continue;
-      var kids = ObjC.castRefToObject(children.value);
+      if (children.error !== 0) return null;
+      var kids = ObjC.castRefToObject(children.value), found = { sheets: 0, buttons: [] };
       for (var c = 0; c < Number(kids.count); c++) {
         var kid = kids.objectAtIndex(c);
         if (text(attribute(kid, "AXRole").value) !== "AXSheet") continue;
-        sheets += 1;
+        found.sheets += 1;
         var sheetChildren = attribute(kid, "AXChildren");
         if (sheetChildren.error !== 0) continue;
         var buttons = ObjC.castRefToObject(sheetChildren.value);
@@ -677,11 +679,44 @@ function run(argv) {
           var button = buttons.objectAtIndex(b);
           if (text(attribute(button, "AXRole").value) !== "AXButton") continue;
           if (text(attribute(button, "AXTitle").value) !== "Terminate") continue;
-          if (Number($.AXUIElementPerformAction(button, $("AXPress"))) === 0) pressed += 1;
+          found.buttons.push(button);
         }
       }
+      return found;
     }
-    return JSON.stringify({ status: pressed > 0 ? "pressed" : candidates === 0 ? "no-window" : sheets === 0 ? "no-sheet" : "no-terminate", candidates: candidates, sheets: sheets, pressed: pressed });
+    function press(found) {
+      var count = 0;
+      for (var b = 0; b < found.buttons.length; b++) {
+        if (Number($.AXUIElementPerformAction(found.buttons[b], $("AXPress"))) === 0) count += 1;
+      }
+      return count;
+    }
+    for (var i = 0; i < Number(windows.count); i++) {
+      var win = windows.objectAtIndex(i);
+      var title = text(attribute(win, "AXTitle").value);
+      var found = sheetButtons(win);
+      observed.push({ title: title, sheets: found === null ? null : found.sheets });
+      if (found === null) continue;
+      if (title === name) {
+        candidates += 1;
+        sheets += found.sheets;
+        if (found.buttons.length > 0) { pressed += press(found); matchedBy = "title"; }
+      } else if (found.buttons.length > 0) {
+        withSheet.push(found);
+      }
+    }
+    if (pressed === 0 && withSheet.length === 1) {
+      pressed += press(withSheet[0]);
+      matchedBy = pressed > 0 ? "sheet" : null;
+    }
+    return JSON.stringify({
+      status: pressed > 0 ? "pressed" : candidates === 0 && withSheet.length === 0 ? "no-window" : sheets === 0 && withSheet.length === 0 ? "no-sheet" : "no-terminate",
+      candidates: candidates,
+      sheets: sheets,
+      pressed: pressed,
+      matchedBy: matchedBy,
+      windows: observed,
+    });
   } catch (error) {
     return JSON.stringify({ status: "refused", reason: "the dismissal raised", message: String(error && error.message ? error.message : error) });
   }
@@ -713,6 +748,62 @@ export function closeTerminalAppWindows(windowId: number, run: TerminalAppCloseR
   const text = result.stdout.trim()
   if (!/^[0-9]+$/.test(text)) throw new Error(`Terminal.app window close: not a count: ${result.stdout}`)
   return Number(text)
+}
+
+/**
+ * A Terminal window whose tab has already gone (tabs = 0, measured 2026-11-26) is invisible to AX and AppleScript's
+ * `close` silently ignores it. Bring the recorded window to the front by id and close it with the Window menu's own
+ * shortcut; the front-window id is re-read before the keystroke so a vanished window cannot close another one.
+ */
+export const TERMINAL_APP_FORCE_CLOSE_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return JSON.stringify({ status: "absent", reason: "Terminal is not running" });
+  var present = 0, target = -1;
+  for (var w = 0; w < app.windows.length; w++) {
+    if (Number(app.windows[w].id()) !== windowId) continue;
+    present += 1;
+    target = w;
+  }
+  if (present !== 1) return JSON.stringify({ status: "absent", reason: "the owned window id is not present exactly once" });
+  var tabs = Number(app.windows[target].tabs.length);
+  app.activate();
+  app.windows[target].index.set(1);
+  if (!Boolean(app.frontmost())) return JSON.stringify({ status: "absent", reason: "Terminal is not frontmost yet", tabs: tabs });
+  if (Number(app.windows[0].id()) !== windowId) {
+    return JSON.stringify({ status: "absent", reason: "the owned window did not come to the front", tabs: tabs });
+  }
+  Application("System Events").keystroke("w", { using: "command down" });
+  return JSON.stringify({ status: "pressed", tabs: tabs });
+}`
+
+export type TerminalAppForceCloseReply =
+  | { status: "pressed"; tabs: number }
+  | { status: "absent"; reason: string; tabs?: number }
+
+/** Force one recorded window shut; a reply, never an absence claim (the caller still counts the id). */
+export function forceCloseTerminalAppWindow(
+  windowId: number,
+  run: TerminalAppCloseRun = defaultCloseRun,
+): TerminalAppForceCloseReply {
+  if (!Number.isSafeInteger(windowId) || windowId < 1)
+    throw new Error("Terminal.app window force close: invalid window id")
+  const result = run(TERMINAL_APP_FORCE_CLOSE_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window force close: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  let reply: Record<string, unknown>
+  try {
+    reply = JSON.parse(result.stdout) as Record<string, unknown>
+  } catch {
+    throw new Error(`Terminal.app window force close: stdout was not JSON: ${result.stdout}`)
+  }
+  const ok =
+    reply !== null && (reply.status === "pressed" || (reply.status === "absent" && typeof reply.reason === "string"))
+  if (!ok) throw new Error(`Terminal.app window force close: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppForceCloseReply
 }
 
 /** Count the windows with one recorded id; zero is the only success, and Terminal being gone is zero. */
@@ -827,10 +918,20 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
         let refused: string | undefined
         for (let round = 0; remaining !== 0 && round < 5 && refused === undefined; round += 1) {
           const closed = closeTerminalAppWindows(window.windowId)
-          const dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          // Terminal raises the sheet a moment after close returns; poll it before deciding there is none.
+          let dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          for (let attempt = 0; dismissal.status === "no-sheet" && attempt < 10; attempt += 1) {
+            spawnSync("sleep", ["0.2"])
+            dismissal = dismissTerminalAppCloseSheet(window.windowId)
+          }
           rounds.push({ closed, dismissal })
           if (dismissal.status === "refused") refused = dismissal.reason
-          for (let attempt = 0; remaining !== 0 && attempt < 20; attempt += 1) {
+          // A tab that has already gone leaves a window AppleScript's close ignores and AX cannot see, so no sheet
+          // will ever appear for it. When the dismissal found none, close it with the Window menu's own shortcut.
+          if (dismissal.status === "no-sheet") {
+            trace.forced = forceCloseTerminalAppWindow(window.windowId)
+          }
+          for (let attempt = 0; remaining !== 0 && attempt < 30; attempt += 1) {
             spawnSync("sleep", ["0.1"])
             remaining = countTerminalAppWindows(window.windowId)
           }
