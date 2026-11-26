@@ -1039,7 +1039,7 @@ it.each([
         }
         return
       }
-      expect(pass.contexts).toHaveLength(33)
+      expect(pass.contexts).toHaveLength(35)
 
       if (textCase) {
         const terminal = pass.contexts.find(
@@ -1071,9 +1071,10 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      // Five Linux App default launches, two mux launches, one read-allowed supplement per Linux App (33119),
-      // Screen's truecolor-on supplement (33151), and the tmux set-titles-on supplement (32593).
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(14)
+      // Five Linux App default launches, four mux launches (tmux, Screen, and herdr and Zellij since #38759), one
+      // read-allowed supplement per Linux App (33119), Screen's truecolor-on supplement (33151), and the tmux
+      // set-titles-on supplement (32593).
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(16)
       // The tmux set-titles-on profile launches as its own context, with the one declared option.
       expect(
         launcher.mock.calls.some(
@@ -1363,18 +1364,19 @@ describe("release 1 collection census", () => {
     const all = census()
     // full-census.test.ts owns membership. This boundary owns route coverage and the actual CLI.
     const contexts = all.map((entry) => `${entry.kind}:${entry.id}/${entry.os}`)
-    expect(new Set(contexts).size).toBe(33)
+    // herdr and Zellij are Linux-only mux contexts (#38759): 4 mux became 6.
+    expect(new Set(contexts).size).toBe(35)
     expect(all.filter((entry) => entry.kind === "term")).toHaveLength(18)
-    expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(4)
+    expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(6)
     expect(all.filter((entry) => entry.kind === "lib")).toHaveLength(11)
-    expect(all).toHaveLength(33)
+    expect(all).toHaveLength(35)
     // The CLI ledger must name the mux population as well; this is the real stdout boundary.
     const command = spawnSync(process.execPath, ["scripts/release1-collection.ts", "--plan"], {
       cwd: dirname(CONTENT),
       encoding: "utf8",
     })
     expect(command.status, command.stderr).toBe(0)
-    expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
+    expect(command.stdout.split("\n")[0]).toContain("18 app, 6 mux, 11 headless")
   }, 30_000)
 
   it("routes each Linux mux row through the Kitty container's --mux arm and keeps each macOS mux row detached", () => {
@@ -1399,7 +1401,7 @@ describe("release 1 collection census", () => {
     expect(() => census([...ENGINE_BACKENDS.slice(0, -1), "not-in-catalog"])).toThrow(
       /engine membership differs.*not-in-catalog/s,
     )
-    expect(census([...ENGINE_BACKENDS])).toHaveLength(33)
+    expect(census([...ENGINE_BACKENDS])).toHaveLength(35)
   })
 
   it("names every context that has no route instead of dropping it", () => {

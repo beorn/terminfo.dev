@@ -92,11 +92,31 @@ describe("every published card cites decided evidence (D5)", () => {
 
   it("points each derived card at the parent entry its derivation read, and that entry is Unsupported", () => {
     const cards: string[] = []
+    const parts: string[] = []
     const wrong: string[] = []
     for (const [key, context] of Object.entries(published.projection.contexts)) {
       const stored = projection.contexts[key]!
       for (const [id, cell] of Object.entries(context.featureResults)) {
         if (!cell.derived) continue
+        if ("parts" in cell.derived) {
+          // #38772: a card graded from parts cites the part that decided it, and each part it names is a decided entry
+          // of that part's own run's public trace.
+          parts.push(`${key}/${id}`)
+          const names = cell.derived.parts.map((part) => part.feature)
+          if (!names.includes(cell.origin.resultId)) wrong.push(`${key}/${id}: cites ${cell.origin.resultId}`)
+          for (const part of cell.derived.parts) {
+            // An undecided part publishes its name alone (#38772): no run, status or reason of it reaches the card.
+            if (!("status" in part)) {
+              if (Object.keys(part).sort().join() !== "feature,name") {
+                wrong.push(`${key}/${id}: open part ${part.feature}`)
+              }
+              continue
+            }
+            const entry = traceEntry(context.sources[part.runId], part.feature)
+            if (!entry || !isPublishedStatus(entry.status)) wrong.push(`${key}/${id}: part ${part.feature}`)
+          }
+          continue
+        }
         cards.push(`${key}/${id}`)
         const parent = stored.cells[cell.derived.parent]
         const source = context.sources[cell.origin.runId]
@@ -140,6 +160,8 @@ describe("every published card cites decided evidence (D5)", () => {
     // card cites its parent's unsupported entry — so an empty set cannot pass for a
     // clean one.
     expect(ownUndecided.length, "the corpus must still exercise D5 re-pointing").toBeGreaterThan(0)
+    // The OSC 52 umbrella is graded from parts wherever its halves are decided, so the real corpus exercises that path.
+    expect(parts.length, "the corpus must exercise a card graded from parts").toBeGreaterThan(0)
   })
 
   it("cites the review for a cell declared untestable, whose own entry the public trace leaves out", () => {

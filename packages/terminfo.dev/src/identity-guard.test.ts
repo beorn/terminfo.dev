@@ -421,6 +421,53 @@ describe("verifyTerminalIdentity", () => {
     expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
   })
 
+  it("verifies herdr from its own libghostty replies and refuses Ghostty's under its name (#38759)", () => {
+    // herdr 0.9.5's pane emulator, measured 2026-11-26 with no outer terminal answering (/hh/var/@dev12/herdr-test).
+    const herdr = {
+      "device.primary-da": "\x1b[?62;22c",
+      "device.secondary-da": "\x1b[>1;0;0c",
+      "device.xtversion": "libghostty",
+    }
+    expect(verifyTerminalIdentity("herdr", herdr, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    // In a collected run the DA1 sentinel answer follows the DA2 reply (run 9d2d7bf5).
+    const collected = { ...herdr, "device.secondary-da": "\x1b[>1;0;0c\x1b[?62;22c" }
+    expect(verifyTerminalIdentity("herdr", collected, { "device.xtversion": true })).toEqual({
+      ok: true,
+      checked: true,
+    })
+    // A direct Ghostty names itself with a version; it is not herdr, and herdr is not Ghostty.
+    const ghostty = { "device.primary-da": "\x1b[?62;22;52c", "device.xtversion": "ghostty 1.3.1" }
+    expect(verifyTerminalIdentity("herdr", ghostty, { "device.xtversion": true }).ok).toBe(false)
+    expect(verifyTerminalIdentity("ghostty", herdr, { "device.xtversion": true }).ok).toBe(false)
+    // herdr reports no version, so the run's declared executable version is the one that applies.
+    expect(declaredAppVersion(resolveMeasuredAppVersion("herdr", "", herdr), "0.9.5")).toBe("0.9.5")
+  })
+
+  it("verifies Zellij from its own replies and refuses herdr's under its name (#38759)", () => {
+    // Zellij 0.46.0, measured 2026-11-26 in an isolated session (/hh/var/@dev12/zellij-test).
+    const zellij = {
+      "device.primary-da": "\x1b[?62;4;52c",
+      "device.secondary-da": "\x1b[>0;4600;1c",
+      "device.xtversion": "Zellij(4600)",
+    }
+    expect(verifyTerminalIdentity("zellij", zellij, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    // Under the collector's Kitty, which has no sixel, Zellij drops the 4 from DA1 (run e9b2cf77).
+    const underKitty = {
+      ...zellij,
+      "device.primary-da": "\x1b[?62;52c",
+      "device.secondary-da": "\x1b[>0;4600;1c\x1b[?62;52c",
+    }
+    expect(verifyTerminalIdentity("zellij", underKitty, { "device.xtversion": true })).toEqual({
+      ok: true,
+      checked: true,
+    })
+    const herdr = { "device.primary-da": "\x1b[?62;22c", "device.xtversion": "libghostty" }
+    expect(verifyTerminalIdentity("zellij", herdr, { "device.xtversion": true }).ok).toBe(false)
+    expect(verifyTerminalIdentity("herdr", zellij, { "device.xtversion": true }).ok).toBe(false)
+    // 4600 is Zellij's build code, not a release version, so the declared executable version applies.
+    expect(declaredAppVersion(resolveMeasuredAppVersion("zellij", "", zellij), "0.46.0")).toBe("0.46.0")
+  })
+
   it("takes the apparatus-declared version only where the app reports none", () => {
     // Alacritty answers no XTVERSION and sets no TERM_PROGRAM, so its measured version is unknown
     // and every exact-version App declaration was dropped before the batch (#32889).

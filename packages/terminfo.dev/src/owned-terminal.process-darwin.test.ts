@@ -221,6 +221,7 @@ function runDarwinArm(scenario: {
   windowOwnership?: "refused"
   batch?: "process" | "terminal-app" | "disposed"
   title?: "fresh" | "revoked-before" | "revoked-during" | "disposed-before" | "disposed-during"
+  tabTitle?: boolean
   /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
   comms?: Record<string, string>
   /** The Terminal ancestor's pid the terminal-app owner must adopt. */
@@ -377,6 +378,7 @@ function runDarwinArm(scenario: {
     }
     try {
       let titleReads = 0
+      let tabTitleReads = 0
       const owner = await createOwnedTerminal({
         onRetained: () => {},
         captureRunId: ${JSON.stringify(captureRunId)},
@@ -392,6 +394,13 @@ function runDarwinArm(scenario: {
         ...(scenario.batch === "terminal-app"
           ? { terminalApp: { asserter: "terminfo-admin", launchRunId, workerPid: self, windowId: 791, tabTty: "/dev/ttys004", intendedVersion: "2.15" } }
           : { process: assertion }),
+        ...(scenario.tabTitle && {
+          terminalAppTabTitle: async () => {
+            tabTitleReads++
+            await Promise.resolve()
+            return "tab title " + tabTitleReads
+          },
+        }),
       })
       const summary = JSON.parse(owner.summary)
       assert.equal(summary.platform, "darwin")
@@ -412,6 +421,11 @@ function runDarwinArm(scenario: {
         } else await assert.rejects(owner.readTitle())
         assert.equal(titleReads, scenario.title === "fresh" ? 2 : scenario.title.endsWith("before") ? 0 : 1)
         console.log("TITLE " + scenario.title)
+      } else if (scenario.tabTitle) {
+        assert.equal(typeof owner.readTitle, "function")
+        assert.equal(await owner.readTitle(), "tab title 1")
+        assert.equal(await owner.readTitle(), "tab title 2")
+        console.log("TABTITLE " + tabTitleReads)
       } else if (scenario.text) {
         assert.equal(typeof owner.readCells, "function")
         if (scenario.text.disposed) await owner.dispose()
@@ -953,4 +967,22 @@ test("an owned Terminal.app run that no longer owns its window writes nothing to
   })
   expect(result.stdout).toMatch(/REFUSED .*owned Terminal window no longer exists uniquely/)
   expect(result.stdout).toMatch(/PASTEBOARD \[\]/)
+})
+
+// 37257 (@cto 2026-11-26): a Terminal.app-owned run installs a title reader at all, and it reads the tab boundary the
+// arm supplies -- the window composite is never the value. Before this change owner.readTitle was absent for this arm,
+// which is why osc2-title, osc0-icon-title and both xtwinops stack rows measured probe-todo.
+test("an owned Terminal.app run reads its protocol title through the tab boundary", () => {
+  const result = runDarwinArm({
+    provider: "kitty",
+    workerPid: "self",
+    ownerPid: 4242,
+    marker: { flag: "--instance-group", value: `terminfo-${launchRunId}` },
+    parent: { self: 4242, "4242": 777, "777": 1, "1": 0 },
+    comms: { "777": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+    terminalAppPid: 777,
+    batch: "terminal-app",
+    tabTitle: true,
+  })
+  expect(result.stdout).toMatch(/TABTITLE 2/)
 })

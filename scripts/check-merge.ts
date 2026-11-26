@@ -352,6 +352,8 @@ export function runTerminfoMergeCheck(options: MergeCheckOptions): {
     throw new Error(`terminfo check:merge: missing gate-task-guard at ${guardPath}`)
   }
 
+  // The queue names this stage if its bound kills the build, which then prints nothing more (@cto dd0e43f2).
+  log(`YRD-CHECK-PROGRESS ${JSON.stringify({ stage: "site-build full" })}`)
   try {
     const buildEnv: NodeJS.ProcessEnv = {
       ...options.env,

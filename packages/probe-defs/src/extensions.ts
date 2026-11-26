@@ -51,6 +51,7 @@ import {
   completeFramePair,
   productViewportAbsenceResult,
   auditedAdapterSources,
+  auditedLibvtermR1Sources,
   auditedKittyIdentity,
   sameFrame,
   sameRgb as sameRgbCells,
@@ -4657,12 +4658,29 @@ function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   return explain(parserStateResult(null, expected, state, note, undefined, "query_reply"))
 }
 
+const OSC52_WRITE_NO_WITNESS =
+  "Open: no clipboard state to read the write from. This library hands its clipboard writes to no hook our test watches, and reading them back would grade OSC 52 read, not the write."
+
+/**
+ * #38772 (@cpo/term f281df2f, 3ad6dc0e): OSC 52 write grades only the write direction. With no clipboard-state witness
+ * the only evidence is the read-back, which is the read's, so a write the read-back would decide stays open, keeping
+ * its bytes. An undecided read-back and a harness fault keep their own records.
+ */
 function headlessOsc52WriteWithoutWitness(ctx: LibProbeSource): ProbeCallbackResult {
   const measured = headlessClipboardRoundtrip(ctx)
+  if ((measured.hostRecipeCauses?.length ?? 0) > 0) return measured
+  const outcome = measured.observation?.outcome
+  if (measured.pass || outcome === "supported" || outcome === "unsupported") {
+    return {
+      pass: false,
+      response: measured.response ?? "",
+      note: OSC52_WRITE_NO_WITNESS,
+      tests: [{ id: "criterion", status: "probe-todo", reason: OSC52_WRITE_NO_WITNESS }],
+    }
+  }
   const identity = ctx.runtimeIdentity
   const unauditedSilence =
     !measured.pass &&
-    (measured.hostRecipeCauses?.length ?? 0) === 0 &&
     measured.observation === undefined &&
     (measured.response ?? "") === "" &&
     identity !== undefined &&
@@ -10755,7 +10773,7 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
       const r1Report =
         ctx.backendName === "libvterm" &&
         hasAuditedOscInterfaceAbsence(ctx, "libvterm-r1") &&
-        auditedAdapterSources(identity, "libvtermR1")
+        auditedLibvtermR1Sources(identity)
       const target =
         r1Report && libvtermTarget
           ? libvtermTarget

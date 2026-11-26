@@ -24,7 +24,7 @@ export type MatrixCellValue =
   | PublicProbeResult
   | (PublicFeatureResult & {
       joined?: { status: AppCellStatus; from: Array<{ context: string; status: FeatureResultStatus }> }
-      derived?: { parent: string; parentRunId: string; reason: string }
+      derived?: { parent: string; parentRunId: string; reason?: string } | { parts: readonly unknown[] }
     })
 
 export interface MatrixCellInput {
@@ -87,7 +87,8 @@ function resolveSourceRun(
 export function describeMatrixCell(input: MatrixCellInput): MatrixCellDescriptor {
   const sourceRun = resolveSourceRun(input.version, input.featureId)
   const cell = input.cell
-  const derived = Boolean(cell && "derived" in cell && cell.derived)
+  // #38772: only a cell read from a refused parent wears "Unsupported, derived"; one graded from parts wears its status.
+  const derived = Boolean(cell && "derived" in cell && cell.derived && "parent" in cell.derived)
   const joined = cell && "joined" in cell ? cell.joined : undefined
   const currentStatus = cell && "status" in cell ? cell.status : undefined
   const status = evidenceStatus(input.featureId, joined?.status ?? currentStatus, derived)

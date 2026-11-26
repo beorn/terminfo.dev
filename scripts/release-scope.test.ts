@@ -661,9 +661,12 @@ describe("probe method classification", () => {
                 .map(([id]) => key + " " + id),
             )
             .sort()
-          expect(derived).toHaveLength(30)
-          // #38544 maskStoreHashes replaced /nix/store/<32-hex>- in Linux context keys with /nix/store/<hash>-; same 30 cells.
-          expect(digest(derived)).toBe("5e279cb29d1d00f7a01e507abc2632f2feaad2ca542f517eded05a27895559ad")
+          // #38772 (@cto b1a8ecea): only a parent refused by its own effect read derives a child. In these 17 runs every one
+          // of the 30 cells derived before was read from a parent refused only by a query's silence, so none derives now;
+          // each reads its own status, which the pin below already held (ownStatus), so no other verdict moved.
+          // #38772 (@cto 8cccf709; @cpo/term 3ad6dc0e): the OSC 52 umbrella is graded from its write and read rows. In these
+          // runs it is published for VTerm (both halves decided) and xterm.js (its read refused, which decides first).
+          expect(derived).toEqual(["lib:vterm extensions.osc52-clipboard", "lib:xtermjs extensions.osc52-clipboard"])
           // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
           const outerAbsent = Object.entries(api.contexts)
             .flatMap(([key, context]) =>

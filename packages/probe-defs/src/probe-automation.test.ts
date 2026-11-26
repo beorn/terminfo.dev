@@ -463,6 +463,35 @@ describe("qualified clipboard roundtrip", () => {
       expect(clipboard.then, id).toEqual(["query_reply", "buffer_state"])
     }
   })
+  // #38772 (@cpo/term f281df2f): each half grades only its own direction. With no clipboard-state witness, the only
+  // evidence is the read-back, which is the read's, so OSC 52 write stays open whatever the read-back says.
+  test("OSC 52 write with no clipboard-state witness is never graded from the read-back", () => {
+    const callback = probe("extensions.osc52-write").lib!
+    const written: string[] = []
+    const answered = callback(
+      context({
+        runtimeIdentity: xtermIdentity,
+        feed: (sequence) => written.push(sequence),
+        queryWithSentinelOutcome(_sequence, pattern) {
+          const payload = /\x1b\]52;c;([A-Za-z0-9+/=]+)\x07/.exec(written.join(""))?.[1]
+          if (!payload) throw new Error("no write reached the source")
+          const raw = `\x1b]52;c;${payload}\x07`
+          return { raw, rawBase64: btoa(raw), reason: "reply", match: pattern.exec(raw) }
+        },
+      }),
+    )
+    expect(answered.pass).toBe(false)
+    expect(answered.observation).toBeUndefined()
+    expect(answered.tests).toEqual([
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+      },
+    ])
+    expect(answered.response).toMatch(/^\x1b\]52;c;/)
+  })
+
   test.each(
     ["extensions.osc52-clipboard", "extensions.osc52-write"].flatMap((id) =>
       (["xtermjs", "vt100", "vt220"] as const).map((engine) => [id, engine] as const),
@@ -539,7 +568,16 @@ describe("qualified clipboard roundtrip", () => {
         },
       }),
     )
-    expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    // #38772: with no clipboard-state witness, a read-back answer is the read's evidence; the write stays open.
+    if (id === "extensions.osc52-write") {
+      expect(positive.tests).toEqual([
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+        },
+      ])
+    } else expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     const inert = callback(
       context({
         runtimeIdentity,
@@ -680,7 +718,15 @@ describe("qualified clipboard roundtrip", () => {
     )
     expect(writes).toBe(1)
     expect(atob(encoded)).toMatch(/^terminfo-osc52-/)
-    expect(result.observation?.outcome).toBe("supported")
+    if (id === "extensions.osc52-write") {
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+        },
+      ])
+    } else expect(result.observation?.outcome).toBe("supported")
     expect(result.hostRecipeCauses).toBeUndefined()
     expect(result.response).toBe(raw)
   })
@@ -2795,7 +2841,15 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(headless.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      if (id === "extensions.osc52-write") {
+        expect(headless.tests).toEqual([
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+          },
+        ])
+      } else expect(headless.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 
       for (const reply of [
         "\x1b[1;1R", // Unrelated CPR cannot prove a clipboard write.

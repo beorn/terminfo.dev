@@ -199,7 +199,21 @@ function xtversionVersionEquals(payload: string, declared: string): boolean {
   return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
 }
 
-type PlacementIdentityRule = TerminalIdentityRule & { identitySource?: "hosted-darwin" }
+type PlacementIdentityRule = TerminalIdentityRule & {
+  identitySource?: "hosted-darwin"
+  /**
+   * The mux reports no release version itself, so placement takes it from the mux executable the run's verified
+   * attachment receipt names: that executable's own --version, with its sha256 (#38759).
+   */
+  versionSource?: "mux-executable"
+}
+
+/** A mux whose release version comes from its attached executable (#38759); its protocol rule must exist. */
+function muxExecutableVersionRule(id: string): PlacementIdentityRule {
+  const rule = TERMINAL_IDENTITY_RULES[id]
+  if (rule === undefined) throw new Error(`No terminal identity rule for mux ${id}`)
+  return { ...rule, versionSource: "mux-executable" }
+}
 
 const PLACEMENT_IDENTITY_RULES: Record<string, PlacementIdentityRule> = {
   ...TERMINAL_IDENTITY_RULES,
@@ -213,6 +227,9 @@ const PLACEMENT_IDENTITY_RULES: Record<string, PlacementIdentityRule> = {
     da1Pattern: /\?61;/,
     forbidXtversion: true,
   },
+  // herdr answers XTVERSION "libghostty" and Zellij "Zellij(4600)": neither names a release (#38759).
+  herdr: muxExecutableVersionRule("herdr"),
+  zellij: muxExecutableVersionRule("zellij"),
   cmux: { terminal: "cmux", identitySource: "hosted-darwin" },
   cursor: { terminal: "cursor", identitySource: "hosted-darwin" },
   "com.microsoft.VSCode": { terminal: "com.microsoft.VSCode", identitySource: "hosted-darwin" },
@@ -233,6 +250,9 @@ function identityMatch(run: LoadedRun): MeasuredIdentity | null {
     rawReplies: run.rawReplies,
     provenance: run.provenance,
     appLaunch: run.origin.appLaunch,
+    ...(PLACEMENT_IDENTITY_RULES[run.subject.id]?.versionSource === "mux-executable" && {
+      muxExecutable: muxAttachmentExecutable(run),
+    }),
     results: Object.fromEntries(
       run.schemaVersion === 3 || run.schemaVersion === 4
         ? (run.results ?? []).map((result) => [result.featureId, result.status === "supported"])
@@ -245,6 +265,27 @@ function identityMatch(run: LoadedRun): MeasuredIdentity | null {
 type ProtocolIdentitySubject = Pick<LoadedRun, "subject" | "rawReplies" | "provenance"> & {
   appLaunch?: LoadedRun["origin"]["appLaunch"]
   results?: Record<string, boolean>
+  /** The mux executable the attachment receipt names, read only for a rule whose versionSource is the mux executable. */
+  muxExecutable?: { version: string; sha256: string }
+}
+
+/**
+ * The mux executable named by the run's attachment receipt (#38759). The same receipt's custody chain is verified in
+ * provenanceDecision; here it supplies only the version a self-unversioned mux cannot report.
+ */
+function muxAttachmentExecutable(run: LoadedRun): { version: string; sha256: string } | undefined {
+  const source = run.rawReplies["collector.terminalOwnership"]
+  if (source === undefined) return undefined
+  try {
+    const ownership = parseJsonStrict("collector.terminalOwnership", source)
+    if (!isRecord(ownership) || ownership.muxAttachment === undefined) return undefined
+    const { version, sha256 } = parseMuxAttachmentProof(ownership.muxAttachment).executable
+    return { version, sha256 }
+  } catch (cause) {
+    // Malformed retained input is a named placement refusal, never an empty identity.
+    if (!(cause instanceof Error)) throw cause
+    throw new ReceiptRefusal("mux-attachment-invalid", cause.message, cause)
+  }
 }
 
 function protocolIdentityMatch(run: ProtocolIdentitySubject): MeasuredIdentity | null {
@@ -352,6 +393,20 @@ function protocolIdentityMatch(run: ProtocolIdentitySubject): MeasuredIdentity |
     }
     // Any other OS has no apparatus we trust: refused, with no fallback to either branch.
     return null
+  }
+  if (rule.versionSource === "mux-executable") {
+    // herdr answers XTVERSION "libghostty" and Zellij "Zellij(4600)": neither names a release, so the version is the
+    // attachment receipt's executable, as Alacritty's Linux identity rests on its launched executable (#38759).
+    const executable = run.muxExecutable
+    if (
+      !executable ||
+      run.subject.version === "unknown" ||
+      executable.version !== run.subject.version ||
+      !/^[a-f0-9]{64}$/.test(executable.sha256)
+    ) {
+      return null
+    }
+    return { rule: run.subject.id, da1: identity.da1, executable }
   }
   const versionReply = identity.xtversionPayload
   if (!versionReply || !xtversionVersionEquals(versionReply, run.subject.version)) return null

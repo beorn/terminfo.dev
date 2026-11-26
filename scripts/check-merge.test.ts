@@ -107,11 +107,13 @@ describe("terminfo check:merge pre-merge gate (@cto 9768f1cf)", () => {
 
     let observedScratchDir = ""
     const logs: string[] = []
+    let logsAtBuild = -1
     const exec: ExecFn = (cmd, args, opts) => {
       if (cmd === "git" && args.includes("diff")) return { status: 0, stdout: "vendor/terminfo.dev\n", stderr: "" }
       if (cmd === "git") return { status: 0, stdout: "", stderr: "" }
       if (cmd === "bun" && args.includes("terminfo-merge-build")) {
         observedScratchDir = opts.env?.["TERMINFO_SITE_OUT_DIR"] ?? ""
+        logsAtBuild = logs.length
         expect(existsSync(observedScratchDir)).toBe(true)
         return {
           status: 70,
@@ -134,6 +136,8 @@ describe("terminfo check:merge pre-merge gate (@cto 9768f1cf)", () => {
     expect(observedScratchDir).not.toBe("")
     expect(existsSync(observedScratchDir)).toBe(false)
     expect(logs.some((l) => l.includes("sampled-peak-rss=20971520 KiB"))).toBe(true)
+    // Named BEFORE the build starts: a build the bound kills prints nothing after it (@cto dd0e43f2).
+    expect(logs.slice(0, logsAtBuild)).toContain('YRD-CHECK-PROGRESS {"stage":"site-build full"}')
   })
 
   it("build entrypoint scripts use import.meta.main so tilde/encoded checkout paths (e.g. hh-dev~main) never silently skip", () => {

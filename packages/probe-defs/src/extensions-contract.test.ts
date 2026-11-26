@@ -1155,13 +1155,19 @@ function decidedSatisfactionSources(id: string) {
   }
   if (id.startsWith("extensions.osc52-")) {
     let last = ""
+    // #38772: OSC 52 write is decided by the write's own evidence, the engine's clipboard callback; a read-back is the
+    // read's evidence and leaves the write open.
+    const writes: { selector: string; payload: string }[] = []
     return {
       headless: libProbeSource({
         ...inertModel(),
         feed: (text) => {
           last = text
+          const write = /\x1b\]52;([a-z]*);([A-Za-z0-9+/=]+)\x07/.exec(text)
+          if (write) writes.push({ selector: write[1]!, payload: write[2]! })
         },
         feedCapture: () => last,
+        ...(id === "extensions.osc52-write" && { getClipboardState: () => ({ writes: [...writes] }) }),
       }),
     }
   }

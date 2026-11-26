@@ -29,7 +29,7 @@ import {
   type DeclaredMarker,
   type DeclaredUntestableCell,
 } from "./declared-untestable.ts"
-import { applyDerived, DERIVED_UNSUPPORTED, type DerivedMarker, type DerivedPair } from "./derived-cells.ts"
+import { applyDerived, DERIVED_ROWS, type DerivedMarker, type DerivedRow } from "./derived-cells.ts"
 import { applyAppOnly, catalogAppOnly } from "./app-only-cells.ts"
 import { APP_ONLY } from "./app-cells.ts"
 import type { AppOnlyDeclaration } from "@terminfo/catalog"
@@ -566,8 +566,8 @@ export function projectResults(
     reopened?: readonly ReopenedCell[]
     /** Open cells reviewed as untestable (content/declared-untestable.json); loadSelectedResults always passes them. */
     declared?: readonly DeclaredUntestableCell[]
-    /** Declared derived-Unsupported pairs; absent means the one table, DERIVED_UNSUPPORTED (#33019). */
-    derived?: readonly DerivedPair[]
+    /** Declared derived rows; absent means the one table, DERIVED_ROWS (#33019, #38772). */
+    derived?: readonly DerivedRow[]
     /** App only rows (#38772); absent means the catalogue's own declarations, content/features.json `appOnly`. */
     appOnly?: ReadonlyMap<string, AppOnlyDeclaration>
     onProgress?: (completed: number, total: number) => void
@@ -726,7 +726,7 @@ export function projectResults(
       policy.log,
       supplements,
       policy.reopened ?? [],
-      policy.derived ?? DERIVED_UNSUPPORTED,
+      policy.derived ?? DERIVED_ROWS,
       policy.declared ?? [],
       policy.onProgress,
       policy.appOnly ?? catalogAppOnly(),
@@ -914,7 +914,7 @@ function composeContextSummaries(
   log?: (line: string) => void,
   supplements: readonly SupplementInput[] = [],
   reopened: readonly ReopenedCell[] = [],
-  derivedPairs: readonly DerivedPair[] = DERIVED_UNSUPPORTED,
+  derivedPairs: readonly DerivedRow[] = DERIVED_ROWS,
   declared: readonly DeclaredUntestableCell[] = [],
   onProgress?: (completed: number, total: number) => void,
   appOnlyRows: ReadonlyMap<string, AppOnlyDeclaration> = catalogAppOnly(),

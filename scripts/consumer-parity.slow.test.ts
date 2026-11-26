@@ -530,8 +530,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.ok(analysis,key+" has no analysis entry citing its joined runs "+appSources);
         assert.deepEqual(analysis[1].score,app.score,analysis[0]+" analysis score");
         // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
-        // analysis row agree on 264 while the run still records all 273 positions.
-        assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).length);
+        // analysis row agree on 264 while the run still records all 273 positions. A library context's App-only
+        // cells stand outside every denominator (#38772), so lib:alacritty publishes 260 of the 264.
+        const appOnly=new Set(selected.appOnlyIds);
+        assert.equal(selected.score.all,scoredFeatureIds(selected.catalogIds).filter(id=>!appOnly.has(id)).length);
         const matchingPages=pages.filter(page=>JSON.parse(page.params.osBackends||"[]").includes(key));
         assert.equal(matchingPages.length,1,"each OS column belongs to one released app page");
         const page=matchingPages[0];
