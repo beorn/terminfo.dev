@@ -176,6 +176,65 @@ const SGR_NAMES: Readonly<Record<string, string>> = {
   "59": "Reset underline color",
 }
 
+const BASIC_COLOR_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const
+
+/** One reported SGR parameter as a reader's word (`5` → "blink", `24` → "underline off", `31` → "red text"). */
+function sgrParameterName(token: string): string {
+  const named = SGR_NAMES[token]
+  if (named) {
+    if (named.startsWith("Turn on ")) return named.slice("Turn on ".length)
+    if (named.startsWith("Turn off ")) return `${named.slice("Turn off ".length)} off`
+    if (named.startsWith("Reset ")) return `default ${named.slice("Reset ".length)}`
+    return named.toLowerCase()
+  }
+  const n = Number(token)
+  if (Number.isInteger(n)) {
+    if (n >= 30 && n <= 37) return `${BASIC_COLOR_NAMES[n - 30]} text`
+    if (n >= 40 && n <= 47) return `${BASIC_COLOR_NAMES[n - 40]} background`
+    if (n >= 90 && n <= 97) return `bright ${BASIC_COLOR_NAMES[n - 90]} text`
+    if (n >= 100 && n <= 107) return `bright ${BASIC_COLOR_NAMES[n - 100]} background`
+  }
+  return `SGR ${token}`
+}
+
+/**
+ * Name the SGR parameters a DECRQSS `$ r … m` reply reports, so a reply reads as styles rather than raw numbers
+ * (#38757): `0;5` → "blink (after a reset)", `1;4:3` → "bold, curly underline", `` / `0` → "plain".
+ */
+export function describeSgrParameters(params: string): string {
+  const tokens = params.split(";")
+  let names: string[] = []
+  let reset = false
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i] ?? ""
+    if (token === "" || token === "0") {
+      // A reset clears everything reported before it; what follows it is what is on.
+      names = []
+      reset = true
+      continue
+    }
+    const selector = token.split(":")[0]
+    if (selector === "38" || selector === "48" || selector === "58") {
+      let parts = token.split(":")
+      if (parts.length === 1) {
+        const mode = tokens[i + 1]
+        const operands = mode === "2" ? 3 : mode === "5" ? 1 : 0
+        parts = [token, ...tokens.slice(i + 1, i + 2 + operands)]
+        i += mode === undefined ? 0 : 1 + operands
+      }
+      const target = selector === "38" ? "text color" : selector === "48" ? "background color" : "underline color"
+      const values = parts.slice(2)
+      if (parts[1] === "5" && values.length === 1) names.push(`${target} ${values[0]}`)
+      else if (parts[1] === "2" && values.length >= 3) names.push(`${target} rgb(${values.slice(-3).join(", ")})`)
+      else names.push(`${target} (SGR ${parts.join(":")})`)
+      continue
+    }
+    names.push(sgrParameterName(token))
+  }
+  if (names.length === 0) return "plain"
+  return `${names.join(", ")}${reset ? " (after a reset)" : ""}`
+}
+
 const VENDOR_BY_FEATURE: Readonly<Record<string, string>> = {
   "extensions.osc776-cell-size": "rxvt-unicode extension",
   "extensions.osc701-locale": "rxvt-unicode extension",
@@ -414,6 +473,8 @@ export function explainSentCommand(
   if (raw === "\x1b7") return { words: "Save the cursor", fallback: false }
   if (raw === "\x1b8") return { words: "Restore", fallback: false }
   if (raw === "\x1bc") return { words: "Full terminal reset", fallback: false }
+  if (raw === "\x1b=") return { words: "Turn on application keypad", fallback: false }
+  if (raw === "\x1b>") return { words: "Back to normal keypad", fallback: false }
   if (raw === "\x1bH") return { words: "Set a tab stop here", fallback: false }
   if (raw === "\x1bD") return { words: "Move down (index)", fallback: false }
   if (raw === "\x1bM") return { words: "Move up (reverse index)", fallback: false }
@@ -512,6 +573,17 @@ export function explainSentCommand(
   if (/^\x1b\[#\}$/.test(raw)) return { words: "Pop text attributes", fallback: false }
   const hpa = /^\x1b\[(\d*)`$/.exec(raw)
   if (hpa) return { words: `Move to column ${hpa[1] || "1"}`, fallback: false }
+  const decsscls = /^\x1b\[(\d*) p$/.exec(raw)
+  if (decsscls) {
+    // VT510 DECSSCLS: default or 0–3 is 9 lines per second, 4–8 is 18, 9 is jump scrolling.
+    const ps = decsscls[1] || "0"
+    const n = Number(ps)
+    const speed = n === 9 ? "jump" : n >= 4 && n <= 8 ? "18 lines per second" : n <= 3 ? "9 lines per second" : ""
+    return {
+      words: speed ? `Set scroll speed: ${speed} (DECSSCLS ${ps})` : `Set scroll speed (DECSSCLS ${ps})`,
+      fallback: false,
+    }
+  }
   const cursorShape = /^\x1b\[(\d*) q$/.exec(raw)
   if (cursorShape) return { words: `Set cursor shape (${cursorShape[1] || "default"})`, fallback: false }
   if (/^\x1b\[=0?c$/.test(raw)) return { words: "Ask tertiary terminal ID (DA3)", fallback: false }
@@ -695,7 +767,10 @@ export function explainReplyCommand(raw: string): { words: string; fallback: boo
     if (decrqss[1] !== "1") return { words: "“Not recognized”", fallback: false }
     const val = decrqss[2] ?? ""
     if (val === "" || val === "m" || val === "0m") return { words: "“Style: plain”", fallback: false }
-    return { words: val.endsWith("m") ? `“Style: ${val}”` : `“Setting: ${val}”`, fallback: false }
+    return {
+      words: val.endsWith("m") ? `“Style: ${describeSgrParameters(val.slice(0, -1))}”` : `“Setting: ${val}”`,
+      fallback: false,
+    }
   }
   const tcap = /^\x1bP([01])\+([rR])([\s\S]*?)\x1b\\$/.exec(raw)
   if (tcap) {
@@ -857,7 +932,7 @@ function sgrExpectedStyleName(featureId: string, sentCommands: readonly string[]
   for (const raw of sentCommands) {
     const m = /^\x1b\[([0-9;:]+)m$/.exec(raw)
     if (m && m[1] !== "0") {
-      return { code: m[1], label: SGR_NAMES[m[1]!]?.replace(/^Turn on /i, "") ?? `SGR ${m[1]}` }
+      return { code: m[1], label: SGR_NAMES[m[1]!]?.replace(/^Turn on /i, "") ?? describeSgrParameters(m[1] ?? "") }
     }
   }
   return { label: "styled text" }
@@ -1268,6 +1343,8 @@ function expectedNonReplyWords(opts: {
     if (featureId === "charsets.g0-g1-switching") return "Switched charset glyphs on screen"
     if (featureId === "charsets.utf8") return "UTF-8 characters rendered cleanly"
     if (featureId === "sgr.overline") return "Line drawn above the text"
+    if (featureId === "sgr.blink") return "Text blinks on and off"
+    if (featureId === "modes.decsscls") return "Red marker still moving at the first check"
     if (featureId === "sgr.bold") return "Text drawn bold"
     if (featureId === "sgr.faint") return "Text drawn dimmer"
     if (featureId === "sgr.italic") return "Text drawn italic"
@@ -1400,8 +1477,22 @@ function buildStyle5Verdict(opts: {
   return make(ok ? "Feature worked as expected" : "Feature did not work")
 }
 
+/**
+ * A query that only asks (a mode, style, position, size or ID read), as opposed to a command that does something and
+ * is acknowledged (a Kitty graphics transmit with an OK reply). Every question explainer starts with "Ask".
+ */
+function isQuestionWords(words: string): boolean {
+  return /^Ask\b/.test(words) || words === "Read the clipboard"
+}
+
+/** Bare line plumbing (CR, LF, tab, backspace runs): never the command under test when escape commands are sent. */
+function isLinePlumbing(raw: string): boolean {
+  return /^(?:\r+|\n+|\t+|\x08+)$/.test(raw)
+}
+
+/** Mode restores an input probe sends to clean up: DECRST of a tested mode, modifyOtherKeys off, DECKPNM `ESC >`. */
 function isInputBytesTeardownWrite(seq: string): boolean {
-  return /^(?:\x1b\[\?(?:1000|1002|1003|1004|1005|1006|1007|1015|1016|2004|1)l|\x1b\[>4;0m)+$/.test(seq)
+  return /^(?:\x1b\[\?(?:1000|1002|1003|1004|1005|1006|1007|1015|1016|2004|1)l|\x1b\[>4;0m|\x1b>)+$/.test(seq)
 }
 
 function primaryInputEnablePattern(featureId: string): RegExp | undefined {
@@ -1501,7 +1592,10 @@ function buildInputBytesModel(opts: {
   // Build concise steps: setup queries carry their own brief reply; skip teardown/cleanup writes.
   const builtSteps: Array<CardStepRow & { isPrimary: boolean }> = []
   const seenSetupQuery = new Set<string>()
-  const stopIdx = lastInputReadIdx >= 0 ? lastInputReadIdx : events.length - 1
+  // The card always ends with the "Send test key press" row, so nothing sent after the decisive key press may be
+  // listed: a restore or control phase shown above that row reads as if it went out first (#38757).
+  const targetIdx = targetEvent ? events.indexOf(targetEvent) : -1
+  const stopIdx = targetIdx >= 0 ? targetIdx : lastInputReadIdx >= 0 ? lastInputReadIdx : events.length - 1
   for (let i = 0; i <= stopIdx; i++) {
     const ev = events[i]
     if (!ev) continue
@@ -2030,6 +2124,9 @@ export function buildCardModel(input: {
 
   const hasCaptures = Boolean(captures?.observed || captures?.textCells)
   const isScreen = hasCaptures || assertionType === "screenshot" || assertionType === "visual"
+  // A screenshot/visual row is decided by the screen. A reply read along the way (a DECRQM mode read, a DECRQSS style
+  // report) is context: a grey step carrying its own answer, never the Expected/Received pair under the verdict (#38757).
+  const screenGraded = assertionType === "screenshot" || assertionType === "visual"
   const isAppLog = Boolean(logLine)
   const hasAppLogPlumbing = isAppLog || rawSteps.some((s) => /\x1b\](?:7654|7655);/.test(s.sequence))
   const isNonReplyStateProbe =
@@ -2109,7 +2206,7 @@ export function buildCardModel(input: {
 
   const writeSteps: CardStepRow[] = []
   const querySteps: CardStepRow[] = []
-  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean }> = []
+  const orderedSteps: Array<CardStepRow & { isQuery: boolean; isSeed: boolean; isContext: boolean; raw: string }> = []
   const sentCommands: string[] = []
   const queryCommands: string[] = []
   let pendingSaveCup: string | undefined
@@ -2122,6 +2219,7 @@ export function buildCardModel(input: {
   for (const step of activeSteps) {
     const cmds = splitRawCommands(step.sequence)
     const isQuery = step.kind === "query"
+    const stepFirstRow = orderedSteps.length
     for (let cmdIdx = 0; cmdIdx < cmds.length; cmdIdx++) {
       const cmd = cmds[cmdIdx]
       if (!cmd) continue
@@ -2153,6 +2251,8 @@ export function buildCardModel(input: {
                 words: `Draw “${textStr}” at ${cupMatch[1]};${cupMatch[2]}`,
                 isQuery: false,
                 isSeed: true,
+                isContext: false,
+                raw: cmd.raw,
               }
               orderedSteps.push(pairRow)
               writeSteps.push(pairRow)
@@ -2193,7 +2293,7 @@ export function buildCardModel(input: {
         continue
       }
       const isSeed = !isQuery && (cmd.isText || /^\x1b\[\d+;\d+H$/.test(cmd.raw))
-      const row: CardStepRow & { isQuery: boolean; isSeed: boolean } = {
+      const row: CardStepRow & { isQuery: boolean; isSeed: boolean; isContext: boolean; raw: string } = {
         num: orderedSteps.length + 1,
         code: trimmed.code,
         ...(trimmed.fullCode ? { fullCode: trimmed.fullCode } : {}),
@@ -2201,6 +2301,8 @@ export function buildCardModel(input: {
         words,
         isQuery,
         isSeed,
+        isContext: screenGraded && isQuery && isQuestionWords(words),
+        raw: cmd.raw,
       }
       orderedSteps.push(row)
       if (isQuery) querySteps.push(row)
@@ -2209,6 +2311,7 @@ export function buildCardModel(input: {
 
     if (isQuery && typeof step.match?.[0] === "string" && step.match[0].length > 0) {
       let stepAddedReply = false
+      const stepFirstReply = replyParts.length
       for (const part of splitRawCommands(step.match[0])) {
         if (!da1Feature && isDa1Reply(part.raw)) continue
         const decrpmMatch = /^\x1b\[\??(\d+);(\d+)\$y$/.exec(part.raw)
@@ -2225,22 +2328,73 @@ export function buildCardModel(input: {
         stepAddedReply = true
       }
       if (stepAddedReply) queryReplyCount += 1
+      if (screenGraded && stepAddedReply) {
+        let askIdx = -1
+        for (let idx = orderedSteps.length - 1; idx >= stepFirstRow; idx--) {
+          if (orderedSteps[idx]?.isContext) {
+            askIdx = idx
+            break
+          }
+        }
+        const askRow = orderedSteps[askIdx]
+        if (askRow) {
+          const answer = replyParts
+            .slice(stepFirstReply)
+            .map((r) => r.words)
+            .join(", ")
+          orderedSteps[askIdx] = { ...askRow, words: `${askRow.words} → ${answer}` }
+        }
+      }
     }
   }
 
   let keptOrdered = orderedSteps
   if (orderedSteps.length > 6) {
+    // Too many rows to show: the command under test must survive the cut (#38757). A screen-graded row that does not
+    // test cursor movement draws its fixture with bare CR, LF, tab and backspace runs; that line plumbing is never the
+    // command under test, so it never takes a slot from an escape command the probe sent.
+    const dropPlumbing =
+      screenGraded &&
+      !keepCursorMoves &&
+      orderedSteps.some((r) => !r.isContext && !r.isSeed && r.raw.startsWith("\x1b"))
+    // A screen probe repeats its fixture writes once per phase (control, then target); a repeat says nothing new and
+    // must not push the target's own command off the card. Clears and erases can be the command under test, so a
+    // repeated clear stays.
+    const repeatsEarlierWrite = (row: (typeof orderedSteps)[number], idx: number): boolean =>
+      screenGraded &&
+      !row.isQuery &&
+      !isResetOrClearCommand(row.raw) &&
+      !/^\x1b\[\d*[JK]$/.test(row.raw) &&
+      orderedSteps.some((e, j) => j < idx && !e.isQuery && e.code === row.code && e.words === row.words)
+    const pool = orderedSteps.filter(
+      (r, idx) => !(dropPlumbing && isLinePlumbing(r.raw)) && !repeatsEarlierWrite(r, idx),
+    )
     const mustKeep = new Set<number>()
-    orderedSteps.forEach((row, idx) => {
-      if (row.isQuery) mustKeep.add(idx)
-    })
-    orderedSteps.forEach((row, idx) => {
-      if (!row.isQuery && !row.isSeed && mustKeep.size < 6) mustKeep.add(idx)
-    })
-    orderedSteps.forEach((row, idx) => {
+    if (screenGraded) {
+      // Questions are context here: the commands come first, keeping one slot for context when the probe asked one.
+      // An acknowledged command (a query that does something) is kept like any query on other cards.
+      const commandSlots = pool.some((r) => r.isContext) ? 5 : 6
+      pool.forEach((row, idx) => {
+        if (row.isQuery && !row.isContext) mustKeep.add(idx)
+      })
+      pool.forEach((row, idx) => {
+        if (!row.isQuery && !row.isSeed && mustKeep.size < commandSlots) mustKeep.add(idx)
+      })
+      pool.forEach((row, idx) => {
+        if (row.isContext && mustKeep.size < 6) mustKeep.add(idx)
+      })
+    } else {
+      pool.forEach((row, idx) => {
+        if (row.isQuery) mustKeep.add(idx)
+      })
+      pool.forEach((row, idx) => {
+        if (!row.isQuery && !row.isSeed && mustKeep.size < 6) mustKeep.add(idx)
+      })
+    }
+    pool.forEach((_, idx) => {
       if (mustKeep.size < 6 && !mustKeep.has(idx)) mustKeep.add(idx)
     })
-    keptOrdered = orderedSteps.filter((_, idx) => mustKeep.has(idx))
+    keptOrdered = pool.filter((_, idx) => mustKeep.has(idx))
     stepsOmitted = true
   }
   const hasNonSeedStep = keptOrdered.some((r) => !r.isSeed)
@@ -2248,7 +2402,7 @@ export function buildCardModel(input: {
     num: i + 1,
     code: r.code,
     ...(r.fullCode ? { fullCode: r.fullCode } : {}),
-    ...(r.isSeed && hasNonSeedStep ? { setup: true } : {}),
+    ...((r.isSeed && hasNonSeedStep) || r.isContext ? { setup: true } : {}),
     words: r.words,
   }))
 
@@ -2289,6 +2443,7 @@ export function buildCardModel(input: {
 
   // Reply-family detection: bytes appear ONLY for reply families (never fake bytes for screen/log/clipboard/notification/env/lib/state).
   const isReplyFamily =
+    !screenGraded &&
     !isAppLog &&
     !isNonReplyStateProbe &&
     (querySteps.length > 0 ||
@@ -2405,6 +2560,16 @@ export function buildCardModel(input: {
       words = status === "supported" ? "Screen matched expected output" : "Screen did not match expected output"
     }
     received = { words }
+    // Context replies stay readable for helper callers, never with a verdict mark: the screen decided this row.
+    if (replyParts.length > 0) {
+      const combined = trimCode(replyParts.map((r) => r.code).join("  "))
+      readouts.push({
+        label: readbackSourceLabel(featureId, assertionType),
+        text: replyParts.map((r) => r.words).join(", "),
+        code: combined.code,
+        ...(combined.fullCode ? { fullCode: combined.fullCode } : {}),
+      })
+    }
   } else if (assertionType === "clipboard") {
     const nonce =
       status === "supported"
