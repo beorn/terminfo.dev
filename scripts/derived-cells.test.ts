@@ -1,6 +1,6 @@
 /**
  * @failure A refused parent leaves its child reading Untestable, a child derives from a parent that is open, invalid,
- *   missing, Supported, reopened or itself derived, a derived cell looks like a direct measurement, or a Supported
+ *   missing, Supported, reopened, itself derived or refused only by a query's silence (#38772, @cto b1a8ecea), a derived cell looks like a direct measurement, or a Supported
  *   child under a refused parent passes silently.
  * @level l2
  * @consumer projectResults and publicResults, the one selection every site page, census and script reads (33019).
@@ -33,31 +33,44 @@ const catalogue = JSON.parse(readFileSync(new URL("../content/features.json", im
 const TRANSMIT = "extensions.kitty-graphics.transmit"
 const DISPLAY = "extensions.kitty-graphics.display"
 const ids = [TRANSMIT, DISPLAY, "sgr.bold"]
-const SUITE: ProbeSuiteManifest & { schemaVersion: 4 } = {
+const OSC17 = "extensions.osc17-highlight-bg"
+const OSC117 = "extensions.osc117-reset-highlight-bg"
+const OSC_IDS = [OSC17, OSC117]
+const suite = (catalogIds: string[]): ProbeSuiteManifest & { schemaVersion: 4 } => ({
   schemaVersion: 4,
   probeHash: "suite",
   sourceRevision: "1".repeat(40),
   generatedAt: "2026-11-10T05:00:00.000Z",
   adapterVersion: "3.3.2",
-  catalogIds: ids,
+  catalogIds,
   probes: { term: [], lib: [], mux: [] },
-}
+})
+const SUITE = suite(ids)
+/** A fenced silence: the query drew DA1 and nothing else. Recorded as a query_reply witness. */
 const SILENCE = "DA1 answered at +0ms; no reply through the 250 ms window"
+/** An effect read: the sequence was written and its effect read back (here, a library's own unhandled report). */
+const EFFECT = "library reported this sequence as unhandled"
+const EFFECT_READ = JSON.stringify({
+  reader: "report",
+  target: { code: "17", reports: ["17"] },
+  unknown: { code: "9999", reports: ["9999"] },
+})
 const NO_SETUP =
   "Untestable (no setup): Kitty graphics transmit has no reply to either a=t or a=q after their DA1 controls, so the display cell has no image to place"
 
 type Row =
-  | { status: "supported" | "unsupported" }
+  | { status: "supported" | "unsupported"; witness?: "effect" }
   | { status: "untestable" | "probe-invalid" | "probe-todo"; reason: string }
 
 /** One schema-4 xterm run on Linux; decided rows carry a query_reply witness, open rows only their reason. */
-function run(runId: string, rows: Record<string, Row>) {
+function run(runId: string, rows: Record<string, Row>, catalog: string[] = ids) {
+  const manifest = suite(catalog)
   const measuredAt = "2026-11-10T05:00:00.000Z"
   const attempt = { scope: "probe" as const, startedAt: measuredAt }
   const draft = initializeRunDraft({
     runId,
     sourceRevision: SUITE.sourceRevision!,
-    manifest: SUITE,
+    manifest,
     source: { kind: "live" },
     intendedSubject: { kind: "term", id: "xterm" },
   })
@@ -77,7 +90,11 @@ function run(runId: string, rows: Record<string, Row>) {
   draft.origin = { kind: "collector" }
   const decided = Object.entries(rows).filter(([, row]) => row.status === "supported" || row.status === "unsupported")
   draft.rawReplies = Object.fromEntries(Object.keys(rows).map((id) => [id, UNANSWERED_QUERY]))
-  draft.results = ids.map((featureId): ProbeResult => {
+  // An effect row's callback keeps what it read: the library's own report that it left the sequence unhandled.
+  for (const [id, row] of Object.entries(rows)) {
+    if ("witness" in row && row.witness === "effect") draft.rawReplies[`${id}.callbackResponse`] = EFFECT_READ
+  }
+  draft.results = catalog.map((featureId): ProbeResult => {
     const row = rows[featureId]
     if (!row) return { featureId, status: "probe-todo", attempt: { scope: "none" }, tests: [], reason: "Not run" }
     if ("reason" in row) {
@@ -96,12 +113,13 @@ function run(runId: string, rows: Record<string, Row>) {
       }
     }
     const index = decided.findIndex(([id]) => id === featureId)
+    const effect = row.witness === "effect"
     return {
       featureId,
       status: row.status,
-      assertionType: "query_reply",
+      assertionType: effect ? "buffer_state" : "query_reply",
       rawReplyRef: featureId,
-      ...(row.status === "unsupported" && { reason: SILENCE }),
+      ...(row.status === "unsupported" && { reason: effect ? EFFECT : SILENCE }),
       attempt,
       tests: [{ id: "criterion", status: row.status, attempt, assertionRefs: [index], rawReplyRef: featureId }],
     }
@@ -114,14 +132,16 @@ function run(runId: string, rows: Record<string, Row>) {
       assertions: decided.map(([featureId, row]) => ({
         featureId,
         kind: row.status === "supported" ? "positive" : "negative",
-        assertionType: "query_reply",
+        assertionType: "witness" in row && row.witness === "effect" ? "buffer_state" : "query_reply",
         rawReplyRef: featureId,
         expected: "a reply",
-        observed: row.status === "supported" ? "ACK" : SILENCE,
+        // An effect read retains the state it read; a query keeps its reply or the silence.
+        observed:
+          "witness" in row && row.witness === "effect" ? EFFECT_READ : row.status === "supported" ? "ACK" : SILENCE,
       })),
     }),
-    ids,
-    new Map([[SUITE.probeHash, SUITE]]),
+    catalog,
+    new Map([[manifest.probeHash, manifest]]),
   )
 }
 
@@ -133,7 +153,7 @@ const context = (runs: ReturnType<typeof run>[], reopened: ReopenedCell[] = []) 
 describe("unsupported, derived (33019)", () => {
   it("derives the child from a parent refused with its own witness, keeping the child's own reading as a note", () => {
     const measured = run("r1", {
-      [TRANSMIT]: { status: "unsupported" },
+      [TRANSMIT]: { status: "unsupported", witness: "effect" },
       [DISPLAY]: { status: "untestable", reason: NO_SETUP },
     })
     const ctx = context([measured])
@@ -144,7 +164,7 @@ describe("unsupported, derived (33019)", () => {
       parent: TRANSMIT,
       parentName: "Kitty graphics transmit",
       parentRunId: "r1",
-      parentReason: SILENCE,
+      parentReason: EFFECT,
       needs: "an image must be transmitted before it can be displayed",
       ownStatus: "untestable",
       ownReason: NO_SETUP,
@@ -155,7 +175,7 @@ describe("unsupported, derived (33019)", () => {
     const published = publicResults(project([measured]), new Map()).projection.contexts["term:xterm"]!
     expect(published.featureResults[DISPLAY]!.status).toBe("unsupported")
     expect(published.featureResults[DISPLAY]!.reason).toBe(
-      `Unsupported, derived: Kitty graphics transmit was refused in run r1 (${SILENCE}); an image must be transmitted before it can be displayed.`,
+      `Unsupported, derived: Kitty graphics transmit was refused in run r1 (${EFFECT}); an image must be transmitted before it can be displayed.`,
     )
     expect(published.derivedIds).toEqual([DISPLAY])
   })
@@ -163,7 +183,7 @@ describe("unsupported, derived (33019)", () => {
   it("counts a derived cell inside Unsupported, says so beside it, and never as a measurement (@cto 448e41b5)", () => {
     const projection = project([
       run("r1", {
-        [TRANSMIT]: { status: "unsupported" },
+        [TRANSMIT]: { status: "unsupported", witness: "effect" },
         [DISPLAY]: { status: "untestable", reason: NO_SETUP },
         "sgr.bold": { status: "untestable", reason: "Untestable (no way): declared" },
       }),
@@ -207,14 +227,18 @@ describe("unsupported, derived (33019)", () => {
   })
 
   it("a child already decided Unsupported stays direct", () => {
-    const ctx = context([run("r1", { [TRANSMIT]: { status: "unsupported" }, [DISPLAY]: { status: "unsupported" } })])
+    const ctx = context([
+      run("r1", { [TRANSMIT]: { status: "unsupported", witness: "effect" }, [DISPLAY]: { status: "unsupported" } }),
+    ])
     expect(ctx.cells[DISPLAY]!.derived).toBeUndefined()
     expect(ctx.derivedIds).toEqual([])
   })
 
   it("a Supported child under a refused parent throws, naming the pair and @cto", () => {
     expect(() =>
-      context([run("r1", { [TRANSMIT]: { status: "unsupported" }, [DISPLAY]: { status: "supported" } })]),
+      context([
+        run("r1", { [TRANSMIT]: { status: "unsupported", witness: "effect" }, [DISPLAY]: { status: "supported" } }),
+      ]),
     ).toThrow(
       /Derived pair extensions\.kitty-graphics\.transmit -> extensions\.kitty-graphics\.display in term:xterm: .*bring it to @cto/,
     )
@@ -222,7 +246,7 @@ describe("unsupported, derived (33019)", () => {
 
   it("a parent reopened by a ruling reads probe-todo, so the child is no longer derived", () => {
     const measured = run("r1", {
-      [TRANSMIT]: { status: "unsupported" },
+      [TRANSMIT]: { status: "unsupported", witness: "effect" },
       [DISPLAY]: { status: "untestable", reason: NO_SETUP },
     })
     const reopened: ReopenedCell = {
@@ -250,7 +274,7 @@ describe("unsupported, derived (33019)", () => {
       { child: "sgr.bold", parent: DISPLAY, parentName: "display", needs: "b" },
     ]
     const measured = run("r1", {
-      [TRANSMIT]: { status: "unsupported" },
+      [TRANSMIT]: { status: "unsupported", witness: "effect" },
       [DISPLAY]: { status: "untestable", reason: NO_SETUP },
       "sgr.bold": { status: "untestable", reason: "Untestable (no way): declared" },
     })
@@ -259,6 +283,46 @@ describe("unsupported, derived (33019)", () => {
     ]!
     expect(ctx.derivedIds).toEqual([DISPLAY])
     expect(ctx.cells["sgr.bold"]!.featureResult!.status).toBe("untestable")
+  })
+
+  describe("only an effect read entails (#38772, @cto b1a8ecea)", () => {
+    const osc = (rows: Record<string, Row>) =>
+      projectResults([run("r1", rows, OSC_IDS)], OSC_IDS, { currentProbeHash: "suite", reopened: [] }, []).contexts[
+        "term:xterm"
+      ]!
+    const RESET_OPEN = "Untestable (no setup): OSC 117 needs a highlight background colour the run could read"
+
+    it("an OSC 17 parent refused only by a fenced silence leaves osc117 at its own state", () => {
+      const ctx = osc({ [OSC17]: { status: "unsupported" }, [OSC117]: { status: "untestable", reason: RESET_OPEN } })
+      expect(ctx.cells[OSC17]!.featureResult!.status).toBe("unsupported")
+      expect(ctx.cells[OSC117]!.featureResult!.status).toBe("untestable")
+      expect(ctx.cells[OSC117]!.derived).toBeUndefined()
+      expect(ctx.derivedIds).toEqual([])
+    })
+
+    it("the same parent refused by an effect read still derives osc117", () => {
+      const ctx = osc({
+        [OSC17]: { status: "unsupported", witness: "effect" },
+        [OSC117]: { status: "untestable", reason: RESET_OPEN },
+      })
+      expect(ctx.cells[OSC117]!.featureResult).toMatchObject({ status: "unsupported", strength: null })
+      expect(ctx.cells[OSC117]!.derived).toMatchObject({ parent: OSC17, parentReason: EFFECT, ownStatus: "untestable" })
+      expect(ctx.derivedIds).toEqual([OSC117])
+    })
+
+    it("a silence-refused parent with a Supported child is no contradiction: the query is unanswered, not refused", () => {
+      const ctx = osc({ [OSC17]: { status: "unsupported" }, [OSC117]: { status: "supported" } })
+      expect(ctx.cells[OSC117]!.featureResult!.status).toBe("supported")
+      expect(ctx.derivedIds).toEqual([])
+    })
+
+    it("a Kitty transmit refused only by silence derives no display cell", () => {
+      const ctx = context([
+        run("r1", { [TRANSMIT]: { status: "unsupported" }, [DISPLAY]: { status: "untestable", reason: NO_SETUP } }),
+      ])
+      expect(ctx.cells[DISPLAY]!.featureResult!.status).toBe("untestable")
+      expect(ctx.derivedIds).toEqual([])
+    })
   })
 
   it("every declared pair names features in the catalogue, and no child is its own parent", () => {
