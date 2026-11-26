@@ -415,6 +415,16 @@ export interface OwnedAppTransportOptions {
   readonly stage?: string
   readonly knownHosts?: string
   readonly removeStage?: boolean
+  readonly sshTimeoutMs?: number
+  readonly rsyncTimeoutMs?: number
+  readonly reattachTimeoutMs?: number
+}
+
+function assertPositiveTimeoutMs(flag: string, value: number | undefined): void {
+  if (value === undefined) return
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${flag} requires a positive whole number of milliseconds, got ${JSON.stringify(value)}`)
+  }
 }
 
 /** The one owned-app argv both runners start from; the ssh runner hands the probe to the transport
@@ -529,6 +539,9 @@ export function ownedAppCommand(
       `${labelOf(context)}: an ssh owned-app transport requires --owned-app-known-hosts; trust is never invented`,
     )
   }
+  assertPositiveTimeoutMs("--owned-app-ssh-timeout-ms", transport.sshTimeoutMs)
+  assertPositiveTimeoutMs("--owned-app-rsync-timeout-ms", transport.rsyncTimeoutMs)
+  assertPositiveTimeoutMs("--owned-app-reattach-timeout-ms", transport.reattachTimeoutMs)
   return {
     argv: [
       "bun",
@@ -547,6 +560,11 @@ export function ownedAppCommand(
       "--known-hosts",
       transport.knownHosts,
       ...(transport.removeStage ? ["--remove-stage"] : []),
+      ...(transport.sshTimeoutMs === undefined ? [] : ["--ssh-timeout-ms", String(transport.sshTimeoutMs)]),
+      ...(transport.rsyncTimeoutMs === undefined ? [] : ["--rsync-timeout-ms", String(transport.rsyncTimeoutMs)]),
+      ...(transport.reattachTimeoutMs === undefined
+        ? []
+        : ["--reattach-timeout-ms", String(transport.reattachTimeoutMs)]),
       "--",
       ...probe,
     ],
@@ -1753,7 +1771,9 @@ function usage(): never {
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       [--owned-app-transport ssh:<user>@<host> [--owned-app-stage <remote-dir>]\n" +
-      "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
+      "        --owned-app-known-hosts <path> [--owned-app-remove-stage]\n" +
+      "        [--owned-app-ssh-timeout-ms <ms>] [--owned-app-rsync-timeout-ms <ms>]\n" +
+      "        [--owned-app-reattach-timeout-ms <ms>]]\n" +
       "  (bare)   print the census — the default: every Release 1 context and the entry point that\n" +
       "           measures it. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
@@ -1787,6 +1807,17 @@ if (import.meta.main) {
   let ownedAppStage: string | undefined
   let ownedAppKnownHosts: string | undefined
   let ownedAppRemoveStage = false
+  let ownedAppSshTimeoutMs: number | undefined
+  let ownedAppRsyncTimeoutMs: number | undefined
+  let ownedAppReattachTimeoutMs: number | undefined
+  const parseTimeoutArg = (flag: string, raw: string | undefined): number => {
+    if (raw === undefined || !/^\d+$/u.test(raw)) {
+      throw new Error(`${flag} requires a positive whole number of milliseconds, got ${JSON.stringify(raw)}`)
+    }
+    const parsed = Number(raw)
+    assertPositiveTimeoutMs(flag, parsed)
+    return parsed
+  }
   const runs: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
@@ -1815,6 +1846,12 @@ if (import.meta.main) {
       if (ownedAppKnownHosts === undefined || ownedAppKnownHosts.startsWith("--")) usage()
     } else if (argv[index] === "--owned-app-remove-stage") {
       ownedAppRemoveStage = true
+    } else if (argv[index] === "--owned-app-ssh-timeout-ms") {
+      ownedAppSshTimeoutMs = parseTimeoutArg("--owned-app-ssh-timeout-ms", argv[++index])
+    } else if (argv[index] === "--owned-app-rsync-timeout-ms") {
+      ownedAppRsyncTimeoutMs = parseTimeoutArg("--owned-app-rsync-timeout-ms", argv[++index])
+    } else if (argv[index] === "--owned-app-reattach-timeout-ms") {
+      ownedAppReattachTimeoutMs = parseTimeoutArg("--owned-app-reattach-timeout-ms", argv[++index])
     } else {
       const value = argv[index]
       if (value === undefined) usage()
@@ -1826,9 +1863,17 @@ if (import.meta.main) {
       usage()
     }
     try {
-      if (ownedAppRunner === "local" && (ownedAppStage || ownedAppRemoveStage || ownedAppKnownHosts)) {
+      if (
+        ownedAppRunner === "local" &&
+        (ownedAppStage ||
+          ownedAppRemoveStage ||
+          ownedAppKnownHosts ||
+          ownedAppSshTimeoutMs !== undefined ||
+          ownedAppRsyncTimeoutMs !== undefined ||
+          ownedAppReattachTimeoutMs !== undefined)
+      ) {
         throw new Error(
-          "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage require --owned-app-transport ssh:<user>@<host>",
+          "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage/--owned-app-*-timeout-ms require --owned-app-transport ssh:<user>@<host>",
         )
       }
       const pass = await collectPass(
@@ -1838,6 +1883,9 @@ if (import.meta.main) {
           ...(ownedAppStage === undefined ? {} : { stage: ownedAppStage }),
           ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
           ...(ownedAppRemoveStage ? { removeStage: true } : {}),
+          ...(ownedAppSshTimeoutMs === undefined ? {} : { sshTimeoutMs: ownedAppSshTimeoutMs }),
+          ...(ownedAppRsyncTimeoutMs === undefined ? {} : { rsyncTimeoutMs: ownedAppRsyncTimeoutMs }),
+          ...(ownedAppReattachTimeoutMs === undefined ? {} : { reattachTimeoutMs: ownedAppReattachTimeoutMs }),
         },
         contextsInput === undefined && probeIdsInput === undefined
           ? undefined
