@@ -869,12 +869,14 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       # Zellij 0.46.0 (#38759): this shell's foreground client starts a daemonized server (`zellij --server <socket>`)
       # that runs the layout's one pane, the collector, as its direct child. close_on_exit ends the pane, then the
       # session and the client, when the collector exits. The config turns off the first-run tips and release notes,
-      # which would otherwise cover the pane; ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home.
+      # which would otherwise cover the pane. ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home, in a
+      # directory named for the session: Zellij names the socket itself (contract_version_1/<hash>), and the mux receipt
+      # requires the run id in its path (run f3026605 failed every row on that).
       # The config reaches Zellij through --config-dir, whose config.kdl links to the receipt's config file: with
       # --config <file>, Zellij 0.46.0 ignores the layout's pane command and opens the default shell instead, on the
       # host as in the container (#38759, run 9513c657: the collector never registered).
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
-      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/zellij-sockets" SHELL="$(command -v bash)"
+      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/$mux_session-sockets" SHELL="$(command -v bash)"
       mkdir -m 700 "$ZELLIJ_SOCKET_DIR"
       printf 'show_startup_tips false\nshow_release_notes false\n' > "$mux_config"
       mkdir "$mux_output/zellij-config"
