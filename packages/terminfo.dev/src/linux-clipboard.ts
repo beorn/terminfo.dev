@@ -12,9 +12,28 @@ import type {
   TermProbeSource,
 } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
+import {
+  CLIPBOARD_READ_ALLOWED_KEY,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
+  verifyReadAllowedInForce,
+  type AlacrittyReadAllowedReadback,
+  type ClipboardReadAllowedReadback,
+  type XtermReadAllowedReadback,
+} from "./clipboard-config.ts"
 import { readScreenScrollback, resetScreenScrollback } from "./linux-screen-text.ts"
 import { mappedLibX11, readSelectionTaker, selectionOwnerIo, type SelectionTakerRead } from "./linux-selection-owner.ts"
 import { WEZTERM_LINUX_CLIPBOARD_READ_DEFAULTS } from "./wezterm-linux-reviewed.ts"
+
+export {
+  CLIPBOARD_READ_ALLOWED_KEY,
+  parseAlacrittyReadAllowedConfig,
+  parseXtermReadAllowedReply,
+  verifyReadAllowedInForce,
+  type AlacrittyReadAllowedReadback,
+  type ClipboardReadAllowedReadback,
+  type XtermReadAllowedReadback,
+}
 
 type MuxReceiptTarget = Pick<
   LinuxMuxAttachmentProof,
@@ -98,6 +117,8 @@ export interface LinuxClipboardAdapter {
   readonly profile: ClipboardReceipt["profile"]
   readonly permissions: string
   readonly summary: string
+  /** Same-launch in-force read-back JSON for the read-allowed supplement (#33134, Alacritty `msg get-config -w -1`). */
+  readonly readAllowedInForce?: string
   readonly muxAttachmentProof?: LinuxMuxAttachmentProof
   /**
    * tmux's live `allow-passthrough`, the option that decides whether anything an application writes inside a
@@ -1021,6 +1042,98 @@ function expectedClipboardPermissions(app: ClipboardApp, profile: ClipboardRecei
   }
 }
 
+/**
+ * Same-launch read-back of Alacritty 0.17.0's live `terminal.osc52` config via `alacritty msg get-config -w -1`
+ * over `ALACRITTY_SOCKET` (#33134). Never falls back to scanning `/tmp` if `ALACRITTY_SOCKET` is absent or not a socket.
+ */
+async function readAlacrittyReadAllowedInForce(executablePath: string, env: NodeJS.ProcessEnv): Promise<string> {
+  const socket =
+    typeof env.ALACRITTY_SOCKET === "string" && env.ALACRITTY_SOCKET.trim().length > 0 ? env.ALACRITTY_SOCKET : null
+  if (!socket) {
+    return JSON.stringify(
+      parseAlacrittyReadAllowedConfig({
+        socket: null,
+        exitStatus: null,
+        stdout: "",
+        stderr: "",
+        error: "ALACRITTY_SOCKET is not set",
+      }),
+    )
+  }
+  try {
+    const stat = statSync(socket)
+    if (!stat.isSocket()) {
+      return JSON.stringify(
+        parseAlacrittyReadAllowedConfig({
+          socket,
+          exitStatus: null,
+          stdout: "",
+          stderr: "",
+          error: `ALACRITTY_SOCKET ${socket} is not a unix socket`,
+        }),
+      )
+    }
+    if (stat.uid !== process.getuid?.()) {
+      return JSON.stringify(
+        parseAlacrittyReadAllowedConfig({
+          socket,
+          exitStatus: null,
+          stdout: "",
+          stderr: "",
+          error: `ALACRITTY_SOCKET ${socket} is owned by another user`,
+        }),
+      )
+    }
+  } catch (cause) {
+    return JSON.stringify(
+      parseAlacrittyReadAllowedConfig({
+        socket,
+        exitStatus: null,
+        stdout: "",
+        stderr: "",
+        error: `ALACRITTY_SOCKET ${socket} cannot be stat'd: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+    )
+  }
+  return new Promise((resolve) => {
+    execFile(
+      executablePath,
+      ["msg", "get-config", "-w", "-1"],
+      { encoding: "utf8", timeout: 3000, maxBuffer: 1024 * 1024, env: { ...env, ALACRITTY_SOCKET: socket } },
+      (error, stdout, stderr) => {
+        const out = typeof stdout === "string" ? stdout : ""
+        const err = typeof stderr === "string" ? stderr : ""
+        if (!error) {
+          resolve(
+            JSON.stringify(
+              parseAlacrittyReadAllowedConfig({
+                socket,
+                exitStatus: 0,
+                stdout: out,
+                stderr: err,
+              }),
+            ),
+          )
+          return
+        }
+        const code = (error as { code?: unknown }).code
+        const exitStatus = typeof code === "number" && Number.isInteger(code) ? code : 1
+        resolve(
+          JSON.stringify(
+            parseAlacrittyReadAllowedConfig({
+              socket,
+              exitStatus,
+              stdout: out,
+              stderr: err,
+              error: error.message,
+            }),
+          ),
+        )
+      },
+    )
+  })
+}
+
 /** A receipt is authority only after the live private display, process tree and selection agree. */
 export async function createLinuxClipboardAdapter(
   receiptPath: string,
@@ -1279,6 +1392,10 @@ export async function createLinuxClipboardAdapter(
   // The launcher has already compared TERMINFO_TARGET_VERSION with the app's own version reply at this point
   // (linux-container-run.sh:721), so this is the version the run measured, not one asserted here.
   const readDefaultChoice = clipboardReadDefault(app, receipt.profile, process.env.TERMINFO_TARGET_VERSION)
+  const readAllowedInForce =
+    receipt.profile === "allow" && app === "alacritty"
+      ? await readAlacrittyReadAllowedInForce(executable.path, env)
+      : undefined
   const withClipboardFixture = createClipboardTransaction(
     baseline,
     {
@@ -1336,6 +1453,7 @@ export async function createLinuxClipboardAdapter(
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
+    ...(readAllowedInForce !== undefined && { readAllowedInForce }),
     ...(tmuxTarget && {
       readAllowPassthrough: () =>
         readMuxAllowPassthrough({

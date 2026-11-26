@@ -277,6 +277,7 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
   const source: LibProbeSource = {
     backendName: "scripted-model",
     kind: "live",
+    locale: () => "en_US.UTF-8",
     getHyperlinkAt: () => null,
     feedCapture: (text) => {
       model.feed(text)
@@ -318,6 +319,7 @@ export function inertLibProbeSource(): LibProbeSource {
   return {
     backendName: "inert-model",
     kind: "live",
+    locale: () => "en_US.UTF-8",
     cols: 80,
     feed: () => {},
     feedCapture: () => "",
@@ -397,6 +399,7 @@ export function replayTermProbeSource(
     queryMode: async () => null,
     cols: 80,
     rows: 24,
+    locale: () => "en_US.UTF-8",
     ...defaults,
   }
 }

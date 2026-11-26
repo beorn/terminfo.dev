@@ -24,13 +24,14 @@ import {
   buildCardModel,
   countVerdictWords,
   expectedVisualSpecimen,
+  explainReplyCommand,
   shortTerminalName,
   truncateCode,
   vendorExtensionOrigin,
   whoLineParts,
 } from "../docs/.vitepress/theme/card-explain.ts"
 import { validateMeasuredCard, validateUntestableCard } from "./validate-style5-cards.ts"
-import { readCellTrace } from "../docs/data/evidence-reader.ts"
+import { formatControlBytes, readCellTrace } from "../docs/data/evidence-reader.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { projectResults, readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import {
@@ -147,7 +148,7 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     })
     expect(model.steps).toEqual([
       { num: 1, code: "ESC ]776; BEL", words: "Ask: how big is a cell?" },
-      { num: 2, code: "ESC [ c", setup: true, words: "End marker (always answered)" },
+      { num: 2, code: "ESC [ c", setup: true, words: "Terminal ID check (always answered)" },
     ])
     expect(model.expected).toEqual({
       code: "ESC ]776;<w>;<h> BEL",
@@ -155,7 +156,7 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     })
     expect(model.received).toEqual({
       code: "ESC [ ?62;4 c",
-      words: "Answered only the end marker",
+      words: "Answered only the terminal ID check",
     })
     expect(model.verdict).toEqual({ tone: "no", text: "Terminal ignored this query" })
     expect(validateMeasuredCard(model, "osc776")).toEqual([])
@@ -185,18 +186,13 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
         ],
       },
     })
-    expect(overline.steps).toEqual([
-      { num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" },
-      { num: 2, code: "ESC P $ q m ESC \\", words: "Ask the current text style" },
-    ])
-    expect(overline.expected).toEqual({
-      code: "ESC P 1 $ r 53 m …",
-      words: "“Style: overline”",
-    })
-    expect(overline.received).toEqual({
-      code: "ESC P 1 $ r m ESC \\",
-      words: "“Style: plain”",
-    })
+    // #38757: the screen decides a screenshot row, and Expected/Received describe the screen check the verdict names.
+    // #38777: the DECRQSS style read is not part of that result, so it is not a step at all.
+    expect(overline.steps).toEqual([{ num: 1, code: "ESC [ 53 m", words: "Turn on overline and draw text" }])
+    expect(overline.replyFamily).toBeUndefined()
+    expect(overline.expected).toEqual({ words: "Line drawn above the text" })
+    expect(overline.received).toEqual({ words: "Plain text with no line above" })
+    expect(overline.readout).toEqual({ label: "Reply", text: "“Style: plain”", code: "ESC P 1 $ r m ESC \\" })
     expect(overline.verdict).toEqual({ tone: "no", text: "Overline didn’t stick" })
     expect(validateMeasuredCard(overline, "overline")).toEqual([])
     expect(expectedVisualSpecimen("sgr.overline")?.style.textDecoration).toBe("overline")
@@ -823,5 +819,282 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
       expect(weakRun.deref()).toBeUndefined()
     }
     expect(typeof reader).toBe("function")
+  })
+})
+
+/**
+ * #38757: operator review of the Ghostty 1.4.0 Linux result cards (2.7.4 preview). Every card here is built from the
+ * real recorded run the preview selected for that context (measured 2026-11-25), through the same trace projection
+ * the page uses, so a regression in the card rules shows up against the evidence the operator actually read.
+ */
+describe("card-explain #38757 — true send order, named SGR replies, context queries (real Ghostty 1.4.0 Linux run)", () => {
+  const ghosttyRunFile = "ghostty-1.4.0-linux-ae8dfd2fdc04b5aae4ddbf220049a4c3.json"
+  const ghosttyCells = (() => {
+    let cached: ReturnType<typeof currentTrace> | undefined
+    return () => {
+      if (cached) return cached
+      const runPath = join(contentDir, "probes-apps", ghosttyRunFile)
+      const runRaw = readFileSync(runPath, "utf8")
+      const parsedProbeHash = (JSON.parse(runRaw) as { probeHash: string }).probeHash
+      const suitePath = join(contentDir, "suites", `${parsedProbeHash}.json`)
+      const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+      const catalog = manifest.catalogIds!
+      const run = parseRun(runPath, runRaw, catalog, new Map([[manifest.probeHash, manifest]]))
+      const projection = projectResults(
+        [run],
+        catalog,
+        { currentProbeHash: manifest.probeHash, workingRuns: [run] },
+        [],
+      )
+      const ghostty = Object.values(projection.versions).flat()[0]!
+      ghostty.readArtifact = (ref: string) => readVerifiedArtifact(contentDir, ref, runPath, "screenshot")
+      cached = currentTrace(ghostty)
+      expect(cached).toBeDefined()
+      return cached
+    }
+  })()
+  const ghosttyCard = (featureId: string, featureName: string) => {
+    const cell = ghosttyCells()!.document.featureResults[featureId]
+    expect(cell?.status).toBe("unsupported")
+    return buildCardModel({
+      status: "unsupported",
+      featureId,
+      featureName,
+      shortSubjectName: "Ghostty",
+      subjectKind: "term",
+      assertionType: cell?.assertionType,
+      traceEvidence: cell?.evidence,
+      exchange: { writes: cell?.writes, queries: cell?.queries, events: cell?.events },
+      captures: cell?.captures,
+      hasExpectedPicture: Boolean(cell?.captures?.expected),
+    })
+  }
+
+  // Finding 2: the recorded events are plain a, ESC =, KP_Add -> "+", ESC >, KP_Add -> "+". The restore went out
+  // after the decisive key press, so the card must not show it before "Send test key press".
+  it("keypad (DECKPAM): a mode restore after the decisive key press is teardown, never a grey setup row before it", () => {
+    const events = ghosttyCells()!.document.featureResults["modes.application-keypad"]!.events!
+    expect(events.map((e) => `${e.kind}:${e.sequence || e.match?.[0]}`)).toEqual([
+      "query:a",
+      "write:\x1b=",
+      "query:+",
+      "write:\x1b>",
+      "query:+",
+    ])
+    const card = ghosttyCard("modes.application-keypad", "Application keypad (DECKPAM)")
+    expect(card.steps).toEqual([
+      { num: 1, code: "ESC =", words: "Turn on application keypad" },
+      { num: 2, code: "", codeMuted: "no bytes", words: "Send test key press" },
+    ])
+    expect(card.received).toMatchObject({ code: "+", words: "Plain text “+”" })
+    expect(validateMeasuredCard(card, "ghostty-keypad", { assertionType: "input_bytes" })).toEqual([])
+  })
+
+  // Finding 3: DECRQSS 0;5 means "reset, then blink" — blink is on. The row is decided by the screen (no blink seen in
+  // 16 samples), so the reply is context and the card names the screen check as the one that failed.
+  it("blink (SGR 5): names the DECRQSS reply's SGR parameters and says the screen check failed", () => {
+    expect(explainReplyCommand("\x1bP1$r0;5m\x1b\\").words).toBe("“Style: blink (after a reset)”")
+    expect(explainReplyCommand("\x1bP1$r5m\x1b\\").words).toBe("“Style: blink”")
+    expect(explainReplyCommand("\x1bP1$r1;4:3m\x1b\\").words).toBe("“Style: bold, curly underline”")
+    expect(explainReplyCommand("\x1bP1$r0;38;5;196m\x1b\\").words).toBe("“Style: text color 196 (after a reset)”")
+    expect(explainReplyCommand("\x1bP1$r0m\x1b\\").words).toBe("“Style: plain”")
+
+    const card = ghosttyCard("sgr.blink", "Blink (SGR 5)")
+    const all = JSON.stringify(card)
+    expect(all).not.toContain("0;5m”")
+    // #38777: the style read does not decide a screenshot row, so it is not a step beside the screen check.
+    expect(card.steps).toEqual([{ num: 1, code: "ESC [ 5 m", words: "Turn on blink and draw text" }])
+    expect(card.replyFamily).toBeUndefined()
+    expect(card.expected).toEqual({ words: "Text blinks on and off" })
+    expect(card.received).toEqual({ words: "Screen cells never changed between samples (no blink)" })
+    expect(card.verdict).toEqual({ tone: "no", text: "Screen did not match" })
+    expect(validateMeasuredCard(card, "ghostty-blink", { featureId: "sgr.blink" })).toEqual([])
+  })
+
+  // Finding 5: DECSSCLS. The probe (packages/probe-defs/src/modes.ts DECSSCLS_JUMP / DECSSCLS_SLOW) runs a jump-scroll
+  // control with CSI 9 SP p, then the target at 9 lines per second with CSI 0 SP p; the DECRQM ?4 read only records
+  // the smooth-scroll mode to restore. The write under test is never hidden and the context query is styled as context.
+  it("DECSSCLS: lists the scroll-speed write under test, drops the mode-4 question, says what the frames show", () => {
+    expect(formatControlBytes("\x1b[0 p")).toBe("ESC [ 0 SP p")
+    const card = ghosttyCard("modes.decsscls", "DECSSCLS — set scroll speed")
+    const codes = card.steps.map((s) => s.code)
+    expect(codes).not.toContain("CR")
+    expect(codes).not.toContain("LF")
+    // #38777: the mode-4 question does not decide the screenshot row, so it is not shown.
+    expect(card.steps.find((s) => s.code === "ESC [ ?4 $ p")).toBeUndefined()
+    const underTest = card.steps.find((s) => s.code === "ESC [ 0 SP p")
+    expect(underTest).toEqual(expect.objectContaining({ words: "Set scroll speed: 9 lines per second (DECSSCLS 0)" }))
+    expect(underTest?.setup).toBeUndefined()
+    expect(card.steps.find((s) => s.code === "ESC [ 9 SP p")).toMatchObject({
+      words: "Set scroll speed: jump (DECSSCLS 9)",
+    })
+    expect(codes.indexOf("ESC [ 9 SP p")).toBeLessThan(codes.indexOf("ESC [ 0 SP p"))
+    expect(card.replyFamily).toBeUndefined()
+    expect(card.expected?.words).toBe("Red marker still moving at the first check")
+    expect(card.received?.words).toBe(
+      "The content was already settled after 876 ms, inside the 3889 ms throttled window",
+    )
+    expect(card.verdict).toEqual({ tone: "no", text: "Screen did not match" })
+    expect(validateMeasuredCard(card, "ghostty-decsscls", { featureId: "modes.decsscls" })).toEqual([])
+  })
+})
+
+/**
+ * #38777: the all-states card sweep (seven card-builder patterns, 1,421 audited cards). Every card here is built from a
+ * real recorded run in content/, through the page's own projection (parseRun → projectResults → currentTrace) and the
+ * feature's features.json metadata, the way ResultEvidenceCell.vue builds it.
+ */
+describe("card-explain #38777 — command under test, deciding values, library state, true reasons (real recorded runs)", () => {
+  const features = JSON.parse(readFileSync(join(contentDir, "features.json"), "utf8")) as Record<
+    string,
+    { name?: string; sequence?: string }
+  >
+  const traces = new Map<string, NonNullable<ReturnType<typeof currentTrace>>>()
+  const traceOf = (runRel: string) => {
+    const known = traces.get(runRel)
+    if (known) return known
+    const runPath = join(contentDir, runRel)
+    const runRaw = readFileSync(runPath, "utf8")
+    const probeHash = (JSON.parse(runRaw) as { probeHash: string }).probeHash
+    const suitePath = join(contentDir, "suites", `${probeHash}.json`)
+    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const catalog = manifest.catalogIds!
+    const run = parseRun(runPath, runRaw, catalog, new Map([[manifest.probeHash, manifest]]))
+    const projection = projectResults([run], catalog, { currentProbeHash: manifest.probeHash, workingRuns: [run] }, [])
+    const version = Object.values(projection.versions).flat()[0]!
+    version.readArtifact = (ref: string) => readVerifiedArtifact(contentDir, ref, runPath, "screenshot")
+    const trace = currentTrace(version)
+    expect(trace).toBeDefined()
+    traces.set(runRel, trace!)
+    return trace!
+  }
+  const cardFor = (runRel: string, featureId: string, subjectKind: "term" | "lib" = "term") => {
+    const cell = traceOf(runRel).document.featureResults[featureId]
+    expect(cell).toBeDefined()
+    const status = cell!.status as "supported" | "unsupported" | "untestable"
+    return {
+      cell: cell!,
+      card: buildCardModel({
+        status,
+        featureId,
+        featureName: features[featureId]?.name ?? featureId,
+        shortSubjectName: "Test",
+        subjectKind,
+        assertionType: cell!.assertionType,
+        declaredSequence: features[featureId]?.sequence,
+        untestableCause: cell!.untestableCause,
+        traceEvidence: cell!.evidence,
+        exchange: cell!,
+        parserState: cell!.parserState,
+        captures: cell!.captures,
+        hasExpectedPicture: Boolean(cell!.captures?.expected),
+      }),
+    }
+  }
+  const ALACRITTY = "probes-apps/alacritty-0.17.0-linux-e6e3df432db03bf7c07ff1d769a27e89.json"
+
+  // Pattern 1. xterm 411's sgr.reset run paints numbered calibration frames; SGR 0 is sent in a late frame. The card
+  // used to narrow to the first frame window and show only ESC 7 / ESC 8.
+  it("1: always shows the command under test (SGR 0), never only the first calibration frame", () => {
+    const { card } = cardFor("probes-apps/xterm-411-linux-9905a004f5250013a413d73fb7e5011a.json", "sgr.reset")
+    const reset = card.steps.find((s) => s.code === "ESC [ 0 m")
+    expect(reset).toEqual(expect.objectContaining({ words: "Reset text style" }))
+    expect(reset?.setup).toBeUndefined()
+    expect(card.steps.map((s) => s.code)).not.toEqual(["ESC 7", "ESC 8"])
+    expect(card.steps.every((s) => s === reset || s.setup)).toBe(true)
+    expect(validateMeasuredCard(card, "xterm-sgr-reset", { featureId: "sgr.reset" })).toEqual([])
+  })
+
+  // Pattern 1, harness write. DECTCEM hide is written on its own, like the collector's scaffolding hide.
+  it("1: a harness-shaped write that is the command under test (ESC [ ?25 l on cursor.hide) is shown, not grey", () => {
+    const { card } = cardFor(
+      "probes-apps/wezterm-0-unstable-2026-11-20-linux-186b73311b6bc9ab7ef95bad6b055ac1.json",
+      "cursor.hide",
+    )
+    expect(card.steps.at(-1)).toEqual({ num: card.steps.length, code: "ESC [ ?25 l", words: "Turn off visible cursor" })
+    expect(card.steps.slice(0, -1).every((s) => s.setup)).toBe(true)
+  })
+
+  // Patterns 2 and 5. Alacritty 0.17 sgr.bg.256 is graded by the screen; the DECRQSS style read is context, and the
+  // captured "expected" frame is SGR 48;5;67 painted a second time.
+  it("2 + 5: screenshot row drops the style question; Expected names and pictures the requested color, not the repaint", () => {
+    const { card, cell } = cardFor(ALACRITTY, "sgr.bg.256")
+    expect(cell.captures?.expected?.sha256).toBe(cell.captures?.observed?.sha256)
+    expect(card.steps.some((s) => /^Ask\b/.test(s.words))).toBe(false)
+    expect(card.steps).toEqual([
+      { num: 1, code: "ESC [ 3;3 H", setup: true, words: "Move to 3;3" },
+      { num: 2, code: "ESC [ 48;5;67 m", words: "Set 256-color background and draw text" },
+    ])
+    expect(card.replyFamily).toBeUndefined()
+    expect(card.expected).toEqual({ words: "Background color: palette color 67 (#5f87af)" })
+    expect(card.expectedPicture).toMatchObject({ style: { background: "#5f87af" } })
+    expect(card.received?.words).toBe("Screen cells matched the expected result")
+    expect(validateMeasuredCard(card, "alacritty-bg256", { featureId: "sgr.bg.256" })).toEqual([])
+  })
+
+  // Pattern 3. vterm.js 0.10.1 DECERA stores a before/after grid; libvterm-family kitty 0.51.1 reports OSC 633 unhandled.
+  it("3: library cards show the stored state value, or the library's own unhandled report", () => {
+    const decera = cardFor(
+      "probes-libs/vterm-0.10.1-linux-a83eee05-fe66-4ab9-913d-d08d16a74bc8.json",
+      "editing.decera",
+      "lib",
+    ).card
+    expect(decera.received).toEqual({ words: "Before “aaaaaZ”, after “Z”" })
+    const osc633 = cardFor(
+      "probes-libs/kitty-0.51.1-linux-cfb43019-776e-4ce6-b17c-99c8fc10b109.json",
+      "extensions.osc-633-vscode",
+      "lib",
+    ).card
+    expect(osc633.received).toEqual({ words: "The library reported OSC 633 as unhandled" })
+    expect(osc633.steps).toEqual([
+      { num: 1, code: "ESC ]633;A BEL", words: "Feed to the library: Send VS Code shell mark" },
+    ])
+    for (const card of [decera, osc633]) {
+      expect(JSON.stringify(card)).not.toContain("State recorded in parser buffer")
+      expect(JSON.stringify(card)).not.toContain("no bytes")
+    }
+  })
+
+  // Pattern 4. Ghostty 1.4.0 Linux CPL: 6;10, CSI 2 F, read. The deciding read is 4;1.
+  it("4: Expected prints the deciding cursor position, and Received is the read that decides it", () => {
+    const { card } = cardFor("probes-apps/ghostty-1.4.0-linux-ae8dfd2fdc04b5aae4ddbf220049a4c3.json", "cursor.cpl")
+    expect(card.expected).toEqual({ code: "ESC [ 4;1 R", words: "“At 4;1”" })
+    expect(card.received).toEqual({ code: "ESC [ 4;1 R", words: "“At 4;1”" })
+    expect(card.steps.find((s) => s.code === "ESC [ 2 F")?.setup).toBeUndefined()
+    expect(card.steps.filter((s) => s.code === "ESC [ 6 n").map((s) => s.words)).toEqual([
+      "Ask where the cursor is → “At 1;1”",
+      "Ask where the cursor is → “At 6;10”",
+      "Ask where the cursor is",
+    ])
+    expect(JSON.stringify(card)).not.toContain("<row>")
+    expect(validateMeasuredCard(card, "ghostty-cpl", { featureId: "cursor.cpl" })).toEqual([])
+  })
+
+  // Pattern 6. Alacritty never answered the OSC 13 starting-color query; no color was set.
+  it("6: an Untestable reason is true: the unanswered starting-color query, not 'setting the base color did not take effect'", () => {
+    const { card, cell } = cardFor(ALACRITTY, "extensions.osc113-reset-pointer-fg")
+    expect(cell.untestableCause).toBe("prereq-color-setup-absent")
+    expect(card.measured).toBe(false)
+    expect(card.closing).toContain("This terminal did not answer the OSC 13 color query")
+    expect(card.closing).not.toContain("Setting the base color")
+    expect(validateUntestableCard(card, "alacritty-osc113")).toEqual([])
+  })
+
+  // Pattern 7 and the @dev/15 reword: evidence sentences say what was observed, in reader words.
+  it("7: no internal jargon; screen method sentences say the observed outcome", () => {
+    const push = cardFor(ALACRITTY, "modes.xtpushcolors").card
+    expect(push.received?.words).toBe(
+      "Screen cells looked the same as when the command is ignored, not like the expected result",
+    )
+    expect(push.steps.some((s) => /^\d$/.test(s.code))).toBe(false)
+    expect(cardFor(ALACRITTY, "extensions.font-ligatures").card.received?.words).toBe(
+      "Ligature cells matched isolated single-character controls",
+    )
+    expect(cardFor(ALACRITTY, "extensions.osc22-pointer").card.received?.words).toBe(
+      "Pointer cursor matched the baseline after OSC 22",
+    )
+    for (const id of ["modes.xtpushcolors", "extensions.font-ligatures", "extensions.osc22-pointer"]) {
+      expect(JSON.stringify(cardFor(ALACRITTY, id).card)).not.toMatch(/ignored-command control|^Compared the/)
+    }
   })
 })

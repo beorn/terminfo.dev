@@ -818,6 +818,7 @@ describe("current execution projection", () => {
       "probe-todo": 272,
       "probe-invalid": 1,
       "probe-conflict": 0,
+      "app-only": 0,
       "differs-by-context": 0,
     })
     expect(projection.contexts["term:kitty"]?.complete).toBe(false)
@@ -893,6 +894,7 @@ describe("current execution projection", () => {
       "probe-todo": 264,
       "probe-invalid": 0,
       "probe-conflict": 0,
+      "app-only": 0,
       "differs-by-context": 0,
     })
     expect(selected?.complete).toBe(false)

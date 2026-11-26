@@ -8,7 +8,7 @@ import {
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, scoredFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicProbeResult, PublicFeatureResult, PublicContextSummary } from "./public-results.ts"
-import { APP_CELL_STATUSES, DIFFERS_BY_CONTEXT, type AppCellStatus } from "./app-cells.ts"
+import { APP_CELL_STATUSES, APP_ONLY, DIFFERS_BY_CONTEXT, type AppCellStatus } from "./app-cells.ts"
 
 /** Read a current (schema 3 or 4) published result without manufacturing any legacy observation. */
 export function publicResultFor(
@@ -137,6 +137,7 @@ export function emptyRollupCounts(): RollupCounts {
     "probe-todo": 0,
     "probe-invalid": 0,
     "probe-conflict": 0,
+    [APP_ONLY]: 0,
   }
 }
 
@@ -149,8 +150,10 @@ export function emptyRollupCounts(): RollupCounts {
 export function storedCounts<T extends Record<string, number>>(
   counts: T,
   where: string,
-): Omit<T, typeof DIFFERS_BY_CONTEXT> {
-  const { [DIFFERS_BY_CONTEXT]: derived, ...stored } = counts
+): Omit<T, typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY> {
+  // App only cells are outside every denominator (#38772): a stored count set holds the measured statuses only, and
+  // the App only ids travel beside it as their own list, so the bucket is left out here by design, not lost.
+  const { [DIFFERS_BY_CONTEXT]: derived, [APP_ONLY]: _appOnly, ...stored } = counts
   if (derived !== undefined && derived !== 0) {
     throw new Error(
       `${where}: counts.${DIFFERS_BY_CONTEXT} is ${derived}; that bucket is derived by the context join and never enters a stored file (@cto c3c2f885)`,
@@ -186,7 +189,9 @@ export function storedRollup(rollup: TerminalStatusRollup, where: string): Store
  * reader can fold it into "open" or "supported" with a default branch. Differs is decided and is neither a
  * supported nor an unsupported measurement.
  */
-const BUCKET_KIND: Readonly<Record<AppCellStatus, "supported" | "unsupported" | "differs" | "untestable" | "open">> = {
+const BUCKET_KIND: Readonly<
+  Record<AppCellStatus, "supported" | "unsupported" | "differs" | "untestable" | "open" | "app-only">
+> = {
   supported: "supported",
   unsupported: "unsupported",
   [DIFFERS_BY_CONTEXT]: "differs",
@@ -194,6 +199,8 @@ const BUCKET_KIND: Readonly<Record<AppCellStatus, "supported" | "unsupported" | 
   "probe-todo": "open",
   "probe-invalid": "open",
   "probe-conflict": "open",
+  // Never a position: no sum below asks for it, so it reaches no numerator or denominator (#38772).
+  [APP_ONLY]: "app-only",
 }
 
 /** Sum the buckets that mean one of `kinds`; every bucket is classified by `BUCKET_KIND`, never defaulted. */
@@ -297,11 +304,12 @@ export function rollupTerminalStatuses(
     const bucket = status as AppCellStatus
     counts[bucket]++
     const familyEntry = ensureFamily(id.split(".")[0] ?? id)
-    familyEntry.positions++
+    if (bucket !== APP_ONLY) familyEntry.positions++
     familyEntry.counts[bucket]++
   }
 
-  const positions = gradedIds.length
+  // App only cells are graded nowhere on this row (#38772), so they are not positions.
+  const positions = gradedIds.length - counts[APP_ONLY]
   const environmentPositions = envIds.length
   const derived = gradedIds.filter((id) => derivedIds.has(id) && statuses[id] === "unsupported").length
   const byReview = gradedIds.filter((id) => reviewedIds.has(id) && statuses[id] === "untestable").length
@@ -506,7 +514,8 @@ export function currentCoverageSentence(
 ): string {
   const { tested, graded } = testedOfGraded(aggregate.counts)
   if (catalogIds !== undefined) {
-    const named = scoredFeatureIds(catalogIds).length
+    // #38772: an App only cell is in the catalogue but deliberately out of the counts, so it leaves the named side too.
+    const named = scoredFeatureIds(catalogIds).length - (aggregate.counts[APP_ONLY] ?? 0)
     if (named !== graded) {
       throw new Error(
         `coverage counts fold ${graded} graded features, but the catalogue they are printed for has ${named} graded features`,
@@ -539,7 +548,7 @@ export function decisiveCells(
  * reader was handed a joined bar (@cto c3c2f885). A stored-only aggregate simply has no differs member.
  */
 export type ReadableCounts = Readonly<
-  Record<ProbeStatus, number> & Partial<Record<"probe-conflict" | typeof DIFFERS_BY_CONTEXT, number>>
+  Record<ProbeStatus, number> & Partial<Record<"probe-conflict" | typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY, number>>
 >
 
 /**

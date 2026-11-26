@@ -295,6 +295,7 @@ function contextFacts(
       sourceRevision: cell.run.sourceRevision || null,
       runId: cell.run.runId,
       ...(cell.reopened !== undefined && { reopened: true }),
+      ...(cell.appOnly !== undefined && { appOnly: true }),
     }
   }
   return { key: summary.contextKey, cells }

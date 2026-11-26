@@ -1545,7 +1545,7 @@
     "tags": ["unicode"],
     "group": "wide",
     "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation.\n\nVS-16 is how Unicode asks for emoji presentation when a character has both text and emoji forms. Terminals must combine presentation selection with width calculation: the same base character can occupy one column as text and two columns as emoji. This is why emoji support cannot be reduced to a single wcwidth table.",
-    "probe": "Write a character with Variation Selector 16 (e.g., U+263A + U+FE0F), verify it occupies 2 columns in emoji presentation.",
+    "probe": "Write U+263A alone, which must take one column, then U+263A + U+FE0F, and verify the pair occupies 2 columns in emoji presentation. If the bare base is already 2 columns wide, the selector shows nothing and the result is not decided.",
     "baseline": "unicode",
     "url": "https://unicode.org/reports/tr51/#Presentation_Style"
   },
@@ -1586,12 +1586,12 @@
     "url": "https://unicode.org/reports/tr11/"
   },
   "text.tab": {
-    "name": "Tab stops",
+    "name": "Tab stop set by the program (HTS)",
     "slug": "ht-tab-stops",
     "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.\n\nTabs are cursor motion, not spacing characters painted into the grid. The default eight-column stops are a convention inherited from mechanical devices and codified in terminal behavior. Custom stops are rarely used by modern TUIs, but correct HT behavior is still visible in shells, logs, Makefile output, and legacy full-screen programs.",
-    "probe": "Write tab then \"X\", verify X appears at column 8 (after the default 8-column tab stop).",
+    "probe": "Clear every tab stop (<code>CSI 3 g</code>), set one at column 9 (<code>ESC H</code>), return home, then write tab and \"X\": X must land on the stop the program set. The default eight-column stops are tested by Tab Stops (HT).",
     "baseline": "core"
   },
   "unicode.tab-stops": {
@@ -2226,6 +2226,7 @@
     "baseline": "rich"
   },
   "input.xtest-click": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: button-1 click injection",
     "slug": "xtest-click",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
@@ -2235,6 +2236,7 @@
     "probe": "Enable 1000+1006, click button 1 as the delivery control, then click again and require the SGR report (CSI &lt; btn;x;y M/m). Without the OS XTEST adapter, no attempt runs and there is no result; a failed delivery control gives no result, never Unsupported."
   },
   "input.xtest-key": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: ctrl+e key injection",
     "slug": "xtest-key",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2244,6 +2246,7 @@
     "probe": "Confirm XTEST delivery with plain <code>a</code> as the control, then inject <code>ctrl+e</code>, a modified key that is neither tmux's nor Screen's prefix, and require a ctrl+e report: the raw ctrl-E byte (0x05), CSI 27;5;101~ or CSI 101;5u. Without the OS XTEST adapter, no attempt runs and there is no result; a failed delivery control gives no result, never Unsupported."
   },
   "input.xtest-wheel": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: wheel injection",
     "slug": "xtest-wheel",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
@@ -2381,7 +2384,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 4 changes or queries individual entries in the 256-color palette (indices 0-255). To set a color: <code>ESC ] 4 ; c ; spec BEL</code> where c is the palette index and spec is an X11 color specification (e.g. <code>rgb:FF/00/00</code>). To query: <code>ESC ] 4 ; c ; ? BEL</code> — the terminal responds with the current color in <code>rgb:RR/GG/BB</code> format. Applications use this to customize the terminal palette at runtime, e.g. for theme switching or to ensure specific colors match a design system.\n\nUnder tmux 3.6 <code>OSC 4;0;?</code> reads a local palette entry, and when that entry is unknown it queues an outer palette request instead of answering (input.c:2837-2874): the expectation keeps that split between a local answer and a request relayed to the outer client.",
-    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported.",
+    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern. A device attributes answer with no reply before it is Unsupported. A library that keeps no starting palette (its embedding app supplies one) and answers the exact colour once one is set reads Supported, with that limit named.",
     "baseline": "modern",
     "sequence": "ESC ] 4 ; c ; spec BEL"
   },
@@ -2724,6 +2727,7 @@
     "baseline": "modern"
   },
   "extensions.font-ligatures": {
+    "appOnly": { "reason": "Ligatures are drawn by the glyph renderer; a library draws no glyphs." },
     "name": "Font ligatures",
     "slug": "font-ligatures",
     "url": "https://practicaltypography.com/ligatures-in-programming-fonts-hell-no.html",

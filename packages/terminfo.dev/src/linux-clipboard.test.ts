@@ -581,6 +581,12 @@ try {
   process.env.WEZTERM_PANE = "999"
   const actualReadFileSync = realFs.readFileSync
   const actualRealpathSync = realFs.realpathSync
+  const actualStatSync = realFs.statSync
+  const childTty = actualRealpathSync("/proc/self/fd/0")
+  const childTtyName = childTty.replace(/^\/dev\//, "")
+  let listedWezTermTty = childTty
+  let fd0RealpathOverride = null
+  let ttyStatRdevOverride = null
   mock.module("node:os", () => ({ ...realOs, homedir: () => dir }))
   mock.module("node:fs", () => ({ ...realFs,
     readFileSync(path, ...args) {
@@ -591,10 +597,18 @@ try {
       return actualReadFileSync(path, ...args)
     },
     realpathSync(path, ...args) {
+      if (path === "/proc/self/fd/0" && fd0RealpathOverride !== null) return fd0RealpathOverride
       if (path === "/proc/419422/exe") return "/usr/bin/Xvfb"
       if (path === "/proc/419423/exe") return helperExecutable
       if (path === "/proc/" + process.pid + "/exe") return kittyExecutable
       return actualRealpathSync(path, ...args)
+    },
+    statSync(path, ...args) {
+      const stat = actualStatSync(path, ...args)
+      if (path === childTty && ttyStatRdevOverride !== null) {
+        return { ...stat, rdev: ttyStatRdevOverride }
+      }
+      return stat
     },
   }))
   mock.module("node:child_process", () => ({ ...realChildProcess,
@@ -604,13 +618,17 @@ try {
         weztermReads++
         if (cwdActive) {
           nodeAssert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
-          if (args.includes("list")) return { status: 0, stdout: JSON.stringify([{ pane_id: 17, cwd }]), stderr: "" }
+          if (args.includes("list")) return { status: 0, stdout: JSON.stringify([{ pane_id: 17, tty_name: listedWezTermTty, cwd }]), stderr: "" }
           nodeAssert.ok(args.includes("get-text"))
           return { status: 0, stdout: Buffer.from(cwdText + "\n".repeat(24)), stderr: Buffer.alloc(0) }
         }
-        nodeAssert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
         nodeAssert.equal(options.env.WEZTERM_UNIX_SOCKET, process.env.WEZTERM_UNIX_SOCKET)
         nodeAssert.equal(options.env.WEZTERM_PANE, "17")
+        if (args.includes("list")) {
+          nodeAssert.deepEqual(args, ["cli", "--no-auto-start", "list", "--format", "json"])
+          return { status: 0, stdout: JSON.stringify([{ pane_id: 17, tty_name: listedWezTermTty }]), stderr: "" }
+        }
+        nodeAssert.deepEqual(args, ["cli", "--no-auto-start", "get-text", "--pane-id", "17", "--start-line", "-2147483648", "--end-line", "23"])
         if (weztermRefused) return { status: 2, stdout: Buffer.from("partial"), stderr: Buffer.from("owned WezTerm fixture refusal") }
         return { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24) + "\n"), stderr: Buffer.alloc(0) }
       }
@@ -859,17 +877,31 @@ try {
     nodeAssert.equal(weztermOwner.resetScrollback, undefined)
     const { receipt: wezTermReceipt, ...wezTermCounts } = await weztermOwner.getScrollback()
     nodeAssert.deepEqual(wezTermCounts, { totalLines: 27, screenLines: 24 })
-    // Linux WezTerm lists no pane tty and measures none, so the record says so instead of claiming a match.
+    // #37209 (@cto 53fa361e): Linux WezTerm binds fd0 realpath + device to the listed pane TTY.
     nodeAssert.deepEqual(JSON.parse(wezTermReceipt ?? "null"), {
       surface: "wezterm",
       pane: "17",
-      listedTty: null,
-      measuredTty: null,
-      ttyMatch: null,
+      listedTty: childTtyName,
+      measuredTty: childTtyName,
+      ttyMatch: true,
       socketPresent: true,
       executable: "wezterm",
     })
     nodeAssert.equal(kittyReads, readsBefore, "owned WezTerm must not query foreign Kitty")
+    listedWezTermTty = "/dev/pts/999999"
+    const mismatchBefore = weztermReads
+    await nodeAssert.rejects(weztermOwner.getScrollback(), /lists TTY "\/dev\/pts\/999999", not this run's measured/)
+    nodeAssert.equal(weztermReads - mismatchBefore, 1, "mismatched Linux pane TTY must refuse after list without get-text")
+    listedWezTermTty = childTty
+    fd0RealpathOverride = "/dev/tty"
+    const unawaitedBefore = weztermReads
+    await nodeAssert.rejects(weztermOwner.getScrollback(), /controlling TTY "\/dev\/tty" does not match admitted/)
+    nodeAssert.equal(weztermReads, unawaitedBefore, "fd0 realpath mismatch must refuse before spawning WezTerm CLI")
+    fd0RealpathOverride = null
+    ttyStatRdevOverride = 999999n
+    await nodeAssert.rejects(weztermOwner.getScrollback(), /rdev 999999 differs from controlling tty_nr/)
+    nodeAssert.equal(weztermReads, unawaitedBefore, "stat rdev mismatch must refuse before spawning WezTerm CLI")
+    ttyStatRdevOverride = null
     weztermRefused = true
     await nodeAssert.rejects(weztermOwner.getScrollback(), error =>
       /WezTerm owned get-text unavailable/.test(error.message) &&
@@ -885,7 +917,7 @@ try {
         await weztermAssert()
       }
       await nodeAssert.rejects(weztermOwner.getScrollback(), error => error === lostOwner)
-      nodeAssert.equal(weztermReads - before, boundary === 1 ? 0 : 1)
+      nodeAssert.equal(weztermReads - before, boundary === 1 ? 0 : 2)
     }
     weztermOwner.clipboard.assertOwned = weztermAssert
     // The direct history fixture misses CWD's private writer and checks between writes and reads.
@@ -920,10 +952,10 @@ try {
       nodeAssert.equal(JSON.stringify(reading).includes("private-person"), false)
       nodeAssert.equal(typeof reading.detail.ownershipReceipt, "string", "CWD must retain the owned pane identity")
       nodeAssert.deepEqual(JSON.parse(reading.detail.ownershipReceipt), {
-        surface: "wezterm", pane: "17", listedTty: null, measuredTty: null,
-        ttyMatch: null, socketPresent: true, executable: "wezterm",
+        surface: "wezterm", pane: "17", listedTty: childTtyName, measuredTty: childTtyName,
+        ttyMatch: true, socketPresent: true, executable: "wezterm",
       })
-      nodeAssert.equal(/[\\/]/u.test(reading.detail.ownershipReceipt), false)
+      nodeAssert.equal(/\\/u.test(reading.detail.ownershipReceipt), false)
       // An owned process alone cannot widen the reviewed version or borrow another reviewed launch's identity.
       for (const [reported, launched] of [
         ["unreviewed-version", "0-unstable-2026-10-10"],
