@@ -332,14 +332,6 @@ function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string
     const failed = captures.find((capture) => capture.error !== null)
     if (failed) return `native host-recipe query error (${JSON.stringify(failed.query)})`
   }
-  const replyPath = raw["collector.replyPath"]
-  if (replyPath !== undefined) {
-    const parsed = parseJsonStrict("collector.replyPath", replyPath)
-    const decisions = object(parsed) && object(parsed.decisions) ? parsed.decisions : undefined
-    if (!decisions) throw new Error("collector.replyPath has no decisions")
-    const decision = decisions[id]
-    if (object(decision) && decision.reason === "probe uses its declared host recipe") return "declared host recipe"
-  }
   if (stored.tests.some((test) => test.id === HARNESS_INCOMPLETE_TEST)) return "harness incomplete (unreproduced)"
   if (stored.tests.some((test) => test.id === "cleanup")) return "backend cleanup failure replaced the graded result"
   // A saved schema-4 run keeps no diagnostics list: the collector's caught error is the row's reason, which it

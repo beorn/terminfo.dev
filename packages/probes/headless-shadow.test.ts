@@ -281,6 +281,17 @@ it.runIf(OWNED_LAYOUT)(
       input: expect.stringContaining("native host-recipe query error"),
     })
 
+    // AC1: the live routing decision is not an input a replay cannot reproduce. A row the collector routed through
+    // the probe's declared host recipe replays from its own retained captures like any other row.
+    const declared = await shadowTampered(run, "declared-recipe", (draft) => {
+      const replyPath = JSON.parse(draft.rawReplies["collector.replyPath"]!) as {
+        decisions: Record<string, { member: boolean; reason: string }>
+      }
+      replyPath.decisions[agreed] = { member: false, reason: "probe uses its declared host recipe" }
+      draft.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+    })
+    expect(row(declared, agreed), JSON.stringify(row(declared, agreed))).toMatchObject({ outcome: "agree" })
+
     // #30932 S4: the shipped command reasserts the same saved run offline, through its real arguments, and agrees
     // with the collector's own shadow; the tampered copies above decide its exit, worst first (2 > 1 > 0).
     const statusCopy = join(dirname(run), `status-${basename(run)}`)
