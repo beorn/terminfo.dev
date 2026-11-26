@@ -5350,11 +5350,15 @@ async function liveClipboardProbe(
       }
       return clipboardQueryResult(outcome, nonce, settled)
     }
-    const settled = await settledClipboardReply(() => ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply), settleOptions)
+    const settled = await settledClipboardReply(
+      () => ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply),
+      settleOptions,
+    )
     const outcome = settled.outcome
-    // @cto 2026-11-13: the control answered and the query never did. What that silence MEANS depends on the
-    // configuration the run measured (@dev/16 peer 18:43: a granting profile is its own case, and the default
-    // decides only default-configuration runs):
+    // @cto 2026-11-13 & #33200 (@cto 87076838): the control answered, and a DA1-fenced silence proves the terminal
+    // processed the OSC 52 query without replying. A raw timeout without a DA1 fence cannot establish silence and
+    // stays probe-todo. What a fenced silence MEANS depends on the configuration the run measured (@dev/16 peer 18:43:
+    // a granting profile is its own case, and the default decides only default-configuration runs):
     //  - a read-granting profile (a profile that set read-clipboard and is not deny-read): nothing can hold the
     //    query behind a prompt, so silence is the feature's absence — unsupported, with the section named;
     //  - the app's pinned default "ask": a person may be holding the query, and nothing here answers a prompt or
@@ -5362,6 +5366,31 @@ async function liveClipboardProbe(
     //  - pinned "deny"/"absent": silence is the default answer — unsupported;
     //  - no citation at all: the row names the missing citation instead of guessing.
     if ((kind === "read" || readsAfterWrite) && !outcome.match && !osc52Reply.test(outcome.raw)) {
+      if (outcome.reason !== "sentinel") {
+        const reason = `${writeLead}OSC 52 c query timed out without a DA1 fence`
+        if (ctx.capture) {
+          const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
+          return {
+            pass: false,
+            response: outcome.raw,
+            note: reason,
+            tests: [{ id: "criterion", status: "probe-todo", reason }],
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              assertionType: "screenshot",
+              screenshotRef: frame.ref,
+              note: `${reason}; the frame is attached in case a prompt is visible, and this run does not answer one`,
+            },
+          }
+        }
+        return {
+          pass: false,
+          response: outcome.raw,
+          note: reason,
+          tests: [{ id: "criterion", status: "probe-todo", reason }],
+        }
+      }
       // A deny-read profile configured the refusal this run measured, so its silence is this run's own setting
       // talking, not a statement about the app's default (@dev/16 peer).
       if (fixture.readProfile?.profile === "deny-read") {
@@ -9450,7 +9479,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         const control = await ctx.queryOutcome(OSC22_CONTROL_QUERY, OSC22_CONTROL_REPLY)
         const controlAnswered = OSC22_CONTROL_REPLY.test(control.raw)
         const read = async () => {
-          const outcome = await ctx.queryOutcome(query, OSC22_SHAPE_REPLY)
+          const outcome = await ctx.queryWithSentinelOutcome(query, OSC22_SHAPE_REPLY)
           return { ...readOsc22Shape(outcome.raw), reason: outcome.reason }
         }
         const initial = await read()

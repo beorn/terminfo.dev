@@ -32,29 +32,29 @@ const DEFAULT_RULE = /device attributes (?:answer|reply) with no (?:[\w-]+ )*rep
 
 /**
  * query_reply rows that do not mark a fenced silence on every query_reply arm, so the default sentence would be false
- * there. They say nothing about silence (@cto 767c9bcd). Each reason is checked below:
- * - "no fence": at least one query_reply arm asks no DA1-fenced query (cursor, DECRPM, tab and clipboard reads; DA1
- *   itself as the query).
- * - "own fold": every query_reply arm asks a DA1-fenced query and folds the silence by its own controls (Untestable,
- *   PROBE TODO or not tested) instead of marking it.
+ * there. They say nothing about silence (@cto 767c9bcd, #33200 @cto 87076838). Each reason is checked below:
+ * - "da1-is-query": the feature query IS DA1 (`\x1b[c`), so DA1 cannot fence itself.
+ * - "oracle-only": at least one query_reply arm uses CPR (`\x1b[6n`), capture, or OS clipboard readback purely as the
+ *   measurement oracle, never as the feature under test; a silent oracle cannot grade the feature Unsupported.
+ * - "own fold": every query_reply arm asks a DA1-fenced query and folds the silence by its own controls (subject
+ *   posture, behavioural fallback, Untestable, PROBE TODO or not tested) instead of marking it.
  * - "paint row": an sgr row, decided by what is painted; its term arm declares screenshot.
  */
-type ExemptReason = "no fence" | "own fold" | "paint row"
+type ExemptReason = "da1-is-query" | "oracle-only" | "own fold" | "paint row"
 const SILENCE_EXEMPT: Record<string, ExemptReason> = {
-  "cursor.cpl": "no fence",
-  "cursor.cuu-past-top": "no fence",
-  "cursor.horizontal-absolute": "no fence",
-  "cursor.hpa": "no fence",
-  "cursor.move.absolute": "no fence",
-  "cursor.move.back": "no fence",
-  "cursor.move.down": "no fence",
-  "cursor.move.forward": "no fence",
-  "cursor.move.home": "no fence",
-  "cursor.move.up": "no fence",
-  "cursor.next-line": "no fence",
-  "cursor.position-report": "no fence",
-  "cursor.vpa": "no fence",
-  "device.primary-da": "no fence",
+  "cursor.cpl": "oracle-only",
+  "cursor.cuu-past-top": "oracle-only",
+  "cursor.horizontal-absolute": "oracle-only",
+  "cursor.hpa": "oracle-only",
+  "cursor.move.absolute": "oracle-only",
+  "cursor.move.back": "oracle-only",
+  "cursor.move.down": "oracle-only",
+  "cursor.move.forward": "oracle-only",
+  "cursor.move.home": "oracle-only",
+  "cursor.move.up": "oracle-only",
+  "cursor.next-line": "oracle-only",
+  "cursor.vpa": "oracle-only",
+  "device.primary-da": "da1-is-query",
   "extensions.kitty-graphics.display": "own fold",
   "extensions.kitty-graphics.transmit": "own fold",
   "extensions.osc0-icon-title": "own fold",
@@ -66,28 +66,28 @@ const SILENCE_EXEMPT: Record<string, ExemptReason> = {
   "extensions.osc114-reset-pointer-bg": "own fold",
   "extensions.osc117-reset-highlight-bg": "own fold",
   "extensions.osc119-reset-highlight-fg": "own fold",
-  "extensions.osc22-pointer": "no fence",
+  "extensions.osc22-pointer": "oracle-only",
   "extensions.osc30001-color-stack-push": "own fold",
   "extensions.osc30101-color-stack-pop": "own fold",
-  "extensions.osc52-clipboard": "no fence",
-  "extensions.osc52-read": "no fence",
-  "extensions.osc52-write": "no fence",
+  "extensions.osc52-clipboard": "own fold",
+  "extensions.osc52-read": "own fold",
+  "extensions.osc52-write": "oracle-only",
   "extensions.osc5522-clipboard": "own fold",
-  "extensions.osc66-text-sizing": "no fence",
-  "extensions.sixel-da1": "no fence",
-  "modes.alt-screen.enter": "no fence",
-  "modes.altscreen-1047": "no fence",
-  "modes.application-cursor": "no fence",
-  "modes.auto-wrap": "no fence",
-  "modes.bracketed-paste": "no fence",
-  "modes.color-scheme-reporting": "no fence",
-  "modes.deccolm": "no fence",
-  "modes.decsclm": "no fence",
-  "modes.mouse-all": "no fence",
-  "modes.mouse-sgr": "no fence",
-  "modes.mouse-tracking": "no fence",
+  "extensions.osc66-text-sizing": "oracle-only",
+  "extensions.sixel-da1": "da1-is-query",
+  "modes.alt-screen.enter": "own fold",
+  "modes.altscreen-1047": "own fold",
+  "modes.application-cursor": "own fold",
+  "modes.auto-wrap": "own fold",
+  "modes.bracketed-paste": "own fold",
+  "modes.color-scheme-reporting": "own fold",
+  "modes.deccolm": "own fold",
+  "modes.decsclm": "own fold",
+  "modes.mouse-all": "own fold",
+  "modes.mouse-sgr": "own fold",
+  "modes.mouse-tracking": "own fold",
   "modes.reverse-video": "own fold",
-  "modes.synchronized-output": "no fence",
+  "modes.synchronized-output": "own fold",
   "sgr.blink": "paint row",
   "sgr.bold": "paint row",
   "sgr.faint": "paint row",
@@ -101,10 +101,10 @@ const SILENCE_EXEMPT: Record<string, ExemptReason> = {
   "sgr.underline.dotted": "paint row",
   "sgr.underline.double": "paint row",
   "sgr.underline.single": "paint row",
-  "text.cbt": "no fence",
-  "text.cht": "no fence",
-  "text.tbc": "no fence",
-  "unicode.grapheme-cursor": "no fence",
+  "text.cbt": "oracle-only",
+  "text.cht": "oracle-only",
+  "text.tbc": "oracle-only",
+  "unicode.grapheme-cursor": "oracle-only",
 }
 
 const declaresQueryReply = (declared: ProbeDefinition["termAssertionType"] | ProbeDefinition["libAssertionType"]) =>
@@ -133,12 +133,16 @@ async function armSilences(probe: ProbeDefinition): Promise<ArmSilence[]> {
       sentinel: { atMs: 3, graceMs: 250 },
     }
   }
+  let clipboard = "baseline"
   const terminal = {
     kind: "live",
     cols: 80,
     rows: 24,
-    write() {},
-    queryCursorPosition: async () => null,
+    write(sequence: string) {
+      const m = /\x1b\]52;c;([^\x07]+)\x07/.exec(sequence)
+      if (m?.[1] && m[1] !== "?") clipboard = atob(m[1])
+    },
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }),
     query: async () => null,
     // 34864: a DA1 asked alone is answered by the same DA1 the fenced outcomes carry (DECRQCRA's before/after controls,
@@ -149,9 +153,31 @@ async function armSilences(probe: ProbeDefinition): Promise<ArmSilence[]> {
         ? { match, reason: "reply", raw: DA1, rawBase64: Buffer.from(DA1).toString("base64") }
         : { match: null, reason: "timeout", raw: "", rawBase64: "" }
     },
-    queryWithSentinel: async () => null,
+    // queryWithSentinel sends DA1 as its fence (tty.ts:670), so count it as a fenced ask returning null on silence.
+    queryWithSentinel: async () => {
+      fencedAsks++
+      return null
+    },
     queryWithSentinelOutcome: async () => fencedOutcome(),
     queryMode: async () => null,
+    withClipboardFixture: async <T>(
+      work: (fixture: {
+        baseline: string
+        writeDeadlineMs: number
+        writePollMs: number
+        readText: () => Promise<string>
+        writeText: (text: string) => Promise<void>
+      }) => Promise<T>,
+    ) =>
+      work({
+        baseline: "baseline",
+        writeDeadlineMs: 10,
+        writePollMs: 5,
+        readText: async () => clipboard,
+        writeText: async (text: string) => {
+          clipboard = text
+        },
+      }),
   } as unknown as TermProbeSource
   // A library capture that ends with the DA1 request (Kitty keyboard detection) answers with DA1 alone.
   const library: LibProbeSource = {
@@ -192,13 +218,16 @@ describe("every query_reply row's criterion text states the silence rule the rec
       unmarked.push(probe.id)
       const reason = SILENCE_EXEMPT[probe.id]
       const holds =
-        reason === "no fence"
-          ? arms.some((arm) => arm.fencedAsks === 0)
-          : reason === "own fold"
-            ? arms.every((arm) => arm.fencedAsks > 0)
-            : reason === "paint row"
-              ? probe.id.startsWith("sgr.") && !declaresQueryReply(probe.termAssertionType)
-              : false
+        reason === "da1-is-query"
+          ? arms.some((arm) => arm.fencedAsks === 0) &&
+            (probe.id === "device.primary-da" || probe.id === "extensions.sixel-da1")
+          : reason === "oracle-only"
+            ? arms.some((arm) => arm.fencedAsks === 0)
+            : reason === "own fold"
+              ? arms.every((arm) => arm.fencedAsks > 0)
+              : reason === "paint row"
+                ? probe.id.startsWith("sgr.") && !declaresQueryReply(probe.termAssertionType)
+                : false
       if (reason && !holds) wrongReason.push(`${probe.id} (${reason})`)
     }
     // A listed row that gains a fence and marks it, or a fenceless query_reply row missing from the list, fails here.

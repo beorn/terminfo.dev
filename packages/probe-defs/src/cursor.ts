@@ -14,6 +14,7 @@ import {
   parserStateResult,
   probe,
   replyFailure,
+  sentinelSilenceResult,
   methodUnavailable,
   queryDecrpm,
   type DecrpmPs,
@@ -644,12 +645,27 @@ export const cursorProbes: ProbeDefinition[] = [
     ...probe(
       "cursor.position-report",
       (ctx) => {
+        const expected = "ESC[3;5R after independently measured CUP 3;5"
+        const cprPattern = /\x1b\[([1-9]\d*);([1-9]\d*)R/
         ctx.feed("\x1b[3;5H")
-        const response = ctx.feedCapture("\x1b[6n")
-        if (!response) {
-          return replyFailure("no usable cursor position reply")
+        const outcome = ctx.queryWithSentinelOutcome?.("\x1b[6n", cprPattern)
+        const silence = outcome ? sentinelSilenceResult(outcome, expected) : null
+        if (silence) return silence
+        let response: string
+        let match: readonly string[] | null
+        if (outcome) {
+          response = outcome.raw
+          if (outcome.reason === "timeout" && response === "") {
+            return replyFailure("no usable cursor position reply")
+          }
+          match = outcome.reason === "reply" ? outcome.match : null
+        } else {
+          response = ctx.feedCapture("\x1b[6n")
+          if (!response) {
+            return replyFailure("no usable cursor position reply")
+          }
+          match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
         }
-        const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
         const row = Number(match?.[1])
         const col = Number(match?.[2])
         if (!match || !Number.isSafeInteger(row) || !Number.isSafeInteger(col)) {
@@ -660,7 +676,7 @@ export const cursorProbes: ProbeDefinition[] = [
           }
         }
         const setup = ctx.getCursor()
-        const measured = JSON.stringify({ setup, report: response })
+        const measured = JSON.stringify({ setup, report: outcome ? match[0] : response })
         if (setup.y !== 2 || setup.x !== 4) {
           return {
             pass: false,
@@ -682,7 +698,7 @@ export const cursorProbes: ProbeDefinition[] = [
             {
               assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
-              expected: "ESC[3;5R after independently measured CUP 3;5",
+              expected,
               observed: measured,
             },
           ],
@@ -703,6 +719,8 @@ export const cursorProbes: ProbeDefinition[] = [
         }
         // Establish the position with text writes (a real cursor advance) rather than the CUP
         // argument, so the report cannot pass by echoing the command it was just given.
+        const cprPattern = /\x1b\[([1-9]\d*);([1-9]\d*)R/
+        const expected = "CPR tracks text-induced cursor advances at two distinct rows"
         const steps = [
           { row: 1, col: 4, writes: ["\x1b[1;1H", "\x1b[2K", "ABC"] },
           { row: 3, col: 6, writes: ["\x1b[3;1H", "\x1b[2K", "ABCDE"] },
@@ -710,8 +728,17 @@ export const cursorProbes: ProbeDefinition[] = [
         const measured: Array<{ expected: string; report: { row: number; col: number } }> = []
         for (const step of steps) {
           for (const sequence of step.writes) ctx.write(sequence)
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
+          const outcome = await ctx.queryWithSentinelOutcome("\x1b[6n", cprPattern)
+          const silence = sentinelSilenceResult(outcome, expected)
+          if (silence) return silence
+          if (outcome.reason !== "reply" || !outcome.match) {
+            if (outcome.raw !== "") {
+              return {
+                pass: false,
+                response: outcome.raw,
+                observation: { outcome: "inconclusive", reason: "invalid-reply", assertionType: "query_reply" },
+              }
+            }
             return {
               response: JSON.stringify({ measured }),
               ...replyFailure(
@@ -719,6 +746,7 @@ export const cursorProbes: ProbeDefinition[] = [
               ),
             }
           }
+          const pos = { row: Number(outcome.match[1]), col: Number(outcome.match[2]) }
           measured.push({ expected: step.row + ";" + step.col, report: pos })
           if (pos.row !== step.row || pos.col !== step.col) {
             return {
@@ -742,7 +770,7 @@ export const cursorProbes: ProbeDefinition[] = [
             {
               assertionType: "query_reply" as const,
               kind: "positive",
-              expected: "CPR tracks text-induced cursor advances at two distinct rows",
+              expected,
               observed: response,
             },
           ],

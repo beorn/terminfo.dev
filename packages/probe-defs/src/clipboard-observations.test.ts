@@ -1354,7 +1354,7 @@ describe("roundtrip read leg settles a stale own-nonce reply", () => {
         clipboard = own
         return { row: 1, col: 1 }
       },
-      queryOutcome: async () => {
+      queryWithSentinelOutcome: async () => {
         asked += 1
         return reply(replyFor(asked, own, written))
       },
@@ -1419,10 +1419,45 @@ describe("OSC 52 read leg control and profile naming", () => {
     return found
   }
 
+  const fencedSilence = {
+    match: null,
+    reason: "sentinel" as const,
+    raw: "\x1b[?62;22c",
+    rawBase64: Buffer.from("\x1b[?62;22c").toString("base64"),
+    sentinel: { atMs: 3, graceMs: 250 },
+  }
+
+  test("raw timeout without a DA1 fence stays probe-todo even with a pinned deny or absent default (#33200)", async () => {
+    for (const qualification of [
+      { readDefault: { posture: "deny" as const, source: "app docs, pinned version" } },
+      { readDefault: { posture: "absent" as const, source: "wezterm e2a98e1b performer.rs:792" } },
+      { readProfile: { profile: "allow", setting: "ghostty --clipboard-read=allow" } },
+    ]) {
+      const result = await readCallback()(
+        termSource({
+          queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+          withClipboardFixture: async (work) =>
+            work({
+              baseline: "baseline",
+              readText: async () => "baseline",
+              writeText: async () => {},
+              ...qualification,
+            }),
+        }),
+      )
+      expect(result.tests?.[0]).toMatchObject({
+        status: "probe-todo",
+        reason: "OSC 52 c query timed out without a DA1 fence",
+      })
+      expect(result.observation?.outcome).not.toBe("unsupported")
+    }
+  })
+
   test("no control reply is probe-todo naming the control, never unsupported", async () => {
     const result = await readCallback()(
       termSource({
         queryCursorPosition: async () => null,
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
       }),
@@ -1437,6 +1472,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("control answered and the query silent with a pinned deny default is unsupported, and names no profile", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({
             baseline: "baseline",
@@ -1456,6 +1492,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("an ask default grades the same silence as probe-todo naming the unanswered prompt", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({
             baseline: "baseline",
@@ -1475,6 +1512,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("a read-granting profile grades silence unsupported even with no pinned default, and names the profile", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({
             baseline: "baseline",
@@ -1492,6 +1530,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("an unpinned default grades the same silence as probe-todo naming the missing citation", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({ baseline: "baseline", readText: async () => "baseline", writeText: async () => {} }),
       }),
@@ -1505,6 +1544,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("a version refusal names both versions and never grades unsupported", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({
             baseline: "baseline",
@@ -1524,6 +1564,7 @@ describe("OSC 52 read leg control and profile naming", () => {
   test("a deny-read profile grades its own configured refusal, naming write-clipboard only", async () => {
     const result = await readCallback()(
       termSource({
+        queryWithSentinelOutcome: async () => fencedSilence,
         withClipboardFixture: async (work) =>
           work({
             baseline: "baseline",
@@ -1544,7 +1585,7 @@ describe("OSC 52 read leg control and profile naming", () => {
     let seeded = ""
     const result = await readCallback()(
       termSource({
-        queryOutcome: async () => {
+        queryWithSentinelOutcome: async () => {
           const raw = `\x1b]52;c;${btoa(seeded)}\x07`
           return { match: [raw, btoa(seeded)], reason: "reply" as const, raw, rawBase64: "" }
         },
@@ -1588,6 +1629,13 @@ describe("OSC 52 silence under a cited absent default, read row and combined row
       write(sequence) {
         if (sequence.startsWith("\x1b]52;c;") && !sequence.includes(";?")) own = writtenNonce(sequence)
       },
+      queryWithSentinelOutcome: async () => ({
+        match: null,
+        reason: "sentinel",
+        raw: "\x1b[?62;22c",
+        rawBase64: Buffer.from("\x1b[?62;22c").toString("base64"),
+        sentinel: { atMs: 3, graceMs: 250 },
+      }),
       queryCursorPosition: async () => {
         cprs += 1
         if (options.writes && own) clipboard = own
