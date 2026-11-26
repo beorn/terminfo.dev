@@ -47,7 +47,7 @@ interface DeviceReply {
   /**
    * A refusal of the single setting or name this probe's contract asks is the measured answer,
    * not a partial one. Set only where the contract names exactly one subject (27914: XTGETXRES
-   * termName); the default leaves a refusal inconclusive.
+   * saveLines); the default leaves a refusal inconclusive.
    */
   refusalDecisive?: boolean
   /** A complete, well-formed answer to this query whose payload is not the expected one. */
@@ -938,16 +938,18 @@ export const deviceProbes: ProbeDefinition[] = [
   // Added in xterm; documented in patches 401/402 (2025).
   deviceQuery({
     id: "device.xtgetxres",
-    // "termName" is encoded as two hex digits per character, per XTGETXRES.
-    query: "\x1bP+Q7465726d4e616d65\x1b\\",
-    valid: /\x1bP1\+R7465726d4e616d65=(?:[0-9A-Fa-f]{2})+\x1b\\/i,
-    refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
+    // "saveLines" is encoded as two hex digits per character, per XTGETXRES. It is an integer resource, and xterm
+    // answers every integer resource with its %d value; a string resource such as termName is unset by default and
+    // answers status 0, which graded xterm 411/412 Unsupported (#38772). The value is hex of decimal digits.
+    query: "\x1bP+Q736176654c696e6573\x1b\\",
+    valid: /\x1bP1\+R736176654c696e6573=(?:3[0-9])+\x1b\\/i,
+    refusal: /\x1bP0\+R736176654c696e6573\x1b\\/i,
     // The contract asks exactly one name, so a status-0 refusal is this probe's measured answer.
     refusalDecisive: true,
     // The name is hex-encoded, so a terminal may echo it in either case; valid and
     // refusal are already case-insensitive, and a case-sensitive malformed pattern
     // graded the same frame no-response instead of invalid-reply.
     malformed: /\x1bP[01]\+R/i,
-    expected: "XTGETXRES returns a complete status-1 termName resource value",
+    expected: "XTGETXRES returns a complete status-1 saveLines resource value",
   }),
 ]
