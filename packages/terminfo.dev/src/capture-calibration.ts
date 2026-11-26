@@ -1079,6 +1079,33 @@ export async function calibrateCaptureOrigin({
     stage.last = frame
     return { frame, record }
   }
+  const inBand = (x: number, y: number) =>
+    bandBounds !== undefined &&
+    y >= bandBounds.top &&
+    y < bandBounds.bottom &&
+    x >= bandBounds.left &&
+    x < bandBounds.right
+  /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
+  const bandDifference = (
+    frame: CapturedFrame,
+    reference: CapturedFrame,
+  ): { equalOutside: boolean; changed: number } => {
+    validateFrame(frame)
+    validateFrame(reference)
+    if (frame.width !== reference.width || frame.height !== reference.height) {
+      throw new Error("Capture calibration window dimensions changed")
+    }
+    let changed = 0
+    for (let offset = 0; offset < frame.rgba.length; offset += 4) {
+      if ([0, 1, 2, 3].every((channel) => frame.rgba[offset + channel] === reference.rgba[offset + channel])) continue
+      const pixel = offset / 4
+      if (!inBand(pixel % frame.width, Math.floor(pixel / frame.width))) return { equalOutside: false, changed }
+      changed++
+    }
+    return { equalOutside: true, changed }
+  }
+  const changedOutsideBand = (frame: CapturedFrame, reference: CapturedFrame): boolean =>
+    bandBounds ? !bandDifference(frame, reference).equalOutside : !equal(frame, reference)
   const confirmedFrame = async (
     label: string,
     accepts: (frame: CapturedFrame) => boolean,
@@ -1092,7 +1119,7 @@ export async function calibrateCaptureOrigin({
         throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`, stage)
       }
       const { frame: current, record } = await capture(previous ? `${label} confirmation` : label, deadline, stage)
-      const accepted = (!changedFrom || !equal(current, changedFrom)) && accepts(current)
+      const accepted = (!changedFrom || changedOutsideBand(current, changedFrom)) && accepts(current)
       record.accepted = accepted
       if (accepted && previous && equal(previous, current)) {
         return current
@@ -1173,31 +1200,6 @@ export async function calibrateCaptureOrigin({
   // #37678 (@cto 5dd7b425 + c6b4ce8c): witnessed post-DECSCNM return frame and the outside-grid pixels it settled.
   let reverseReturnSettledFrame: CapturedFrame | undefined
   let reverseReturnNormalSolid: CapturedFrame | undefined
-  const inBand = (x: number, y: number) =>
-    bandBounds !== undefined &&
-    y >= bandBounds.top &&
-    y < bandBounds.bottom &&
-    x >= bandBounds.left &&
-    x < bandBounds.right
-  /** Pixels that differ from `reference` inside the band; any difference outside it makes the frames unequal. */
-  const bandDifference = (
-    frame: CapturedFrame,
-    reference: CapturedFrame,
-  ): { equalOutside: boolean; changed: number } => {
-    validateFrame(frame)
-    validateFrame(reference)
-    if (frame.width !== reference.width || frame.height !== reference.height) {
-      throw new Error("Capture calibration window dimensions changed")
-    }
-    let changed = 0
-    for (let offset = 0; offset < frame.rgba.length; offset += 4) {
-      if ([0, 1, 2, 3].every((channel) => frame.rgba[offset + channel] === reference.rgba[offset + channel])) continue
-      const pixel = offset / 4
-      if (!inBand(pixel % frame.width, Math.floor(pixel / frame.width))) return { equalOutside: false, changed }
-      changed++
-    }
-    return { equalOutside: true, changed }
-  }
   const excused: Array<{ stage: string; changed: number }> = []
   let result:
     | (NamedTextOrigin & {
@@ -1403,7 +1405,7 @@ export async function calibrateCaptureOrigin({
       reverseScreen = await (async (): Promise<ReverseScreenWitness> => {
         let reverseBlank: CapturedFrame
         try {
-          reverseBlank = await confirmedFrame("reverse screen blank", (frame) => !equal(frame, rowsFrame))
+          reverseBlank = await confirmedFrame("reverse screen blank", () => true, rowsFrame)
           reverseBlankFrame = reverseBlank
         } catch (cause) {
           if (!reverseStageTimedOut(cause)) throw cause
@@ -1412,7 +1414,9 @@ export async function calibrateCaptureOrigin({
             reason: "reverse screen blank canvas was not confirmed after DECSCNM was set",
           }
         }
-        const canvasUnchanged = equal(reverseBlank, before)
+        const canvasUnchanged = bandBounds
+          ? bandDifference(reverseBlank, before).equalOutside
+          : equal(reverseBlank, before)
         const reversePaint = await solidPaintCandidates(
           (candidate) => `reverse screen solid paint ${candidate}`,
           reverseBlank,
@@ -1594,7 +1598,7 @@ export async function calibrateCaptureOrigin({
       const witness = await (async (): Promise<AlternateScreenWitness> => {
         let altBlank: CapturedFrame
         try {
-          altBlank = await confirmedFrame(`${altMode} screen blank`, (frame) => !equal(frame, previousFrame))
+          altBlank = await confirmedFrame(`${altMode} screen blank`, () => true, previousFrame)
         } catch (cause) {
           if (!reverseStageTimedOut(cause)) throw cause
           return {
