@@ -619,7 +619,7 @@ export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
       case "mux": {
         const target = r.target
         if (
-          !["tmux", "screen", "herdr"].includes(target.mux) ||
+          !["tmux", "screen", "herdr", "zellij"].includes(target.mux) ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(target.bootId ?? "") ||
           typeof target.socketPath !== "string" ||
           !target.socketPath.startsWith("/") ||
@@ -822,36 +822,51 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       }
       break
     }
-    case "herdr": {
-      // herdr 0.9.5 (#38759) lists no clients (status and api snapshot name none), so attachment is read from the
-      // kernel, as Screen's is. The server is the collector's only mux ancestor and the outer shell's child; the one
-      // client is the outer shell's child running `herdr --session <session>` on the outer tty; and one of the
-      // client's unix sockets is connected (ss -xn peer inode) to a socket the server holds that is bound to the
-      // declared path.
+    case "herdr":
+    case "zellij": {
+      // herdr 0.9.5 and Zellij 0.46.0 (#38759) list no clients, so attachment is read from the kernel, as Screen's is.
+      // The server is the collector's only mux ancestor and a child of the outer shell (herdr's server is started by
+      // the shell; Zellij's daemonizes and is adopted by the shell, which re-execs as a child subreaper). The one
+      // client is the outer shell's child naming the session on the outer tty, and one of the client's unix sockets
+      // is connected (ss -xn peer inode) to a socket the server holds that is bound to the declared path.
+      const name = target.mux === "herdr" ? "herdr" : "Zellij"
+      const argvOf = (pid: number): string[] | undefined => {
+        try {
+          return readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean)
+        } catch {
+          return undefined
+        }
+      }
       const [server] = intermediates
       if (intermediates.length !== 1 || !server || server.ppid !== shell.pid) {
-        throw new Error("Owned mux herdr server/collector ancestry differs")
+        throw new Error(`Owned mux ${name} server/collector ancestry differs`)
+      }
+      if (target.mux === "zellij") {
+        const serverArgv = argvOf(server.pid)
+        if (serverArgv?.length !== 3 || serverArgv[1] !== "--server" || serverArgv[2] !== target.socketPath) {
+          throw new Error("Owned mux Zellij server was not started on the declared socket")
+        }
+      }
+      const isClient = (argv: readonly string[]): boolean => {
+        if (target.mux === "herdr") return argv.length === 3 && argv[1] === "--session" && argv[2] === target.session
+        const at = argv.indexOf("--session")
+        return at > 0 && argv[at + 1] === target.session && !argv.includes("--server")
       }
       const childrenPath = `/proc/${shell.pid}/task/${shell.pid}/children`
       let children: number[]
       try {
         children = readFileSync(childrenPath, "utf8").trim().split(/\s+/).filter(Boolean).map(Number)
       } catch (cause) {
-        throw new Error(`Owned mux herdr outer shell children ${childrenPath} cannot be read`, { cause })
+        throw new Error(`Owned mux ${name} outer shell children ${childrenPath} cannot be read`, { cause })
       }
       const clients = children.filter((pid) => {
         if (pid === server.pid) return false
-        let argv: string[]
-        try {
-          argv = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean)
-        } catch {
-          return false
-        }
-        return argv.length === 3 && argv[1] === "--session" && argv[2] === target.session
+        const argv = argvOf(pid)
+        return argv !== undefined && isClient(argv)
       })
       const clientPid = clients[0]
       if (clients.length !== 1 || clientPid === undefined) {
-        throw new Error(`Owned mux herdr requires exactly one attached client; found ${clients.length}`)
+        throw new Error(`Owned mux ${name} requires exactly one attached client; found ${clients.length}`)
       }
       client = processIdentity(clientPid)
       const socketInodes = (pid: number): Set<string> => {
@@ -861,14 +876,14 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         try {
           descriptors = readdirSync(directory)
         } catch (cause) {
-          throw new Error(`Owned mux herdr fd directory ${directory} cannot be read`, { cause })
+          throw new Error(`Owned mux ${name} fd directory ${directory} cannot be read`, { cause })
         }
         for (const fd of descriptors) {
           let link: string
           try {
             link = readlinkSync(`${directory}/${fd}`)
           } catch (cause) {
-            throw new Error(`Owned mux herdr fd link ${directory}/${fd} cannot be read`, { cause })
+            throw new Error(`Owned mux ${name} fd link ${directory}/${fd} cannot be read`, { cause })
           }
           const match = /^socket:\[(\d+)\]$/.exec(link)
           if (match?.[1]) inodes.add(match[1])
@@ -888,7 +903,7 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       )
       const connected = rows.some((row) => clientSockets.has(row[5] ?? "") && boundServerSide.has(row[7]))
       if (!connected) {
-        throw new Error("Owned mux herdr client holds no socket connected to the server's declared socket")
+        throw new Error(`Owned mux ${name} client holds no socket connected to the server's declared socket`)
       }
       break
     }

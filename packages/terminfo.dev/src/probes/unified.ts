@@ -2533,10 +2533,10 @@ async function runProbeBatchInRun(
 
 /**
  * The mux a probe's own handling knows (#38759). tmux and Screen carry mux-specific probe paths (history queries,
- * passthrough, colour siblings); herdr has none, so its run takes the generic path, the way a mux without a
- * declared arm does today. The receipt still names herdr: only the probe context is narrowed.
+ * passthrough, colour siblings); herdr and Zellij have none, so their runs take the generic path, the way a mux without a
+ * declared arm does today. The receipt still names the mux: only the probe context is narrowed.
  */
-function probeContextMux(mux: "tmux" | "screen" | "herdr" | undefined): "tmux" | "screen" | undefined {
+function probeContextMux(mux: "tmux" | "screen" | "herdr" | "zellij" | undefined): "tmux" | "screen" | undefined {
   return mux === "tmux" || mux === "screen" ? mux : undefined
 }
 

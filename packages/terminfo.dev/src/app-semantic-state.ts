@@ -3392,7 +3392,7 @@ export async function readAppSemanticState(
     featureId: string
     write: (text: string) => void
     runId: string
-    mux?: "tmux" | "screen" | "herdr"
+    mux?: "tmux" | "screen" | "herdr" | "zellij"
     readTitle?: LinuxClipboardAdapter["readTitle"]
     withIconNameFixture?: LinuxClipboardAdapter["withIconNameFixture"]
     /** Private port supplied only by the verified owner; the checkpoint fences the same pane writes. */

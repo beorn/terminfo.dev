@@ -744,6 +744,12 @@ if [[ "${1:-}" == "--mux-inner" ]]; then
 fi
 
 if [[ "${1:-}" == "--mux-shell" ]]; then
+  if [[ "$TERMINFO_MUX_KIND" == zellij && -z "${TERMINFO_MUX_SUBREAPER:-}" ]]; then
+    # Zellij daemonizes its server (#38759). Re-exec this shell as a child subreaper (same PID and start ticks) so it
+    # adopts that server and the collector's ancestry still reaches the outer terminal; see linux-subreaper-exec.ts.
+    export TERMINFO_MUX_SUBREAPER=1
+    exec bun "$(dirname "$TERMINFO_RUNNER")/linux-subreaper-exec.ts" bash "$0" "$@"
+  fi
   mux_output=$2
   printf '%s\n' "$$" > "$mux_output/outer-shell.pid"
   bun "$TERMINFO_RUNNER" test --serve <&0 2>"$mux_output/preflight-collector.stderr" &
@@ -858,6 +864,40 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       herdr --session "$mux_session"
       wait "$mux_watcher" || { echo "Owned herdr collector watcher failed" >&2; exit 2; }
       wait "$mux_server"
+      ;;
+    zellij)
+      # Zellij 0.46.0 (#38759): this shell's foreground client starts a daemonized server (`zellij --server <socket>`)
+      # that runs the layout's one pane, the collector, as its direct child. close_on_exit ends the pane, then the
+      # session and the client, when the collector exits. The config turns off the first-run tips and release notes,
+      # which would otherwise cover the pane; ZELLIJ_SOCKET_DIR keeps the server socket inside this run's home.
+      unset TERM_PROGRAM TERM_PROGRAM_VERSION
+      export XDG_CONFIG_HOME="$HOME/.config" ZELLIJ_SOCKET_DIR="$HOME/zellij-sockets"
+      mkdir -m 700 "$ZELLIJ_SOCKET_DIR"
+      printf 'show_startup_tips false\nshow_release_notes false\n' > "$mux_config"
+      mux_layout="$mux_output/mux-layout.kdl"
+      {
+        printf 'layout {\n    pane command="bun" close_on_exit=true {\n'
+        printf '        args "%s" "test" "--serve"\n' "$TERMINFO_RUNNER"
+        printf '    }\n}\n'
+      } > "$mux_layout"
+      mux_shell=$
+      (
+        # Record the one socket that appears under ZELLIJ_SOCKET_DIR once THIS shell's client starts the server;
+        # the attachment proof then pairs the client with it and checks the server holds it.
+        for _ in $(seq 1 600); do
+          for socket in "$ZELLIJ_SOCKET_DIR"/*/*; do
+            [[ -S "$socket" ]] || continue
+            printf '%s\n' "$socket" > "$mux_output/mux-socket.txt"
+            exit 0
+          done
+          sleep 0.1
+        done
+        echo "Owned Zellij server socket was not created under $ZELLIJ_SOCKET_DIR within 60 s" >&2
+        exit 2
+      ) 2>>"$mux_output/mux-server.log" &
+      mux_watcher=$!
+      zellij --config "$mux_config" --session "$mux_session" --new-session-with-layout "$mux_layout"
+      wait "$mux_watcher" || { echo "Owned Zellij socket watcher failed" >&2; exit 2; }
       ;;
     *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;;
   esac
@@ -1356,7 +1396,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   collector_command=(bun --no-env-file "$TERMINFO_RUNNER" test --serve)
   if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
     [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
-    case "$TERMINFO_MUX_KIND" in tmux|screen|herdr) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
+    case "$TERMINFO_MUX_KIND" in tmux|screen|herdr|zellij) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
     export TERMINFO_OUTER_COLOUR_RECORD=/out/outer-colour-record.json
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
@@ -1512,6 +1552,11 @@ if [[ "${1:-}" == "--inside" ]]; then
         read -r mux_socket < /out/mux-socket.txt
         "$mux_executable" --version > /out/mux-version.txt
         mux_version=$(sed -nE 's/^herdr ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' /out/mux-version.txt)
+        ;;
+      zellij)
+        read -r mux_socket < /out/mux-socket.txt
+        "$mux_executable" --version > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^zellij ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' /out/mux-version.txt)
         ;;
     esac
     [[ -n "$mux_version" ]] || { echo "Owned mux executable did not report its version" >&2; exit 2; }
@@ -1702,7 +1747,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen|herdr] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen|herdr|zellij] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1722,7 +1767,7 @@ while [[ "$#" -gt 0 ]]; do
     --mux)
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
-      case "$mux_kind" in tmux|screen|herdr) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      case "$mux_kind" in tmux|screen|herdr|zellij) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
       shift 2
       ;;
     --mux-profile)
@@ -1852,6 +1897,12 @@ notify_recorder_source="$vendor_root/packages/terminfo.dev/src/linux-notify-reco
   echo "Notify recorder source is missing: $notify_recorder_source; preserved at $run_dir" >&2; exit 2;
 }
 cp "$notify_recorder_source" "$prep/bundle/linux-notify-recorder.ts"
+# The subreaper helper the Zellij mux shell re-execs through (#38759); like the recorder, it imports only bun:ffi.
+subreaper_source="$vendor_root/packages/terminfo.dev/src/linux-subreaper-exec.ts"
+[[ -s "$subreaper_source" ]] || {
+  echo "Subreaper helper source is missing: $subreaper_source; preserved at $run_dir" >&2; exit 2;
+}
+cp "$subreaper_source" "$prep/bundle/linux-subreaper-exec.ts"
 (
   cd "$prep"
   tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf runner-bundle.tar -C bundle .

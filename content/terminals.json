@@ -126,6 +126,16 @@
     "platforms": ["linux"],
     "intermediary": true
   },
+  "zellij": {
+    "label": "Zellij",
+    "slug": "zellij",
+    "kind": "mux",
+    "url": "https://zellij.dev",
+    "description": "Terminal workspace with persistent sessions, layouts, panes, tabs and a plugin system.",
+    "body": "<p><strong>Zellij</strong> is a terminal workspace written in Rust. A client attaches to a session that a background server keeps alive, and the session's layout decides its tabs and panes; plugins add to the interface.</p>\n<p>Zellij emulates each pane itself and answers a program's queries as Zellij, so a program inside it sees Zellij's support, not the outer terminal's.</p>",
+    "platforms": ["linux"],
+    "intermediary": true
+  },
   "vt52-historical": {
     "label": "DEC VT52",
     "slug": "vt52-historical",
