@@ -227,11 +227,11 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
       },
       detail: {},
     })
-    expect(gradeIconNameReading(id, reading("A", "B"))).toMatchObject({ observation: { outcome: "supported" } })
     expect(gradeIconNameReading(id, reading("A", null)).observation).toMatchObject({ outcome: "unsupported" })
     expect(gradeIconNameReading(id, reading("A", "A")).observation).toMatchObject({ outcome: "unsupported" })
     expect(gradeIconNameReading(id, reading("A", "before")).observation).toMatchObject({ outcome: "unsupported" })
     if (osc1) {
+      expect(gradeIconNameReading(id, reading("A", "B"))).toMatchObject({ observation: { outcome: "supported" } })
       const aliased = gradeIconNameReading(id, reading("B", "B"))
       expect(aliased.observation).toMatchObject({ outcome: "unsupported" })
       expect(aliased.note).toContain("Seen title")
@@ -239,6 +239,18 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     } else {
       expect(gradeIconNameReading(id, reading("B", "B")).observation).toMatchObject({ outcome: "supported" })
       expect(gradeIconNameReading(id, reading("B", "C")).observation).toMatchObject({ outcome: "supported" })
+      // #38772 (card audit review-7), the probe's own text: OSC 0 that leaves the title A fails its title clause and is
+      // Unsupported whatever the icon reads; a title set to B over a terminal that keeps no icon label is Untestable.
+      expect(gradeIconNameReading(id, reading("A", "B")).observation).toMatchObject({ outcome: "unsupported" })
+      const noIcon = gradeIconNameReading(id, reading("B", null))
+      expect(noIcon.tests).toEqual([
+        expect.objectContaining({
+          id: "declared-untestable",
+          status: "untestable",
+          reason: expect.stringMatching(/no icon label/),
+        }),
+      ])
+      expect(gradeIconNameReading(id, reading("B", "before")).observation).toMatchObject({ outcome: "unsupported" })
     }
   },
 )
