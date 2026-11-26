@@ -50,7 +50,7 @@ import {
   type InputFixture,
   type ViewportScroll,
 } from "@terminfo/probe-defs"
-import { clipboardConfigAgrees } from "./clipboard-config.ts"
+import { CLIPBOARD_READ_ALLOWED_KEY, clipboardConfigAgrees, parseXtermReadAllowedReply } from "./clipboard-config.ts"
 import { readThroughSentinel, SentinelPaintWiderThanCell } from "./sentinel-read.ts"
 import { createPrePaintMeter, withPrePaintReading } from "./pre-paint-meter.ts"
 import { detectTerminal } from "./detect.ts"
@@ -1871,12 +1871,11 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       clipboard = ownedTerminal?.clipboard
       attachment = ownedTerminal?.muxAttachmentProof
-      const observers =
-        ownedTerminal?.observers?.length
-          ? [...ownedTerminal.observers]
-          : ownedTerminal?.hostedAppId === "iterm2" && !muxSubject
-            ? ["iterm2: EnableAPIServer true"]
-            : undefined
+      const observers = ownedTerminal?.observers?.length
+        ? [...ownedTerminal.observers]
+        : ownedTerminal?.hostedAppId === "iterm2" && !muxSubject
+          ? ["iterm2: EnableAPIServer true"]
+          : undefined
       if (observers) draft.observers = observers
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
@@ -1999,6 +1998,22 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
                   process.env.TERMINFO_TARGET_VERSION,
                 )
               }
+              let clipboardReadAllowed: string | undefined
+              if (clipboard?.profile === "allow") {
+                if (measuredTerminal.name === "xterm") {
+                  const response = await queryWithSentinelOutcome(
+                    "\x1b]61;allowWindowOps\x1b\\",
+                    /\x1b\]61;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
+                    700,
+                  )
+                  clipboardReadAllowed = JSON.stringify(parseXtermReadAllowedReply(response))
+                } else if ("readAllowedInForce" in clipboard && typeof clipboard.readAllowedInForce === "string") {
+                  clipboardReadAllowed = clipboard.readAllowedInForce
+                }
+                if (clipboardReadAllowed !== undefined) {
+                  draft.rawReplies[CLIPBOARD_READ_ALLOWED_KEY] = clipboardReadAllowed
+                }
+              }
               // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
               // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
               // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
@@ -2114,6 +2129,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
               if (da2Query) {
                 result.rawReplies["collector.da2"] = da2Query.raw
                 result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
+              }
+              if (clipboardReadAllowed !== undefined) {
+                result.rawReplies[CLIPBOARD_READ_ALLOWED_KEY] = clipboardReadAllowed
               }
               if (captureCalibration) {
                 result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
