@@ -622,117 +622,118 @@ describe("probe method classification", () => {
     { timeout: 30_000 },
     () =>
       withHistoricalCorpus((historicalContentDir) => {
-      const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
-      const runs = loadStoredRuns(historicalContentDir, Object.keys(catalog).sort())
-      expect(runs).toHaveLength(17)
-      const inventory = runs
-        .map((run): [string, string] => [
-          run.path.slice(historicalContentDir.length + 1),
-          createHash("sha256").update(readFileSync(run.path)).digest("hex"),
-        ])
-        .sort(([left], [right]) => left.localeCompare(right))
-      expect(digest(inventory)).toBe("6c085c4d7a9b520b83327b2146fd8f355f8ada5638e913330d4763f0b1987690")
-      const out = mkdtempSync(join(tmpdir(), "terminfo-corpus-status-"))
-      try {
-        const { dataPath } = generateApi(out, { contentDir: historicalContentDir, working: null })
-        const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
-          contexts: Record<
-            string,
-            {
-              catalogIds: string[]
-              featureResults: Record<
-                string,
-                {
-                  status: string
-                  origin: { runId: string }
-                  derived?: { ownStatus?: string }
-                  outerAbsent?: { measured: string }
-                }
-              >
-            }
-          >
-        }
-        expect(Object.keys(api.contexts)).toHaveLength(13)
-        // #33019: the only verdicts allowed to move are cells derived from a refused parent, named here.
-        const derived = Object.entries(api.contexts)
-          .flatMap(([key, context]) =>
-            Object.entries(context.featureResults)
-              .filter(([, result]) => result.derived !== undefined)
-              .map(([id]) => key + " " + id),
-          )
-          .sort()
-        // #38772 (@cto b1a8ecea): only a parent refused by its own effect read derives a child. In these 17 runs every one
-        // of the 30 cells derived before was read from a parent refused only by a query's silence, so none derives now;
-        // each reads its own status, which the pin below already held (ownStatus), so no other verdict moved.
-        // #38772 (@cto 8cccf709; @cpo/term 3ad6dc0e): the OSC 52 umbrella is graded from its write and read rows. In these
-        // runs it is published for VTerm (both halves decided) and xterm.js (its read refused, which decides first).
-        expect(derived).toEqual(["lib:vterm extensions.osc52-clipboard", "lib:xtermjs extensions.osc52-clipboard"])
-        // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
-        const outerAbsent = Object.entries(api.contexts)
-          .flatMap(([key, context]) =>
-            Object.entries(context.featureResults)
-              .filter(([, result]) => result.outerAbsent !== undefined)
-              .map(([id]) => key + " " + id),
-          )
-          .sort()
-        expect(outerAbsent).toEqual([
-          "mux:screen input.button-event-mouse",
-          "mux:screen input.modify-other-keys",
-          "mux:screen input.modify-other-keys-3",
-          "mux:screen modes.application-keypad",
-          "mux:tmux input.button-event-mouse",
-          "mux:tmux input.modify-other-keys",
-          "mux:tmux input.modify-other-keys-3",
-          "mux:tmux input.x10-mouse",
-          "mux:tmux modes.application-keypad",
-        ])
-        // #37341 Q4: the API no longer publishes a result we haven't decided, nor a derived cell's own status, so
-        // the pin reads the same verdicts from the projection the API is built from: still byte-identical, so no
-        // verdict moved. The API is then checked to publish exactly that projection's decided cells.
-        const { projection } = loadCurrentResults(historicalContentDir)
-        const statusOf = (cell: (typeof projection.contexts)[string]["cells"][string] | undefined, id: string) =>
-          ENVIRONMENT_GROUP_IDS.includes(id as never) ? cell?.result.status : cell?.featureResult?.status
-        const pins = Object.entries(projection.contexts)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, context]) => [
-            key,
-            digest(
-              [...context.catalogIds]
-                .sort((left, right) => left.localeCompare(right))
-                .map((id) => [
-                  id,
-                  // Each derived cell is read back at its own pre-derivation status, so this pin still proves
-                  // that nothing else moved (#33019); a demoted mux cell likewise at its measured status (#33665).
-                  context.cells[id]?.derived?.ownStatus ??
-                    context.cells[id]?.outerAbsent?.measured ??
-                    statusOf(context.cells[id], id) ??
-                    "probe-todo",
-                  context.cells[id]?.origin.runId ?? null,
-                ]),
-            ),
+        const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex")
+        const runs = loadStoredRuns(historicalContentDir, Object.keys(catalog).sort())
+        expect(runs).toHaveLength(17)
+        const inventory = runs
+          .map((run): [string, string] => [
+            run.path.slice(historicalContentDir.length + 1),
+            createHash("sha256").update(readFileSync(run.path)).digest("hex"),
           ])
-        // #38544 maskStoreHashes masked /nix/store/<hash>- in the 4 Linux context keys; cell verdicts/origins unchanged.
-        expect(digest(pins)).toBe("08aa7a4de9fe60d02cd03fa970370ea509e8477404220292619f9c24fed07c9c")
-        const decided = new Set(["supported", "unsupported", "untestable", "differs-by-context"])
-        for (const [key, context] of Object.entries(projection.contexts)) {
-          const published = Object.fromEntries(
-            Object.entries(api.contexts[key]!.featureResults).map(([id, result]) => [id, result.status]),
-          )
-          const expected = Object.fromEntries(
-            Object.entries(context.cells)
-              .map(([id, cell]): [string, string | undefined] => [id, statusOf(cell, id)])
-              .filter((entry): entry is [string, string] => entry[1] !== undefined && decided.has(entry[1])),
-          )
-          expect(published, key).toEqual(expected)
-          for (const result of Object.values(api.contexts[key]!.featureResults)) {
-            expect(result.derived ?? {}, key).not.toHaveProperty("ownStatus")
+          .sort(([left], [right]) => left.localeCompare(right))
+        expect(digest(inventory)).toBe("6c085c4d7a9b520b83327b2146fd8f355f8ada5638e913330d4763f0b1987690")
+        const out = mkdtempSync(join(tmpdir(), "terminfo-corpus-status-"))
+        try {
+          const { dataPath } = generateApi(out, { contentDir: historicalContentDir, working: null })
+          const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
+            contexts: Record<
+              string,
+              {
+                catalogIds: string[]
+                featureResults: Record<
+                  string,
+                  {
+                    status: string
+                    origin: { runId: string }
+                    derived?: { ownStatus?: string }
+                    outerAbsent?: { measured: string }
+                  }
+                >
+              }
+            >
           }
+          expect(Object.keys(api.contexts)).toHaveLength(13)
+          // #33019: the only verdicts allowed to move are cells derived from a refused parent, named here.
+          const derived = Object.entries(api.contexts)
+            .flatMap(([key, context]) =>
+              Object.entries(context.featureResults)
+                .filter(([, result]) => result.derived !== undefined)
+                .map(([id]) => key + " " + id),
+            )
+            .sort()
+          // #38772 (@cto b1a8ecea): only a parent refused by its own effect read derives a child. In these 17 runs every one
+          // of the 30 cells derived before was read from a parent refused only by a query's silence, so none derives now;
+          // each reads its own status, which the pin below already held (ownStatus), so no other verdict moved.
+          // #38772 (@cto 8cccf709; @cpo/term 3ad6dc0e): the OSC 52 umbrella is graded from its write and read rows. In these
+          // runs it is published for VTerm (both halves decided) and xterm.js (its read refused, which decides first).
+          expect(derived).toEqual(["lib:vterm extensions.osc52-clipboard", "lib:xtermjs extensions.osc52-clipboard"])
+          // #33665: mux input cells the outer terminal also lacks read Untestable (no setup), named here.
+          const outerAbsent = Object.entries(api.contexts)
+            .flatMap(([key, context]) =>
+              Object.entries(context.featureResults)
+                .filter(([, result]) => result.outerAbsent !== undefined)
+                .map(([id]) => key + " " + id),
+            )
+            .sort()
+          expect(outerAbsent).toEqual([
+            "mux:screen input.button-event-mouse",
+            "mux:screen input.modify-other-keys",
+            "mux:screen input.modify-other-keys-3",
+            "mux:screen modes.application-keypad",
+            "mux:tmux input.button-event-mouse",
+            "mux:tmux input.modify-other-keys",
+            "mux:tmux input.modify-other-keys-3",
+            "mux:tmux input.x10-mouse",
+            "mux:tmux modes.application-keypad",
+          ])
+          // #37341 Q4: the API no longer publishes a result we haven't decided, nor a derived cell's own status, so
+          // the pin reads the same verdicts from the projection the API is built from: still byte-identical, so no
+          // verdict moved. The API is then checked to publish exactly that projection's decided cells.
+          const { projection } = loadCurrentResults(historicalContentDir)
+          const statusOf = (cell: (typeof projection.contexts)[string]["cells"][string] | undefined, id: string) =>
+            ENVIRONMENT_GROUP_IDS.includes(id as never) ? cell?.result.status : cell?.featureResult?.status
+          const pins = Object.entries(projection.contexts)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, context]) => [
+              key,
+              digest(
+                [...context.catalogIds]
+                  .sort((left, right) => left.localeCompare(right))
+                  .map((id) => [
+                    id,
+                    // Each derived cell is read back at its own pre-derivation status, so this pin still proves
+                    // that nothing else moved (#33019); a demoted mux cell likewise at its measured status (#33665).
+                    context.cells[id]?.derived?.ownStatus ??
+                      context.cells[id]?.outerAbsent?.measured ??
+                      statusOf(context.cells[id], id) ??
+                      "probe-todo",
+                    context.cells[id]?.origin.runId ?? null,
+                  ]),
+              ),
+            ])
+          // #38544 maskStoreHashes masked /nix/store/<hash>- in the 4 Linux context keys; cell verdicts/origins unchanged.
+          expect(digest(pins)).toBe("08aa7a4de9fe60d02cd03fa970370ea509e8477404220292619f9c24fed07c9c")
+          const decided = new Set(["supported", "unsupported", "untestable", "differs-by-context"])
+          for (const [key, context] of Object.entries(projection.contexts)) {
+            const published = Object.fromEntries(
+              Object.entries(api.contexts[key]!.featureResults).map(([id, result]) => [id, result.status]),
+            )
+            const expected = Object.fromEntries(
+              Object.entries(context.cells)
+                .map(([id, cell]): [string, string | undefined] => [id, statusOf(cell, id)])
+                .filter((entry): entry is [string, string] => entry[1] !== undefined && decided.has(entry[1])),
+            )
+            expect(published, key).toEqual(expected)
+            for (const result of Object.values(api.contexts[key]!.featureResults)) {
+              expect(result.derived ?? {}, key).not.toHaveProperty("ownStatus")
+            }
+          }
+        } finally {
+          // raw-delete-allow: this test owns the temporary API output directory.
+          rmSync(out, { recursive: true, force: true })
         }
-      } finally {
-        // raw-delete-allow: this test owns the temporary API output directory.
-        rmSync(out, { recursive: true, force: true })
-      }
-    }))
+      }),
+  )
 
   it("maps retained corpus probes without promoting a source answer", () =>
     withHistoricalCorpus((historicalContentDir) => {

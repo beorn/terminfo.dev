@@ -107,7 +107,9 @@ describe("every published card cites decided evidence (D5)", () => {
           for (const part of cell.derived.parts) {
             // An undecided part publishes its name alone (#38772): no run, status or reason of it reaches the card.
             if (!("status" in part)) {
-              if (Object.keys(part).sort().join() !== "feature,name") wrong.push(`${key}/${id}: open part ${part.feature}`)
+              if (Object.keys(part).sort().join() !== "feature,name") {
+                wrong.push(`${key}/${id}: open part ${part.feature}`)
+              }
               continue
             }
             const entry = traceEntry(context.sources[part.runId], part.feature)
