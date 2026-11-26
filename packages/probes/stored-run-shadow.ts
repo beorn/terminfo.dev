@@ -319,7 +319,14 @@ function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string
   const raw = validated.rawReplies
   if (raw[id + ".late"] !== undefined) return "late reply after the sentinel"
   if (raw["collector.repeats." + id] !== undefined) return "fresh-instance repeat passes regraded this row"
-  if (raw["collector.hostRecipes." + id] !== undefined) return "native host-recipe record"
+  // A native host-recipe record is not an input of its own: its captures are the query pairs the callback saw, and
+  // the replay hands those back. Only a query that errored live, or a record that cannot be read, leaves the row
+  // unspeakable for a replay.
+  if (raw["collector.hostRecipes." + id] !== undefined) {
+    const captures = hostRecipeCaptures(validated, id)
+    const failed = captures.find((capture) => capture.error !== null)
+    if (failed) return `native host-recipe query error (${JSON.stringify(failed.query)})`
+  }
   const replyPath = raw["collector.replyPath"]
   if (replyPath !== undefined) {
     const parsed = parseJsonStrict("collector.replyPath", replyPath)
@@ -361,9 +368,41 @@ const LIB_EXTERNAL_READS: Readonly<Record<string, string>> = {
 }
 
 /** The query captures the live collector handed `withReplyFailureEvidence` for this row. */
+/**
+ * The query pairs a native host-recipe row recorded, in the order the callback asked. `error` is kept so a row whose
+ * live query failed is refused by name rather than replayed as an empty answer.
+ */
+function hostRecipeCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string; error: unknown }[] {
+  const raw = validated.rawReplies["collector.hostRecipes." + featureId]
+  if (typeof raw !== "string") throw new IncompleteReplay("Missing native host-recipe record: " + featureId)
+  const parsed = parseJsonStrict(featureId + " host recipes", raw)
+  const captures = object(parsed) ? parsed.captures : undefined
+  if (
+    !Array.isArray(captures) ||
+    !captures.every(
+      (entry) =>
+        object(entry) &&
+        typeof entry.query === "string" &&
+        typeof entry.response === "string" &&
+        Object.hasOwn(entry, "error"),
+    )
+  ) {
+    throw new IncompleteReplay("Native host-recipe record is malformed: " + featureId)
+  }
+  return captures as { query: string; response: string; error: unknown }[]
+}
+
 function retainedCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string }[] {
   const raw = validated.rawReplies["collector.queryCaptures." + featureId]
-  if (typeof raw !== "string") throw new IncompleteReplay("Missing retained query captures: " + featureId)
+  // A native host-recipe row keeps the same query/response pairs under its own record, because the collector's
+  // `replyCaptures` are that record's captures.
+  if (typeof raw !== "string") {
+    const record = validated.rawReplies["collector.hostRecipes." + featureId]
+    if (typeof record === "string") {
+      return hostRecipeCaptures(validated, featureId).map(({ query, response }) => ({ query, response }))
+    }
+    throw new IncompleteReplay("Missing retained query captures: " + featureId)
+  }
   const parsed = parseJsonStrict(featureId + " query captures", raw)
   const captures = object(parsed) ? parsed.captures : undefined
   if (
