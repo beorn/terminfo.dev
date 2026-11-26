@@ -11,12 +11,17 @@
  * Build-if-needed: the build is skipped only when the output's own `/build.json` names the revision this checkout
  * is at. Any other state — absent, stale, unreadable — rebuilds into `<out>/staging` and swaps that in only on
  * success (`buildLanding`, #38423). A build that fails leaves the served dist untouched: the program keeps serving
- * the previous build and says on stderr which older landing is being shown, because a 502 from a build that merely
- * ran out of memory is worse than a preview that names its own staleness — the health probe answers `starting` while
- * the marker is up, so the staleness is never silent. It exits non-zero only when there is no previous build at all,
- * where serving nothing is the honest answer. Downtime on a landing restart is that build (measured 150-210 s on a
- * code-only corpus and ~10 min with the full hourly-run set, analysis included); the readiness window in the
- * declaration has to cover it.
+ * the previous build, says on stderr which older landing is being shown, and records the failure on the rebuild
+ * marker, because a 502 from a build that merely ran out of memory is worse than a preview that names its own
+ * staleness — the health probe reads that failure as stale at once, so the staleness is never silent.
+ *
+ * Serve first (#30205, @cto 070ef158): when a previous build exists and the state root is set, the program serves it
+ * AT ONCE and rebuilds the landing's code beside it through the one rebuilder the hourly runs already use
+ * (`createSiteRebuilder`), so a landing restart is down for seconds instead of the whole build (measured p50 700 s,
+ * p95 909 s on 2026-11-25), and nothing that restarts it waits for the build. The marker then names the build being
+ * served (`serving`), which the health probe answers as healthy-with-a-rebuild-in-flight rather than `starting`. Only
+ * a first start with no previous build at all (or a bare checkout with no state root) still builds before serving, and
+ * it exits non-zero when that build fails, where serving nothing is the honest answer.
  *
  * `TERMINFO_SITE_OUT_DIR` roots every build write (see `./site-out.ts`), so this can run from a read-only landing.
  * While a rebuild runs it writes `rebuild.json` into that root, naming the revision being built TO; the health probe
@@ -40,7 +45,7 @@ import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
+import { recordSiteRebuildFailure, siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
 import { peakCeilingBytes } from "./build-peak-guard.ts"
 import { newestCompleteRun, siteWorkingRunsDir } from "../docs/data/working-runs.ts"
 
@@ -265,16 +270,29 @@ export async function rebuildForRun(args: {
 }
 
 /**
- * The hourly half of the rebuild check, for a process that is already serving: one rebuild per new complete run,
- * never two at once, and never a retry of a run whose rebuild failed (a later run, or a restart, tries again).
+ * The one rebuilder for a process that is already serving: a landing's code mismatch (#30205) and each new complete
+ * hourly run, never two at once, and never a retry of a revision or run whose rebuild failed (a later one, or a
+ * restart, tries again).
  */
-export function createRunRebuilder(args: { runsDir: string; outRoot: string; target: string; runBuild?: RunBuild }): {
+export function createSiteRebuilder(args: { runsDir?: string; outRoot: string; target: string; runBuild?: RunBuild }): {
   check(): Promise<void>
 } {
   const attempted = new Set<string>()
   let running: Promise<void> | null = null
   let again = false
   const once = async (): Promise<void> => {
+    // #30205: a landing's code mismatch rebuilds through this same queue, beside the served build, once per landing
+    // revision; a failure is recorded on the marker and is not retried in-process (a restart, or a later landing,
+    // tries again). The code build reads the newest hourly run itself, so it needs no run read here.
+    const stamp = readServedStamp(join(args.outRoot, "dist"))
+    if (stamp.sourceCommit !== args.target) {
+      const key = `code:${args.target}`
+      if (attempted.has(key)) return
+      attempted.add(key)
+      await buildLanding({ outRoot: args.outRoot, target: args.target, runBuild: args.runBuild, beside: true })
+      return
+    }
+    if (args.runsDir === undefined) return
     let newest: string
     try {
       newest = newestCompleteRun(args.runsDir).id
@@ -285,7 +303,6 @@ export function createRunRebuilder(args: { runsDir: string; outRoot: string; tar
       )
       return
     }
-    const stamp = readServedStamp(join(args.outRoot, "dist"))
     if (rebuildReason(args.target, stamp, newest) !== "run" || attempted.has(newest)) return
     attempted.add(newest)
     await rebuildForRun({ outRoot: args.outRoot, target: args.target, runId: newest, runBuild: args.runBuild })
@@ -311,14 +328,16 @@ export function createRunRebuilder(args: { runsDir: string; outRoot: string; tar
 }
 
 /**
- * Build this landing before the first serve, into `<outRoot>/staging`, and swap it in only on success (#38423).
- * A failed build leaves the served dist untouched: the preview keeps serving the previous build and names both
- * commits, because a 502 caused by a build that is merely over the memory ceiling is worse than a preview that says
- * which older landing it is showing. The process exits only when there is nothing at all to serve, where serving
- * nothing is the honest answer. Returns true when the staged build was swapped in.
+ * Build this landing into `<outRoot>/staging` and swap it in only on success (#38423) — before the first serve when
+ * there is nothing to serve yet, or `beside` a previous build that keeps serving meanwhile (#30205). A failed build
+ * leaves the served dist untouched: the preview keeps serving the previous build and names both commits, because a
+ * 502 caused by a build that is merely over the memory ceiling is worse than a preview that says which older landing
+ * it is showing, and the failure is recorded on the marker so it is read as failed, never as absent. The process
+ * exits only when there is nothing at all to serve, where serving nothing is the honest answer. Returns true when the
+ * staged build was swapped in.
  */
 export async function buildLanding(
-  args: { outRoot: string; target: string; runBuild?: RunBuild },
+  args: { outRoot: string; target: string; runBuild?: RunBuild; beside?: boolean },
   now: Date = new Date(),
 ): Promise<boolean> {
   const served = join(args.outRoot, "dist")
@@ -328,10 +347,16 @@ export async function buildLanding(
   console.log(
     `terminfo-site: served output is ${previous ?? "absent"}, landing is ${args.target} — rebuilding into ${staging}`,
   )
-  // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker` for why it
-  // is cleared only once the outcome is known: on success because the build landed, on a kept previous build because
-  // this program has stopped rebuilding and is serving again.
-  const clearMarker = writeSiteRebuildMarker(args.target, { TERMINFO_SITE_OUT_DIR: args.outRoot }, "code")
+  // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker`. It is
+  // cleared on success because the build landed, and kept with the failure recorded on it otherwise (#30205). Beside
+  // a serving previous build it names that build, so readiness is not held for this one.
+  const markerEnv = { TERMINFO_SITE_OUT_DIR: args.outRoot }
+  const clearMarker = writeSiteRebuildMarker(
+    args.target,
+    markerEnv,
+    "code",
+    args.beside === true && previous !== null ? previous : null,
+  )
   claimStaging(staging, { target: args.target, runId: null }, now)
   // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
   // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
@@ -354,9 +379,10 @@ export async function buildLanding(
     }
     console.error(
       `terminfo-site: ${failure ?? mismatch}; NOT serving ${args.target.slice(0, 12)} — still serving the previous ` +
-        `build ${previous.slice(0, 12)} from ${served} until a build passes`,
+        `build ${previous.slice(0, 12)} from ${served} until a build passes; failure recorded on ` +
+        `${join(args.outRoot, "rebuild.json")}`,
     )
-    clearMarker?.()
+    recordSiteRebuildFailure(failure ?? mismatch ?? "unknown build failure", markerEnv)
     return false
   }
   swapStagedDist(served, stagedDist, join(args.outRoot, "dist.previous"))
@@ -410,20 +436,24 @@ function serveStaticFile(filePath: string, status: number, request: Request): Re
   if (COMPRESSIBLE_EXT.test(filePath) && acceptEncoding.includes("gzip")) {
     const raw = readFileSync(filePath)
     if (raw.byteLength >= 1024) {
-      const headers = new Headers({
+      // Plain header records: the repo lint's globals carry `Response` but not `Headers` (no-undef).
+      const headers: Record<string, string> = {
         "content-type": file.type || "application/octet-stream",
         "content-encoding": "gzip",
         vary: "Accept-Encoding",
         ...(filePath.includes("/assets/") ? { "cache-control": "public, max-age=31536000, immutable" } : {}),
-      })
+      }
       if (request.method === "HEAD") return new Response(null, { status, headers })
       const compressed = Bun.gzipSync(raw)
-      headers.set("content-length", String(compressed.byteLength))
-      return new Response(compressed, { status, headers })
+      return new Response(compressed, {
+        status,
+        headers: { ...headers, "content-length": String(compressed.byteLength) },
+      })
     }
   }
-  const headers = new Headers()
-  if (filePath.includes("/assets/")) headers.set("cache-control", "public, max-age=31536000, immutable")
+  const headers: Record<string, string> = filePath.includes("/assets/")
+    ? { "cache-control": "public, max-age=31536000, immutable" }
+    : {}
   return new Response(request.method === "HEAD" ? null : file, { status, headers })
 }
 
@@ -446,17 +476,25 @@ async function serveLanded(): Promise<void> {
       "TERMINFO_SITE_WORKING_RUNS_DIR needs TERMINFO_SITE_OUT_DIR: an hourly rebuild stages beside the served build",
     )
   }
-  // A code mismatch rebuilds into the staging root before serving; that build reads the newest hourly run itself, and
-  // a failure keeps the previous build serving instead of taking the preview down (#38423).
-  if (servedRevision() !== target) {
+  // A code mismatch with a previous build to show and a state root to stage in is rebuilt BESIDE the served build by
+  // the one rebuilder below (#30205). Only with nothing to serve yet (or no state root) does the build come first; it
+  // reads the newest hourly run itself, and a failure keeps any previous build serving (#38423).
+  const served = servedRevision()
+  if (served !== target && (served === null || outRoot === undefined)) {
     await buildLanding({ outRoot: outRoot ?? resolve(repoRoot, "docs", ".vitepress"), target })
   }
 
-  console.log(`terminfo-site: serving ${distDir} (${target.slice(0, 10)}) at http://${hostname}:${port}/`)
+  const shown = servedRevision()
+  console.log(
+    `terminfo-site: serving ${distDir} (${(shown ?? "none").slice(0, 10)}${
+      shown === target ? "" : `, rebuilding ${target.slice(0, 10)} beside it`
+    }) at http://${hostname}:${port}/`,
+  )
   Bun.serve({ hostname, port, fetch: createPreviewHandler(distDir) })
-  if (runsDir === undefined || outRoot === undefined) return
-  const rebuilder = createRunRebuilder({ runsDir, outRoot, target })
+  if (outRoot === undefined) return
+  const rebuilder = createSiteRebuilder({ runsDir, outRoot, target })
   void rebuilder.check()
+  if (runsDir === undefined) return
   // The re-measure writes summary.json last; settle briefly after the last change so a half-written file is not read.
   let settle: ReturnType<typeof setTimeout> | undefined
   watch(runsDir, { recursive: true }, () => {

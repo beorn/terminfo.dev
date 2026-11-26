@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url"
 import {
   buildLanding,
   createPreviewHandler,
-  createRunRebuilder,
+  createSiteRebuilder,
   readServedStamp,
   rebuildForRun,
   rebuildReason,
@@ -231,6 +231,96 @@ it("starts the real owner twice on the same malformed hourly summary and keeps s
   expect(owners.size).toBe(2)
 }, 75_000)
 
+// @failure #30205: a landing that moved vendor/terminfo.dev made the owner rebuild the whole site BEFORE it served,
+// so the preview was down 10-15 min per landing and the shared-main updater waited on it (18 of 52 landings,
+// 12,693 s over 30 s on 2026-11-25). The owner must serve the previous build at once and rebuild beside it.
+// @level l3 @consumer the real landed-serve bootstrap, its HTTP listener and the rebuild marker the health probe reads.
+it("serves the previous build at once while a landing's code rebuild runs beside it (30205)", async () => {
+  const ownerPath = fileURLToPath(new URL("./landed-serve.ts", import.meta.url))
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url))
+  const target = execFileSync("git", ["-C", sourceRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+  const previous = "f".repeat(40)
+  const out = join(dist, "beside-out")
+  const served = join(out, "dist")
+  mkdirSync(served, { recursive: true })
+  writeFileSync(join(served, "build.json"), JSON.stringify({ sourceCommit: previous }))
+  writeFileSync(join(served, "index.html"), "previous-build-keeps-serving")
+  writeFileSync(join(served, "404.html"), "previous-not-found")
+  // The site build never finishes inside this test: it records that it started and its pid, then waits.
+  const bin = join(dist, "beside-bin")
+  const trace = join(dist, "beside-build.json")
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, "bun"),
+    `#!${process.execPath}\nawait Bun.write(process.env.BUILD_ARGV_TRACE, JSON.stringify({ pid: process.pid, out: process.env.TERMINFO_SITE_OUT_DIR })); await Bun.sleep(120_000);\n`,
+    { mode: 0o755 },
+  )
+  const readTrace = (): { pid?: unknown; out?: unknown } =>
+    JSON.parse(readFileSync(trace, "utf8")) as { pid?: unknown; out?: unknown }
+  const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("port reservation") })
+  const port = portProbe.port
+  await portProbe.stop(true)
+  const { TERMINFO_SITE_WORKING_RUNS_DIR: _runs, TERMINFO_SITE_LANDING_ROOT: _landing, ...inherited } = process.env
+  let stdout = ""
+  let stderr = ""
+  const child = spawn(process.execPath, [ownerPath], {
+    cwd: sourceRoot,
+    env: {
+      ...inherited,
+      PATH: `${bin}:${process.env.PATH}`,
+      TERMINFO_SITE_HOST: "127.0.0.1",
+      TERMINFO_SITE_PORT: String(port),
+      TERMINFO_SITE_OUT_DIR: out,
+      BUILD_ARGV_TRACE: trace,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()))
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString("utf8")
+  })
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf8")
+  })
+  try {
+    await vi.waitFor(
+      async () => {
+        expect(child.exitCode, `${stdout}\n${stderr}`).toBeNull()
+        expect(existsSync(trace), `${stdout}\n${stderr}`).toBe(true)
+        const response = await fetch(`http://127.0.0.1:${port}/`)
+        expect(response.status).toBe(200)
+        expect(await response.text()).toBe("previous-build-keeps-serving")
+      },
+      { timeout: 20_000, interval: 100 },
+    )
+    // The build runs into the staging root, never over the served dist, and the marker says which build serves.
+    expect(readTrace().out).toBe(join(out, "staging"))
+    expect(JSON.parse(readFileSync(join(out, "rebuild.json"), "utf8"))).toMatchObject({
+      target,
+      kind: "code",
+      serving: previous,
+    })
+    expect(readServedStamp(served).sourceCommit).toBe(previous)
+  } finally {
+    if (existsSync(trace)) {
+      try {
+        process.kill(Number(readTrace().pid), "SIGKILL")
+      } catch {
+        // silent-fallback-allow: the fake build may already have exited; there is nothing else to clean up
+      }
+    }
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+    const force = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
+    }, 5_000)
+    try {
+      await closed
+    } finally {
+      clearTimeout(force)
+    }
+  }
+}, 45_000)
+
 function get(path: string, init?: RequestInit): Response {
   return createPreviewHandler(dist)(new Request(`http://preview.test${path}`, init))
 }
@@ -348,8 +438,9 @@ describe("landed-serve hourly-run rebuild", () => {
   })
 
   // #38423: a landing whose own build is over the memory ceiling must not take the preview down. The operator sees an
-  // older named build instead of a 502, and the marker the health probe reads is cleared because rebuilding stopped.
-  it("a failed landing build keeps the previous build serving and clears the marker", async () => {
+  // older named build instead of a 502. #30205: the marker stays, carrying the failure, so the health probe and the
+  // preview follow both read a FAILED rebuild loudly instead of an absent one.
+  it("a failed landing build keeps the previous build serving and records the failure in the marker", async () => {
     const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
     stamp(join(out, "dist"), RUN_A)
     const target = "b".repeat(40)
@@ -365,7 +456,57 @@ describe("landed-serve hourly-run rebuild", () => {
     expect(errors.join("\n")).toContain("site build failed (exit 70)")
     expect(errors.join("\n")).toContain(`NOT serving ${target.slice(0, 12)}`)
     expect(errors.join("\n")).toContain(`still serving the previous build ${CODE.slice(0, 12)}`)
-    expect(existsSync(join(out, "rebuild.json"))).toBe(false)
+    expect(JSON.parse(readFileSync(join(out, "rebuild.json"), "utf8"))).toMatchObject({
+      target,
+      kind: "code",
+      failure: "site build failed (exit 70)",
+      failedAt: expect.any(String),
+    })
+  })
+
+  // #30205: the hourly rebuilder is the one rebuilder; a landing's code mismatch goes through it beside the served
+  // build, once per landing revision, and a failure is never retried in-process.
+  it("the one rebuilder rebuilds a code mismatch beside the served build, once per landing revision", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-code-"))
+    stamp(join(out, "dist"), RUN_A)
+    const target = "b".repeat(40)
+    const builds: string[] = []
+    let fail = true
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const rebuilder = createSiteRebuilder({
+        outRoot: out,
+        target,
+        runBuild: async (env) => {
+          builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
+          // While the build runs the served dist is still the previous one.
+          expect(readServedStamp(join(out, "dist")).sourceCommit).toBe(CODE)
+          if (fail) return 1
+          stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), null, target)
+          return 0
+        },
+      })
+      await rebuilder.check()
+      await rebuilder.check()
+      expect(builds).toEqual([join(out, "staging")])
+      expect(readServedStamp(join(out, "dist")).sourceCommit).toBe(CODE)
+      fail = false
+      const second = createSiteRebuilder({
+        outRoot: out,
+        target,
+        runBuild: async (env) => {
+          builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
+          stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), null, target)
+          return 0
+        },
+      })
+      await second.check()
+      expect(builds).toHaveLength(2)
+      expect(readServedStamp(join(out, "dist")).sourceCommit).toBe(target)
+      expect(existsSync(join(out, "rebuild.json"))).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("a passing landing build swaps the staged dist in and clears the marker", async () => {
@@ -412,7 +553,7 @@ describe("landed-serve hourly-run rebuild", () => {
     let fail = true
     const spy = vi.spyOn(console, "error").mockImplementation(() => {})
     try {
-      const rebuilder = createRunRebuilder({
+      const rebuilder = createSiteRebuilder({
         runsDir: runs,
         outRoot: out,
         target: CODE,

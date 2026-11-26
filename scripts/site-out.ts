@@ -9,7 +9,7 @@
  * With `TERMINFO_SITE_OUT_DIR` set, all three move under that one directory and the checkout stays write-once.
  * With it unset, every path is exactly what it was before this module existed, so an unset build is byte-identical.
  */
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 
 /** The one write-root override. `undefined` means "the historical, in-tree paths". */
@@ -81,11 +81,16 @@ export type SiteRebuildKind = "code" | "run"
  *   keeps serving the landing's code for the whole build, so a failed or slow run build must never be reported as a
  *   stale code build (#38595, page 35dd8a8c: a failed hourly run build paged `terminfo-site-stale` on a preview that
  *   answered 200 on the landing's own code).
+ *
+ * `serving` (#30205) names the previous build's code revision when the program keeps serving it while this build runs
+ * beside it. The health probe then answers healthy (the preview IS up) instead of `starting`, so a restart is not held
+ * for the whole build; the preview follow reads the same field to know a rebuild is in flight, not stuck.
  */
 export function writeSiteRebuildMarker(
   target: string,
   env: NodeJS.ProcessEnv = process.env,
   kind: SiteRebuildKind = "code",
+  serving: string | null = null,
 ): (() => void) | undefined {
   const path = siteRebuildMarkerPath(env)
   if (path === undefined) return undefined
@@ -95,7 +100,48 @@ export function writeSiteRebuildMarker(
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(
     path,
-    `${JSON.stringify({ schema: "terminfo-site-rebuild/1", target, kind, startedAt: new Date().toISOString() })}\n`,
+    `${JSON.stringify({
+      schema: "terminfo-site-rebuild/1",
+      target,
+      kind,
+      ...(serving === null ? {} : { serving }),
+      startedAt: new Date().toISOString(),
+    })}\n`,
   )
   return () => rmSync(path, { force: true })
+}
+
+/**
+ * Record on the marker that its build FAILED (#30205), keeping every field the build wrote. The marker stays, so a
+ * failed rebuild is read as failed — by the health probe (stale, at once) and by the preview follow (its one alert) —
+ * and never as an absent marker that only a timeout could tell from a build still running. No-op with no state root.
+ */
+export function recordSiteRebuildFailure(cause: string, env: NodeJS.ProcessEnv = process.env): void {
+  const path = siteRebuildMarkerPath(env)
+  if (path === undefined) return
+  let written: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"))
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      written = parsed as Record<string, unknown>
+    }
+  } catch (error) {
+    // The build wrote this marker before it started; losing it is a surprise worth a line, and the failure is still
+    // written below so it stays readable (NO SILENT ERRORS).
+    console.error(
+      `terminfo-site: rebuild marker at ${path} unreadable while recording a failure (${
+        error instanceof Error ? error.message : String(error)
+      }); writing the failure alone`,
+    )
+  }
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(
+    path,
+    `${JSON.stringify({
+      schema: "terminfo-site-rebuild/1",
+      ...written,
+      failure: cause,
+      failedAt: new Date().toISOString(),
+    })}\n`,
+  )
 }
