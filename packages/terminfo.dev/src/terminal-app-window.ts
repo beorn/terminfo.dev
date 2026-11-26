@@ -786,8 +786,9 @@ export function forceCloseTerminalAppWindow(
   windowId: number,
   run: TerminalAppCloseRun = defaultCloseRun,
 ): TerminalAppForceCloseReply {
-  if (!Number.isSafeInteger(windowId) || windowId < 1)
+  if (!Number.isSafeInteger(windowId) || windowId < 1) {
     throw new Error("Terminal.app window force close: invalid window id")
+  }
   const result = run(TERMINAL_APP_FORCE_CLOSE_SCRIPT, [String(windowId)])
   if (result.error !== undefined || result.status !== 0) {
     throw new Error(
@@ -1312,24 +1313,28 @@ export function createTerminalAppTabTitleReader(options: {
   readonly check: () => void
   readonly run?: TerminalAppTabTitleRun
 }): () => Promise<string> {
-  return async () => {
-    options.check()
-    const reply = readTerminalAppTabTitle(options.tty, options.run)
-    options.check()
-    if (reply.status === "refused") {
-      throw new Error(`Terminal.app tab title read refused at ${reply.phase}: ${reply.reason}`)
+  return () => {
+    try {
+      options.check()
+      const reply = readTerminalAppTabTitle(options.tty, options.run)
+      options.check()
+      if (reply.status === "refused") {
+        throw new Error(`Terminal.app tab title read refused at ${reply.phase}: ${reply.reason}`)
+      }
+      if (options.windowId !== undefined && reply.windowId !== options.windowId) {
+        throw new Error(
+          `Terminal.app tab title read: the owned tab is in window ${String(reply.windowId)}, not the measured window ${String(options.windowId)}`,
+        )
+      }
+      if (reply.title === reply.windowTitle) {
+        throw new Error(
+          "Terminal.app tab title read: the owned tab's custom title is the window's composite, so the protocol value is not observable through this boundary",
+        )
+      }
+      return Promise.resolve(reply.title)
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
     }
-    if (options.windowId !== undefined && reply.windowId !== options.windowId) {
-      throw new Error(
-        `Terminal.app tab title read: the owned tab is in window ${String(reply.windowId)}, not the measured window ${String(options.windowId)}`,
-      )
-    }
-    if (reply.title === reply.windowTitle) {
-      throw new Error(
-        "Terminal.app tab title read: the owned tab's custom title is the window's composite, so the protocol value is not observable through this boundary",
-      )
-    }
-    return reply.title
   }
 }
 
