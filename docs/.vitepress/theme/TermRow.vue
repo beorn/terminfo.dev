@@ -5,7 +5,7 @@
 import { computed } from "vue"
 import type { CategoryId } from "../../data/result-categories.ts"
 import type { PublicContextSummary, PublicRunMetadata } from "../../data/public-results.ts"
-import { platformIcon } from "./platform-icons.ts"
+import PlatformIcon from "./PlatformIcon.vue"
 import SupportBar from "./SupportBar.vue"
 import type { ResultItem } from "./ResultList.vue"
 
@@ -30,7 +30,6 @@ const props = defineProps<{
   card?: boolean
 }>()
 
-const icon = computed(() => platformIcon(props.os))
 const host = computed(() => {
   if (!props.website) return undefined
   try {
@@ -49,7 +48,7 @@ const firstLine = computed(() => props.description?.split(/(?<=[.!?])\s/u)[0])
   >
     <span class="term-name">
       <a class="term-name-link" :href="href">{{ name }}</a>
-      <span v-if="icon" class="term-platform" :title="platform" v-html="icon" />
+      <PlatformIcon :os="os" :platform="platform" />
       <span v-if="!card" class="term-about" role="tooltip">
         <strong>{{ name }}</strong
         ><template v-if="platform"> · {{ platform }}</template>

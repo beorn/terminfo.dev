@@ -14,6 +14,7 @@ import { displayVersion, displayVersions, displayMeasuredDate as plainMeasuredDa
 import { categoryIds, categoryOf } from '../data/result-categories.ts'
 import { rowFacts } from '../.vitepress/theme/row-facts.ts'
 import { featureAnchorId } from '../.vitepress/theme/bar-layout.ts'
+import PlatformIcon from '../.vitepress/theme/PlatformIcon.vue'
 const { params } = useData()
 const p = params.value
 const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
@@ -25,6 +26,7 @@ const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
     // #37341 Q4: published cells are decided ones only; the fold reads an absent catalogue id as no result yet.
     bar: aggregateCurrentResults(rollupInputs(name, selected), selected.catalogIds),
     sources: Object.values(selected.sources),
+    measured: measurementLine(Object.values(selected.sources), selected.subject?.os ?? null),
   }
 })
 const multipleSystems = osColumns.length > 1
@@ -87,10 +89,16 @@ function featureRows(features) {
 }
 const stale = computed(() => !hasCurrentSource(sourceRuns.value))
 const staleText = computed(() => stale.value ? 'These measurements use an earlier feature set; see Test environment for their context.' : '')
-function measurementSummary(runs, os) {
-  if (!runs.length) return `Measurement date not recorded · ${p.terminalName} · ${displayOs(os)}`
-  return `Measured ${displayMeasuredRange(runs.map(run => run.measuredAt))} · ${p.terminalName} ${displayVersions(runs).join(', ')} · ${displayOs(os)}`
+// #38757: the line names the terminal as the home list does (name, platform icon, version in mono), then the date.
+function measurementLine(runs, os) {
+  return {
+    os,
+    platform: displayOs(os),
+    versions: displayVersions(runs).join(', '),
+    when: runs.length ? `measured ${displayMeasuredRange(runs.map(run => run.measuredAt))}` : 'measurement date not recorded',
+  }
 }
+const measured = computed(() => measurementLine(sourceRuns.value, facts.os(p.backendId)))
 function runLabel(run) {
   return `${displayVersion(run.subject.version)} · ${run.subject.os || 'OS not recorded'} · ${run.subject.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
@@ -216,7 +224,7 @@ const breadcrumbParent = (() => {
 <section v-if="multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <div v-for="column in osColumns" :key="column.name" class="measurement-system">
-    <p class="selected-run">{{ measurementSummary(column.sources, facts.os(column.name)) }}</p>
+    <p class="selected-run">{{ p.terminalName }} <PlatformIcon :os="column.measured.os" :platform="column.measured.platform">({{ column.measured.platform }})</PlatformIcon> <span v-if="column.measured.versions" class="term-version">{{ column.measured.versions }}</span> · {{ column.measured.when }}</p>
     <SupportBar :label="facts.name(column.name)" :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)" :version="column.selected"
       :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, column.selected.catalogIds)" />
   </div>
@@ -225,7 +233,7 @@ const breadcrumbParent = (() => {
 <section v-if="measuredBar && !multipleSystems" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
-  <p class="selected-run">{{ measurementSummary(sourceRuns, facts.os(p.backendId)) }}</p>
+  <p class="selected-run">{{ p.terminalName }} <PlatformIcon :os="measured.os" :platform="measured.platform">({{ measured.platform }})</PlatformIcon> <span v-if="measured.versions" class="term-version">{{ measured.versions }}</span> · {{ measured.when }}</p>
   <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="term-rows term-rows-single">
     <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)" :version="selectedRun"
