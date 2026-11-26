@@ -445,6 +445,9 @@ describe("verifyTerminalIdentity", () => {
       "device.xtversion": "Zellij(4600)",
     }
     expect(verifyTerminalIdentity("zellij", zellij, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
+    // Under the collector's Kitty, which has no sixel, Zellij drops the 4 from DA1 (run e9b2cf77).
+    const underKitty = { ...zellij, "device.primary-da": "\x1b[?62;52c" }
+    expect(verifyTerminalIdentity("zellij", underKitty, { "device.xtversion": true })).toEqual({ ok: true, checked: true })
     const herdr = { "device.primary-da": "\x1b[?62;22c", "device.xtversion": "libghostty" }
     expect(verifyTerminalIdentity("zellij", herdr, { "device.xtversion": true }).ok).toBe(false)
     expect(verifyTerminalIdentity("herdr", zellij, { "device.xtversion": true }).ok).toBe(false)

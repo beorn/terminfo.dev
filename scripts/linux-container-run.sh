@@ -790,7 +790,10 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       ;;
     herdr)
       # herdr 0.9.5 (#38759): a headless server owns the session socket; this shell's foreground client is the one
-      # attached display. HERDR_CONFIG_PATH points at the receipt's empty config, so no user config is read.
+      # attached display. HERDR_CONFIG_PATH points at the receipt's config, so no user config is read. A missing
+      # onboarding key opens herdr's first-run dialog over the pane, which hid the calibration grid and took the
+      # collector's input (run 9d2d7bf5), so the config turns it off, with the background herdr.dev checks.
+      printf 'onboarding = false\n[update]\nversion_check = false\nmanifest_check = false\n' > "$mux_config"
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
       export XDG_CONFIG_HOME="$HOME/.config" HERDR_CONFIG_PATH="$mux_config"
       # herdr.sock is the API socket the CLI verbs use; an attached client connects to herdr-client.sock, so that is

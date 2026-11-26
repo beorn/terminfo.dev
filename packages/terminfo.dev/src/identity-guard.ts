@@ -49,11 +49,12 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
   },
   // Zellij 0.46.0 (#38759), measured 2026-11-26 the same way: DA1 "\e[?62;4;52c", DA2 "\e[>0;4600;1c" and XTVERSION
   // "Zellij(4600)". The number is Zellij's own build code, not a release version, so the version comes from the run's
-  // declared executable, as herdr's does.
+  // declared executable, as herdr's does. Zellij passes on the outer terminal's sixel support: under the collector's
+  // Kitty, which has no sixel, its DA1 is "\e[?62;52c" (run e9b2cf77), so the 4 is optional.
   zellij: {
     terminal: "zellij",
     subjectKind: "mux",
-    da1Pattern: /^\x1b\[\?62;4;52c$/,
+    da1Pattern: /^\x1b\[\?62;(?:4;)?52c$/,
     da2Pattern: /^\x1b\[>0;\d+;1c$/,
     xtversionPattern: /^Zellij\(\d+\)$/,
     requireXtversion: true,
