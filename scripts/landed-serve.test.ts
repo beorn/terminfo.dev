@@ -543,9 +543,8 @@ describe("landed-serve hourly-run rebuild", () => {
       },
     })
     expect(ok).toBe(true)
-    const swapped = (quiet?.mock.calls ?? [])
-      .map((call) => String(call[0]))
-      .filter((line) => line.includes("swapped in"))
+    const calls: readonly (readonly unknown[])[] = quiet?.mock.calls ?? []
+    const swapped = calls.map((call) => String(call[0])).filter((line) => line.includes("swapped in"))
     expect(swapped).toEqual([
       `terminfo-site: swapped in build ${target.slice(0, 12)} run ${RUN_B} for landing ${target.slice(0, 12)} ` +
         `(was ${CODE.slice(0, 12)} run ${RUN_A})`,
