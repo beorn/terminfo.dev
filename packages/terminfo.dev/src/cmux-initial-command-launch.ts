@@ -192,7 +192,13 @@ export async function launchCmuxInitialCommand(
   const baseContent = content
   const restore = (): "exact" | "line-removed" | "removed" => {
     const now = existsSync(opts.configPath) ? readFileSync(opts.configPath, "utf8") : ""
-    const remaining = now === withKey ? baseContent : now.split("\n").filter((line) => line !== ourLine).join("\n")
+    const remaining =
+      now === withKey
+        ? baseContent
+        : now
+            .split("\n")
+            .filter((line) => line !== ourLine)
+            .join("\n")
     // The run created the file: leave none behind when nothing but our line was ever in it.
     if (prior === null && remaining.trim() === "") {
       if (existsSync(opts.configPath)) unlinkSync(opts.configPath)
