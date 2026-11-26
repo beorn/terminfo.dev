@@ -445,6 +445,389 @@
           "assertionIndex": 59
         }
       ]
+    },
+    {
+      "kind": "term",
+      "id": "warp",
+      "os": "macos",
+      "featureId": "extensions.osc104-reset-palette",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 4 colour query, a neighbouring feature: a reply, or its absence, never decides",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "41ab1e8a4a9bf9c0e92f66af36479f39",
+          "assertionIndex": 17
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "extensions.osc112-reset-cursor",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 24
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Untestable",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 28
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "iterm2",
+      "os": "macos",
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version run d153d57f reads Untestable",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group C), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "baafb08bace3486d4f97bacbae912412",
+          "assertionIndex": 27
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "warp",
+      "os": "macos",
+      "featureId": "extensions.osc113-reset-pointer-fg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 13 colour query, a neighbouring feature: a reply, or its absence, never decides",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "41ab1e8a4a9bf9c0e92f66af36479f39",
+          "assertionIndex": 24
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Untestable",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 29
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "iterm2",
+      "os": "macos",
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version run d153d57f reads Untestable",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group C), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "baafb08bace3486d4f97bacbae912412",
+          "assertionIndex": 28
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "warp",
+      "os": "macos",
+      "featureId": "extensions.osc114-reset-pointer-bg",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: graded from silence to the OSC 14 colour query, a neighbouring feature: a reply, or its absence, never decides",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group D), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "8533e1c9630b"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "41ab1e8a4a9bf9c0e92f66af36479f39",
+          "assertionIndex": 25
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "input.button-event-mouse",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 185
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "input.button-event-mouse",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: harness defect fixed in 3fa8ddf9 (#32582): the press was read in place of the report",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group E), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 178
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 146
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "kitty",
+      "os": "linux",
+      "featureId": "input.button-event-mouse",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, ce4f24d2 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
+          "assertionIndex": 181
+        },
+        {
+          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
+          "assertionIndex": 193
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "kitty",
+      "os": "linux",
+      "featureId": "input.kitty-click-events",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, 8a04af6f, ce4f24d2 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "0f6a17be820e41ecf3404199ff00fbb7",
+          "assertionIndex": 185
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "ghostty",
+      "os": "linux",
+      "featureId": "input.x10-mouse",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: harness defect fixed in 3fa8ddf9 (#32582): modes 1000 and 1006 stayed on before ?9h",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group E), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "4b01b0117e18",
+          "07a42ec1d359"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "3d1eb75c5fa11383e3a6327d32a2c1a0",
+          "assertionIndex": 176
+        },
+        {
+          "runId": "633c90aa4d9d9915dbfa8bbb0e1bc68e",
+          "assertionIndex": 144
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "input.xtest-key",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 186
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "kitty",
+      "os": "linux",
+      "featureId": "input.xtest-key",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs 865b253b, ce4f24d2 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group B), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "8a04af6f8377b1c3ddd66746caa30cbf",
+          "assertionIndex": 194
+        }
+      ]
+    },
+    {
+      "kind": "term",
+      "id": "alacritty",
+      "os": "linux",
+      "featureId": "modes.alt-scroll-1007",
+      "graded": "unsupported",
+      "reason": "an earlier run graded this cell by a method since ruled invalid, or a later run of the same release disagrees; that grade is withdrawn until it is measured again",
+      "reopenedOn": "2026-11-26",
+      "ruling": "@cto 2026-11-26 03:39 PST (94288a3f), issue 38772: same-version runs cf0ed306, e6e3df43 read Supported",
+      "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-stale-proposed.tsv (group A), from /hh/var/@dev2/38772-stale-mixed.tsv",
+      "exit": {
+        "kind": "remeasured",
+        "suiteIds": [
+          "de354c6e7853"
+        ]
+      },
+      "witnesses": [
+        {
+          "runId": "984b034da17ca52406e50e60a3b88bc4",
+          "assertionIndex": 157
+        }
+      ]
     }
   ]
 }
