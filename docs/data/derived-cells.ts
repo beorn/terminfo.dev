@@ -70,14 +70,22 @@ export interface DerivedMarker {
 
 const cellStatus = (cell: SelectedContextCell) => cell.featureResult?.status ?? cell.result.status
 
-/** A parent entails only when it is decided Unsupported by its own direct witness, never by derivation. */
+/**
+ * A parent entails only when it is decided Unsupported by its own direct witness, never by derivation, and that
+ * witness read the effect (#38772, @cto b1a8ecea and 7ffb81e4): the effect decides, the reply never does. A
+ * query_reply witness is a reply or its absence, never the effect: a fenced silence shows the terminal does not answer
+ * the query, not that it lacks the feature, and a state reply that omits an attribute (Ghostty 1.3.1's DECRQSS
+ * answering 0;4m with no SGR 58) shows only what the reply can carry. Neither entails anything about the child, which
+ * keeps its own reading.
+ */
 function entailingParent(cell: SelectedContextCell | undefined): cell is SelectedContextCell {
   return (
     cell !== undefined &&
     cell.derived === undefined &&
     cellStatus(cell) === "unsupported" &&
     cell.result.status === "unsupported" &&
-    cell.result.assertionType !== undefined
+    cell.result.assertionType !== undefined &&
+    cell.result.assertionType !== "query_reply"
   )
 }
 

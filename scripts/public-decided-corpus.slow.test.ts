@@ -126,13 +126,17 @@ describe("every published card cites decided evidence (D5)", () => {
       }
     }
     expect(wrong).toEqual([])
-    // The cards whose own stored entry is undecided: the ones D5 re-points (24 on the 2.7.3 corpus).
+    // The cards whose own stored entry is undecided: the ones D5 re-points. 25 before #38772 (@cto b1a8ecea); 5 after,
+    // because a parent refused only by a query's silence no longer derives. The five are sgr.underline-color-reset on
+    // Terminal.app 26.7.2 and 26.7.3, Warp 26.7.2 and xterm 411 and 412, whose SGR 58 is refused by screenshot.
     const ownUndecided = cards.filter((card) => {
       const [key, id] = [card.slice(0, card.lastIndexOf("/")), card.slice(card.lastIndexOf("/") + 1)]
       const own = projection.contexts[key]!.cells[id]!
       return !isPublishedStatus(own.result.status)
     })
-    expect(ownUndecided).toHaveLength(24)
+    expect(ownUndecided.map((card) => card.slice(card.lastIndexOf("/") + 1))).toEqual(
+      Array(5).fill("sgr.underline-color-reset"),
+    )
   })
 
   it("cites the review for a cell declared untestable, whose own entry the public trace leaves out", () => {
