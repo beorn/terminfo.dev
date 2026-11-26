@@ -12,7 +12,13 @@ import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { initializeRunDraft } from "@terminfo/probe-defs"
 import { finalizeCollectedDraft } from "../packages/terminfo.dev/src/capture-writer.ts"
-import { DERIVED_UNSUPPORTED, publicDerivedReason } from "../docs/data/derived-cells.ts"
+import {
+  DERIVED_UNSUPPORTED,
+  gradeOsc52Clipboard,
+  partsComparable,
+  publicDerivedReason,
+  type PartReading,
+} from "../docs/data/derived-cells.ts"
 import type { ReopenedCell } from "../docs/data/reopened-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
@@ -59,7 +65,7 @@ const NO_SETUP =
   "Untestable (no setup): Kitty graphics transmit has no reply to either a=t or a=q after their DA1 controls, so the display cell has no image to place"
 
 type Row =
-  | { status: "supported" | "unsupported"; witness?: "effect" }
+  | { status: "supported" | "unsupported"; witness?: "effect"; note?: string }
   | { status: "untestable" | "probe-invalid" | "probe-todo"; reason: string }
 
 /** One schema-4 xterm run on Linux; decided rows carry a query_reply witness, open rows only their reason. */
@@ -120,6 +126,7 @@ function run(runId: string, rows: Record<string, Row>, catalog: string[] = ids) 
       assertionType: effect ? "buffer_state" : "query_reply",
       rawReplyRef: featureId,
       ...(row.status === "unsupported" && { reason: effect ? EFFECT : SILENCE }),
+      ...(row.status === "supported" && row.note !== undefined && { reason: row.note }),
       attempt,
       tests: [{ id: "criterion", status: row.status, attempt, assertionRefs: [index], rawReplyRef: featureId }],
     }
@@ -343,5 +350,184 @@ describe("unsupported, derived (33019)", () => {
       ).toMatch(/^Unsupported, derived: .+ was refused in run r; .+\.$/)
     }
     expect(new Set(DERIVED_UNSUPPORTED.map((pair) => pair.child)).size).toBe(DERIVED_UNSUPPORTED.length)
+  })
+})
+
+describe("graded from parts: the OSC 52 umbrella reads its write and read rows (#38772, @cto 8cccf709)", () => {
+  const W = "extensions.osc52-write"
+  const R = "extensions.osc52-read"
+  const C = "extensions.osc52-clipboard"
+  const OSC52_IDS = [W, R, C]
+  const OWN = "Isolated backend returned the exact OSC 52 clipboard nonce"
+  const osc52 = (rows: Record<string, Row>) => {
+    const projection = projectResults(
+      [run("r1", rows, OSC52_IDS)],
+      OSC52_IDS,
+      { currentProbeHash: "suite", reopened: [] },
+      [],
+    )
+    return { projection, ctx: projection.contexts["term:xterm"]! }
+  }
+
+  it("reads Supported only from both halves at defaults, never from its own probe, and cites both parts", () => {
+    const { projection, ctx } = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "supported" },
+      [C]: { status: "unsupported" },
+    })
+    const cell = ctx.cells[C]!
+    expect(cell.featureResult).toMatchObject({ status: "supported", strength: null })
+    expect(cell.result.status).toBe("unsupported")
+    expect(cell.derived).toEqual({
+      parts: [
+        { feature: W, name: "OSC 52 write", runId: "r1", status: "supported", reason: null },
+        { feature: R, name: "OSC 52 read", runId: "r1", status: "supported", reason: null },
+      ],
+      cites: W,
+      words: "copy and paste-back both work at default settings (OSC 52 write and OSC 52 read)",
+      ownStatus: "unsupported",
+      ownReason: SILENCE,
+    })
+    expect(ctx.derivedIds).toEqual([C])
+    const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!
+    expect(published.featureResults[C]).toMatchObject({
+      featureId: C,
+      status: "supported",
+      reason:
+        "Graded from OSC 52 write and OSC 52 read in this context: copy and paste-back both work at default settings (OSC 52 write and OSC 52 read).",
+      origin: { runId: "r1", resultId: W },
+    })
+    expect(published.featureResults[C]!.derived).not.toHaveProperty("ownStatus")
+  })
+
+  it("an app that reads only under a setting it doesn't ship with is Unsupported, naming the setting", () => {
+    const { ctx } = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "supported", note: "allow: ghostty --clipboard-read=allow" },
+      [C]: { status: "supported" },
+    })
+    expect(ctx.cells[C]!.featureResult!.status).toBe("unsupported")
+    expect(ctx.cells[C]!.derived).toMatchObject({
+      words: "copy works (OSC 52 write); reading is off by default (ghostty --clipboard-read=allow), see OSC 52 read",
+    })
+  })
+
+  it("a refused write is Unsupported; an unmeasured half leaves it To do whatever its own probe read", () => {
+    expect(
+      osc52({ [W]: { status: "unsupported" }, [R]: { status: "supported" }, [C]: { status: "supported" } }).ctx.cells[
+        C
+      ]!.featureResult!.status,
+    ).toBe("unsupported")
+    const open = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    }).ctx
+    expect(open.cells[C]!.featureResult!.status).toBe("probe-todo")
+    expect(open.cells[C]!.derived).toMatchObject({ words: "needs both halves measured: OSC 52 read is not decided" })
+    const invalid = osc52({
+      [W]: { status: "probe-invalid", reason: "bad" },
+      [R]: { status: "supported" },
+      [C]: { status: "supported" },
+    }).ctx
+    expect(invalid.cells[C]!.featureResult!.status).toBe("probe-todo")
+  })
+
+  it("an Unsupported half decides first, even while the other half is open (@cpo/term 3ad6dc0e)", () => {
+    const refusedWrite = osc52({
+      [W]: { status: "unsupported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    }).ctx.cells[C]!
+    expect(refusedWrite.featureResult!.status).toBe("unsupported")
+    expect(refusedWrite.derived).toMatchObject({ cites: W, words: "copy does not work (OSC 52 write)" })
+    const { projection } = osc52({
+      [W]: { status: "unsupported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    })
+    const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!.featureResults[C]!
+    // The open half publishes its name alone: its status and reason are words we haven't decided (#37341 Q4).
+    expect(published.derived).toMatchObject({
+      parts: [
+        { feature: W, name: "OSC 52 write", runId: "r1", status: "unsupported" },
+        { feature: R, name: "OSC 52 read" },
+      ],
+    })
+    expect(JSON.stringify(published)).not.toMatch(/probe-todo|Not run/)
+    const refusedRead = osc52({
+      [W]: { status: "probe-todo", reason: "Not run" },
+      [R]: { status: "unsupported" },
+      [C]: { status: "supported" },
+    }).ctx.cells[C]!
+    expect(refusedRead.featureResult!.status).toBe("unsupported")
+    expect(refusedRead.derived).toMatchObject({
+      cites: R,
+      words: "reading does not answer at default settings (OSC 52 read)",
+    })
+  })
+
+  it("a half that is itself Untestable makes it Untestable", () => {
+    const { ctx } = osc52({
+      [W]: { status: "supported" },
+      [R]: { status: "untestable", reason: "no clipboard" },
+      [C]: { status: "supported" },
+    })
+    expect(ctx.cells[C]!.featureResult!.status).toBe("untestable")
+    expect(ctx.cells[C]!.derived).toMatchObject({ words: "OSC 52 read is untestable here" })
+  })
+
+  it("compares the halves on app version, OS and profile; a read run on its own named setting may differ in config", () => {
+    const subject = (version: string, config: string) => ({ version, os: "linux", osVersion: "7.0.0", config })
+    const reading = (reason: string | null): PartReading => ({
+      feature: R,
+      name: "OSC 52 read",
+      runId: "r2",
+      status: "supported",
+      reason,
+    })
+    const write: PartReading = { feature: W, name: "OSC 52 write", runId: "r1", status: "supported", reason: null }
+    const allow = "allow: ghostty --clipboard-read=allow"
+    expect(
+      partsComparable(
+        [subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --clipboard-read=allow")],
+        [write, reading(allow)],
+      ),
+    ).toBe(true)
+    expect(
+      partsComparable([subject("1.4.0", "ghostty"), subject("1.4.0", "ghostty --other")], [write, reading(null)]),
+    ).toBe(false)
+    expect(
+      partsComparable(
+        [subject("1.4.0", "ghostty"), subject("1.3.1", "ghostty --clipboard-read=allow")],
+        [write, reading(allow)],
+      ),
+    ).toBe(false)
+    expect(partsComparable([subject("1.4.0", "ghostty"), undefined], [write, reading(null)])).toBe(false)
+  })
+
+  it("a library is judged with its embedder's setting enabled; an app at its shipped defaults (@cpo/term 5483ec82)", () => {
+    const part = (feature: string, status: string, reason: string | null = null): PartReading => ({
+      feature,
+      name: feature === W ? "OSC 52 write" : "OSC 52 read",
+      runId: "r1",
+      status,
+      reason,
+    })
+    const harness = `${OWN}; read under harness-supplied osc52=CopyPaste; Alacritty's default OnlyCopy disables clipboard reads`
+    expect(gradeOsc52Clipboard([part(W, "supported"), part(R, "supported", harness)], "lib")).toEqual({
+      status: "supported",
+      words: "copy and paste-back both work; reading needs the embedding app's setting (osc52=CopyPaste)",
+      decidedBy: [0, 1],
+    })
+    expect(gradeOsc52Clipboard([part(W, "supported"), part(R, "supported", harness)], "term").status).toBe(
+      "unsupported",
+    )
+    expect(
+      gradeOsc52Clipboard([part(W, "supported"), part(R, "unsupported", "default deny: x")], "term"),
+    ).toMatchObject({
+      status: "unsupported",
+      decidedBy: [1],
+    })
   })
 })

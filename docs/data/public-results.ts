@@ -24,7 +24,14 @@ import {
 import type { FeatureResult, RollupCounts } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
-import { publicDerivedReason, type DerivedMarker } from "./derived-cells.ts"
+import {
+  publicDerivedReason,
+  type DerivedMarker,
+  type DerivedParentMarker,
+  type DerivedPart,
+  type DerivedPartsMarker,
+  type PartReading,
+} from "./derived-cells.ts"
 import { publicHeldReason } from "./held-negatives.ts"
 import {
   type SelectedCell,
@@ -252,7 +259,7 @@ export interface PublicContextSummary extends Omit<SelectedContextSummary, "cell
        * cell cites the parent's entry, which the derivation read (#37341 D5); the child's own undecided reading stays
        * in the stored run and is never published.
        */
-      derived?: Omit<DerivedMarker, "ownStatus" | "ownReason">
+      derived?: PublishedDerived
       /** Present only when a held negative waits for a Supported reading in its suite (#33034); `reason` says so. */
       held?: SelectedContextCell["held"]
       /** Present only when a reviewed declaration made this open cell untestable (@cto 82a54984); `reason` says so. */
@@ -351,15 +358,43 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
 }
 
 /**
+ * A derived marker as published: without the cell's own stored reading (#37341 Q4). A part graded from parts publishes
+ * its reading only when it is decided; an undecided part publishes its name alone, since its status and reason are
+ * words we haven't decided (#38772).
+ */
+export type PublishedDerived =
+  | Omit<DerivedParentMarker, "ownStatus" | "ownReason">
+  | (Omit<DerivedPartsMarker, "ownStatus" | "ownReason" | "parts"> & {
+      readonly parts: readonly (PartReading | DerivedPart)[]
+    })
+
+/**
  * #37341 D5: the entry a derived cell cites is its parent's, which is what the derivation read: the parent cell of the
- * same context, measured by the run the marker names. Anything else refuses, naming the cell.
+ * same context, measured by the run the marker names. A cell graded from parts (#38772) cites the part that decided it,
+ * and every part it names must still be this context's cell from the run the marker names. Anything else refuses,
+ * naming the cell.
  */
 function derivedOrigin(
   key: string,
   id: string,
   derived: DerivedMarker,
   cells: Readonly<Record<string, SelectedContextCell>>,
+  own: SelectedContextCell["origin"],
 ): SelectedContextCell["origin"] {
+  if ("parts" in derived) {
+    for (const part of derived.parts) {
+      const cell = cells[part.feature]
+      if (part.runId !== "" && cell?.origin.runId !== part.runId) {
+        throw new Error(
+          `${key}/${id}: graded from ${part.feature} in run ${part.runId}, but this context's ${part.feature} cell is ${cell ? `from run ${cell.origin.runId}` : "absent"}`,
+        )
+      }
+    }
+    if (derived.cites === undefined) return own
+    const cited = cells[derived.cites]
+    if (!cited) throw new Error(`${key}/${id}: cites ${derived.cites}, but this context has no ${derived.cites} cell`)
+    return cited.origin
+  }
   const parent = cells[derived.parent]
   if (!parent || parent.origin.runId !== derived.parentRunId) {
     throw new Error(
@@ -370,9 +405,15 @@ function derivedOrigin(
 }
 
 /** #37341 Q4: a derived marker as published: the child's own undecided reading stays in the stored run. */
-function publishedDerived(derived: DerivedMarker): Omit<DerivedMarker, "ownStatus" | "ownReason"> {
+function publishedDerived(derived: DerivedMarker): PublishedDerived {
   const { ownStatus: _ownStatus, ownReason: _ownReason, ...published } = derived
-  return published
+  if (!("parts" in published)) return published
+  return {
+    ...published,
+    parts: published.parts.map((part) =>
+      isPublishedStatus(part.status) ? part : { feature: part.feature, name: part.name },
+    ),
+  }
 }
 
 /**
@@ -515,7 +556,7 @@ export function publicResults(
             throw new Error(`Original run ${own.runId} lacks result ${cell.origin.resultId} for ${key}/${id}`)
           }
           // #37341 D5: a derived card cites the parent entry its derivation read, never the child's own undecided one.
-          const origin = cell.derived ? derivedOrigin(key, id, cell.derived, context.cells) : cell.origin
+          const origin = cell.derived ? derivedOrigin(key, id, cell.derived, context.cells, cell.origin) : cell.origin
           const original = origin === cell.origin ? own : originalRunFor(projection, key, origin.runId)
           const featureResult = isEnvironmentGroup(id)
             ? { status: result.status, strength: null, conflictingProbes: [] }
