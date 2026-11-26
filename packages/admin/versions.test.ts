@@ -124,8 +124,8 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.term).toHaveLength(264)
-  expect(snapshot.probes.lib).toHaveLength(264) // All scheduled claims now have library callbacks, including audited OSC review arms.
+  expect(snapshot.probes.term).toHaveLength(267)
+  expect(snapshot.probes.lib).toHaveLength(267) // All scheduled claims now have library callbacks, including audited OSC review arms.
   expect(snapshot.probes.lib).toContain("scrollback.viewport-hold-output")
   expect(snapshot.probes.mux).toEqual(snapshot.probes.term)
   expect(snapshot.probes.term).toContain("extensions.kitty-keyboard")
@@ -308,9 +308,9 @@ test("the trusted manifest declares exactly the 40 reviewed character claims wit
     expect(manifest.textClaims).not.toContain(id)
     expect(ALL_PROBES.find((probe) => probe.id === id)?.textClaim).toBeUndefined()
   }
-  expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
-  expect(manifest.probes.term).toHaveLength(264)
-  expect(manifest.probes.lib).toHaveLength(264)
+  expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(276)
+  expect(manifest.probes.term).toHaveLength(267)
+  expect(manifest.probes.lib).toHaveLength(267)
   expect(manifest.probes.lib).toContain("scrollback.viewport-hold-output")
 })
 
@@ -318,7 +318,7 @@ test("the trusted manifest declares exactly the 40 reviewed character claims wit
 // catalogue-only IDs, which must become explicit TODO and change executable suite identity.
 test("freezes all catalogue IDs and changes suite identity for unscheduled additions", () => {
   const original = probeSuiteSnapshot()
-  expect(original.catalogIds).toHaveLength(273)
+  expect(original.catalogIds).toHaveLength(276)
   expect(original.catalogIds).toContain("device.env-term")
   expect(original.probes.term).not.toContain("device.env-term")
   try {

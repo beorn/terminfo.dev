@@ -56,7 +56,9 @@ import { isPublishedStatus } from "../docs/data/app-cells.ts"
 import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 
 const sanitizePublicStates = (states: Readonly<Record<string, string>>) =>
-  Object.fromEntries(Object.entries(states).map(([fid, status]) => [fid, isPublishedStatus(status) ? status : "no-result"]))
+  Object.fromEntries(
+    Object.entries(states).map(([fid, status]) => [fid, isPublishedStatus(status) ? status : "no-result"]),
+  )
 
 /**
  * A rollup as the hourly tool writes it into `summary.json` (#33600): probes data through the ONE
@@ -334,7 +336,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       refused: [],
       rollups: {
         vterm: storedRollupFixture(
-          rollupTerminalStatuses(Object.fromEntries(payload.results.map((r) => [r.featureId, r.status])), catalogIds),
+          rollupTerminalStatuses(Object.fromEntries(payload.results.map((r) => [r.featureId, r.status]))),
         ),
       },
     }
@@ -454,7 +456,6 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
           [`ghostty/${os}`]: storedRollupFixture(
             rollupTerminalStatuses(
               Object.fromEntries(captured.results!.map((result) => [result.featureId, result.status])),
-              catalogIds,
             ),
           ),
         },
@@ -954,10 +955,7 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
       writeFileSync(priorPath, JSON.stringify(prior))
       const decoded = loadRawCapture(priorPath, { root, catalogIds })
       older.summary.rollups.vterm = storedRollupFixture(
-        rollupTerminalStatuses(
-          Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status])),
-          catalogIds,
-        ),
+        rollupTerminalStatuses(Object.fromEntries(decoded.results!.map((row) => [row.featureId, row.status]))),
       )
       older.save()
 

@@ -23,7 +23,7 @@ import type {
   TerminalScrollbackReading,
   TermProbeSource,
 } from "@terminfo/probe-defs"
-import { readTermFeaturesEnvironment } from "./terminal-child-environment.ts"
+import { readTerminalChildEnvironment, type TerminalChildEnvironment } from "./terminal-child-environment.ts"
 import {
   ITERM_PROMPT_FEATURES,
   createNativeEditorTitleReader,
@@ -506,6 +506,7 @@ export interface OwnedTerminal {
   readonly resetScrollback?: TermProbeSource["resetScrollback"]
   readonly readTitle?: TermProbeSource["readTitle"]
   readonly readTermFeatures?: TermProbeSource["readTermFeatures"]
+  readonly readProgramResumeToken?: TermProbeSource["readProgramResumeToken"]
   /**
    * `recordCapture` receives every window capture the reader keeps, including a capture kept only in a
    * failed or invalid reading, so its file reference enters the run's typed screenshot list; a capture
@@ -2204,13 +2205,16 @@ export async function createOwnedTerminal(options: {
         appComm: TERMINAL_APP_HOSTED.comm,
         appId: TERMINAL_APP_HOSTED.id,
         ownedHost: true,
-        assertOwned: async () => {
-          if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
-          assertOwnedTerminalWindow(
-            { provider: "terminal-app", windowId: ownedShell.windowId, tty: ownedShell.tabTty },
-            process.pid,
-          )
-        },
+        // Synchronous checks; the executor turns a throw into the rejection the adapter awaits.
+        assertOwned: () =>
+          new Promise<void>((resolve) => {
+            if (process.platform !== "darwin") throw new Error("Darwin pasteboard read left Darwin")
+            assertOwnedTerminalWindow(
+              { provider: "terminal-app", windowId: ownedShell.windowId, tty: ownedShell.tabTty },
+              process.pid,
+            )
+            resolve()
+          }),
       })
     }
     const muxAttachmentProof = binding.platform === "darwin" ? darwinAttachment : clipboard?.muxAttachmentProof
@@ -2792,20 +2796,28 @@ export async function createOwnedTerminal(options: {
         },
       }),
       ...(muxAttachmentProof && { muxAttachmentProof }),
-      ...((binding.platform === "linux" || binding.platform === "darwin") && {
-        async readTermFeatures() {
-          if (!verifiedTerminalOwners.has(owner)) {
-            return { status: "unavailable" as const, reason: "TERM_FEATURES child read has no live owned capture" }
+      ...((binding.platform === "linux" || binding.platform === "darwin") &&
+        (() => {
+          // One child-environment read serves both rows (#38699, @cto ee6b7fd9); each call re-checks ownership.
+          const read = async <K extends keyof TerminalChildEnvironment>(key: K, name: string) => {
+            if (!verifiedTerminalOwners.has(owner)) {
+              return { status: "unavailable" as const, reason: `${name} child read has no live owned capture` }
+            }
+            // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
+            await owner.readGeometry()
+            const tty =
+              binding.platform === "linux"
+                ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
+                : binding.controllingTty
+            return readTerminalChildEnvironment(process.env, expectedLaunchRunId, process.pid, tty)[key]
           }
-          // Reuses this owner's device check; geometry need not be measurable to bind the TTY.
-          await owner.readGeometry()
-          const tty =
-            binding.platform === "linux"
-              ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
-              : binding.controllingTty
-          return readTermFeaturesEnvironment(process.env, expectedLaunchRunId, process.pid, tty)
-        },
-      }),
+          return {
+            readTermFeatures: () =>
+              read("termFeatures", "TERM_FEATURES") as Promise<TerminalChildEnvironment["termFeatures"]>,
+            readProgramResumeToken: () =>
+              read("programResumeToken", "OSC7577_TOKEN") as Promise<TerminalChildEnvironment["programResumeToken"]>,
+          }
+        })()),
       ...(nativeEditorId !== undefined && {
         async readAppSemanticState(
           featureId: string,

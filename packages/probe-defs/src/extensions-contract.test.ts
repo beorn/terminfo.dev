@@ -651,8 +651,10 @@ test.each(["supported", "unsupported", "missing-reader"] as const)("OSC 133;P ob
 })
 
 /**
- * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
- * 42 protocol queries are decided in real terminal runs; 36 unasserted/state probes evaluate to
+ * The 82 extension features (81 defined through extensions.ts + 1 catalog-only in features.json; #38699 added
+ * OSC 7577's token row, an App environment read declared Untestable for every library, and the OSC 7577 and
+ * OSC 88 print-nothing rows).
+ * 44 rows are decided in real terminal runs (42 protocol queries plus the two print-nothing rows); 36 unasserted/state probes evaluate to
  * inconclusive pending external apparatus or capture; 1 catalog feature lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
@@ -811,6 +813,22 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     id: "extensions.osc3008-context",
     expected: "inconclusive",
     claim: "Systemd context (OSC 3008): ESC ] 3008 ; params BEL",
+  },
+  {
+    id: "extensions.osc7577-token",
+    expected: "not-tested",
+    claim:
+      "Program resume token (OSC 7577, spec rev 0.5): an App export into the pane's first process; a library spawns no child, so it is declared Untestable there",
+  },
+  {
+    id: "extensions.osc7577-silent",
+    expected: "decided",
+    claim: "OSC 7577 reports print nothing: a well-formed and a malformed report leave the screen and cursor unchanged",
+  },
+  {
+    id: "extensions.osc88-silent",
+    expected: "decided",
+    claim: "OSC 88 arm and clear print nothing: both leave the screen and cursor unchanged",
   },
   {
     id: "extensions.osc113-reset-pointer-fg",
@@ -1284,6 +1302,29 @@ function decidedSatisfactionSources(id: string) {
       }),
     }
   }
+  if (id === "extensions.osc7577-silent" || id === "extensions.osc88-silent") {
+    // #38699: a terminal that consumes every OSC string. Printed text moves the reading; the reports do not.
+    const osc = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+    let text = ""
+    let col = 1
+    return {
+      headless: libProbeSource({
+        ...inertModel(),
+        feed: (bytes: string) => {
+          if (bytes.startsWith("\x1b[2J\x1b[H")) text = ""
+          text += bytes.replace("\x1b[2J\x1b[H", "").replace(osc, "")
+        },
+        getText: () => text,
+        getCursor: () => ({ x: text.length, y: 0, visible: true, style: null }),
+      }),
+      term: replayTermProbeSource(new Map(), {
+        write: (bytes: string) => {
+          col = bytes === "\x1b[1;1H\x1b[2K" ? 1 : col + bytes.replace(osc, "").length
+        },
+        queryCursorPosition: async () => ({ row: 1, col }),
+      }),
+    }
+  }
   throw new Error(`No satisfaction context configured for decided row ${id}`)
 }
 
@@ -1292,8 +1333,8 @@ test("the extensions contract covers every extension feature and names none unkn
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(79)
-  expect(EXTENSIONS_CONTRACT).toHaveLength(79)
+  expect(extensionsProbes).toHaveLength(82)
+  expect(EXTENSIONS_CONTRACT).toHaveLength(82)
 })
 
 test("the extensions contract names its focused tests, and every named file exists", () => {
@@ -1346,7 +1387,7 @@ test("the harness replays every extension feature deterministically", async () =
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(42)
+  expect(decidedRows).toHaveLength(44)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)

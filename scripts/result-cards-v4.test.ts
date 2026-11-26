@@ -302,6 +302,42 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
       }),
     ).toEqual([])
 
+    // #38699: the OSC 7577 token card reads OSC7577_TOKEN, never TERM_FEATURES, and never parses a value out of
+    // its evidence text: set, not set, or set but not a valid token.
+    const tokenCard = (status: "supported" | "unsupported", evidence: string) =>
+      buildCardModel({
+        status,
+        featureId: "extensions.osc7577-token",
+        featureName: "OSC 7577 program resume token",
+        assertionType: "process_environment",
+        traceEvidence: [evidence],
+      })
+    const absentToken = tokenCard("unsupported", "OSC7577_TOKEN was not set in the environment it gave the test.")
+    expect(absentToken.steps).toEqual([
+      { num: 1, code: "", codeMuted: "no bytes", words: "Read OSC7577_TOKEN at launch" },
+    ])
+    expect(absentToken.expected).toEqual({ words: "OSC7577_TOKEN environment variable set" })
+    expect(absentToken.received).toEqual({ words: "OSC7577_TOKEN was not set" })
+    const setToken = tokenCard(
+      "supported",
+      "it set OSC7577_TOKEN to a value we don't show (38 bytes, not text the test sent)",
+    )
+    expect(setToken.received).toEqual({ words: "OSC7577_TOKEN was set" })
+    const badToken = tokenCard(
+      "unsupported",
+      "it set OSC7577_TOKEN to a value we don't show (10 bytes, not text the test sent)",
+    )
+    expect(badToken.received).toEqual({ words: "OSC7577_TOKEN was set, but not as a valid token" })
+    for (const model of [absentToken, setToken, badToken]) {
+      expect(JSON.stringify(model)).not.toContain("TERM_FEATURES")
+      expect(
+        validateMeasuredCard(model, "osc7577-token", {
+          featureId: "extensions.osc7577-token",
+          assertionType: "process_environment",
+        }),
+      ).toEqual([])
+    }
+
     // Clipboard write with trailing CPR sync barrier (Rule 1): strips ESC [ 6 n, shows real clipboard read-back nonce
     const clipNonce = "terminfo-osc52-b676ab94-02be-42f1-abf2-0c7b78d082ed"
     const clipB64 = Buffer.from(clipNonce, "utf8").toString("base64")
