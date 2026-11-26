@@ -28,6 +28,8 @@ import {
   queryDecrpm,
   decrpmReading,
   decrpmResult,
+  decrpmEffectNote,
+  noEffectRoute,
   decrpmPs,
   decrpmReplyPattern,
   sweepCellWidth,
@@ -1933,10 +1935,10 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 
 async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const decrpm = await queryDecrpm(ctx, 1)
-  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1)
+  if (decrpm === 4) return decrpmResult(decrpm, 1)
   const { input, readInput } = ctx
   if (!input || !readInput) {
-    return methodUnavailable("Application cursor effect needs owned key injection and input readback")
+    return noEffectRoute(decrpm, 1, "application cursor effect needs owned key injection and input readback")
   }
   try {
     ctx.write("\x1b[?1l")
@@ -1966,7 +1968,7 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
       }
     }
     const pass = reset === "\x1b[Aa" && set === "\x1bOAa" && resetAgain === "\x1b[Aa"
-    const note = `${decrpm === 0 ? "DECRPM mode 1 returned Ps 0" : "No usable DECRPM reply for mode 1"}; same-run set/reset input ${pass ? "establishes application cursor keys" : "does not show controlled application cursor keys"}`
+    const note = `${decrpmEffectNote(decrpm, 1)}; same-run set/reset input ${pass ? "establishes application cursor keys" : "does not show controlled application cursor keys"}`
     return {
       pass,
       response,
@@ -1991,12 +1993,15 @@ async function applicationCursorApp(ctx: TermProbeSource): Promise<ProbeCallback
 
 async function autoWrapApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const decrpm = await queryDecrpm(ctx, 7)
-  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 7)
+  if (decrpm === 4) return decrpmResult(decrpm, 7)
   return controlledWrapEffect(ctx, decrpm)
 }
 
 // Package-internal reuse by text.wrap; deliberately absent from the public barrel.
-export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | null): Promise<ProbeCallbackResult> {
+export async function controlledWrapEffect(
+  ctx: TermProbeSource,
+  decrpm: Exclude<DecrpmPs, 4> | null,
+): Promise<ProbeCallbackResult> {
   const { cols, rows } = ctx
   if (!validSize(cols, 2) || !validSize(rows, 2)) {
     return replyFailure(`Auto-wrap effect needs a measured grid of at least 2x2, got ${rows}x${cols}`)
@@ -2041,7 +2046,7 @@ export async function controlledWrapEffect(ctx: TermProbeSource, decrpm: 0 | nul
       set.col === 2 &&
       resetAgain?.row === 1 &&
       resetAgain.col === cols
-    const note = `${decrpm === 0 ? "DECRPM mode 7 returned Ps 0" : "No usable DECRPM reply for mode 7"}; same-run set/reset cursor effects ${pass ? "establish auto-wrap" : "do not show controlled auto-wrap"}`
+    const note = `${decrpmEffectNote(decrpm, 7)}; same-run set/reset cursor effects ${pass ? "establish auto-wrap" : "do not show controlled auto-wrap"}`
     return {
       pass,
       response,
@@ -2073,8 +2078,8 @@ const deccolmSizeReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
 
 async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const decrpm = await queryDecrpm(ctx, 3)
-  if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 3)
-  const prefix = decrpm === 0 ? "DECRPM mode 3 returned Ps 0" : "No usable DECRPM reply for mode 3"
+  if (decrpm === 4) return decrpmResult(decrpm, 3)
+  const prefix = decrpmEffectNote(decrpm, 3)
   const size = async () => {
     const reply = await ctx.queryWithSentinel("\x1b[18t", deccolmSizeReply)
     const rows = Number(reply?.[1]),
@@ -2142,7 +2147,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     }
   }
   if (!ctx.capture && !ctx.cells) {
-    return methodUnavailable(`${prefix}; DECCOLM effect needs a size reply or owned width frame`)
+    return noEffectRoute(decrpm, 3, "DECCOLM effect needs a size reply or owned width frame")
   }
   const refusal = captureRefusal(ctx, 4, 54, "DECCOLM")
   if (refusal) return refusal
@@ -2312,13 +2317,15 @@ const modeDefinitions: ProbeDefinition[] = [
     ),
     term: async (ctx) => {
       const decrpm = await queryDecrpm(ctx, 1049)
-      if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1049)
-      if (!ctx.capture && !ctx.cells) return methodUnavailable("Alternate-screen effect needs owned marker readback")
+      if (decrpm === 4) return decrpmResult(decrpm, 1049)
+      if (!ctx.capture && !ctx.cells) {
+        return noEffectRoute(decrpm, 1049, "alternate-screen effect needs owned marker readback")
+      }
       const refusal = captureRefusal(ctx, 3, 8, "Alt-screen entry")
       if (refusal) return refusal
       const result = await primaryRestoreCapture(ctx, "modes.alt-screen.enter", 1049, "PRIMARY", "ALTONLY")
       const detail = result.note ?? result.observation?.note
-      const note = `${decrpm === 0 ? "DECRPM mode 1049 returned Ps 0" : "No usable DECRPM reply for mode 1049"}; controlled alternate-buffer marker read${detail ? `; ${detail}` : ""}`
+      const note = `${decrpmEffectNote(decrpm, 1049)}; controlled alternate-buffer marker read${detail ? `; ${detail}` : ""}`
       result.note = note
       if (result.observation) result.observation.note = note
       return result
@@ -2410,15 +2417,19 @@ const modeDefinitions: ProbeDefinition[] = [
     ),
     term: async (ctx) => {
       const decrpm = await queryDecrpm(ctx, 2004)
-      if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 2004)
+      if (decrpm === 4) return decrpmResult(decrpm, 2004)
       if (!ctx.input || !ctx.readInput || !ctx.withClipboardFixture) {
-        return methodUnavailable("Bracketed-paste effect needs owned clipboard, key injection and input readback")
+        return noEffectRoute(
+          decrpm,
+          2004,
+          "bracketed-paste effect needs owned clipboard, key injection and input readback",
+        )
       }
       const paste = extensionsProbes.find((entry) => entry.id === "extensions.clipboard-paste")?.term
       if (!paste) throw new Error("Missing existing clipboard-paste App callback")
       const result = await paste(ctx)
       const detail = result.note ?? result.observation?.note
-      const note = `${decrpm === 0 ? "DECRPM mode 2004 returned Ps 0" : "No usable DECRPM reply for mode 2004"}; controlled reset/set/reset paste read${detail ? `; ${detail}` : ""}`
+      const note = `${decrpmEffectNote(decrpm, 2004)}; controlled reset/set/reset paste read${detail ? `; ${detail}` : ""}`
       result.note = note
       if (result.observation) result.observation.note = note
       return result
@@ -2486,9 +2497,12 @@ const modeDefinitions: ProbeDefinition[] = [
       headlessDecrpmArm(1000, "mouseTracking", { stateReadback: true }),
       async (ctx) => {
         const decrpm = await queryDecrpm(ctx, 1000)
-        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1000)
+        if (decrpm === 4) return decrpmResult(decrpm, 1000)
+        if (!ctx.input || !ctx.readInput) {
+          return noEffectRoute(decrpm, 1000, "mouse tracking effect needs owned click injection and input readback")
+        }
         const result = await mouseTracking1000(ctx)
-        const note = `${decrpm === 0 ? "DECRPM mode 1000 returned Ps 0" : "No usable DECRPM reply for mode 1000"}; controlled click-tracking read`
+        const note = `${decrpmEffectNote(decrpm, 1000)}; controlled click-tracking read`
         result.note = note
         if (result.observation) result.observation.note = note
         return result
@@ -2603,8 +2617,9 @@ const modeDefinitions: ProbeDefinition[] = [
         }
         const refusal = captureRefusal(ctx, 1, 6, "Insert/replace")
         if (refusal) return refusal
-        // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells.
-        // A complete report decides the claim; no report falls through to the cell fixture below.
+        // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells. The report is context, never the
+        // pass (#38772, @cpo/term 56269cef): a context with cells grades the inserted X below; one without reads a clean
+        // toggle as recognized-but-untested, and a report that cannot toggle stays the refusal it was.
         let on: DecrpmPs | null
         try {
           ctx.write("\x1b[4h")
@@ -2612,26 +2627,29 @@ const modeDefinitions: ProbeDefinition[] = [
         } finally {
           ctx.write("\x1b[4l")
         }
-        if (on !== null && on !== 0) {
-          const off = await queryDecrpm(ctx, 4, "ansi")
-          if (off !== null && off !== 0) {
-            // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
-            const ok = on === 1 && off === 2
-            return {
-              pass: ok,
-              response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),
-              observation: ok
-                ? { outcome: "supported", assertionType: "query_reply" }
-                : { outcome: "unsupported", assertionType: "query_reply" },
-              assertions: [
-                {
-                  assertionType: "query_reply" as const,
-                  kind: ok ? "positive" : "negative",
-                  expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
-                  observed: `${decrpmReading(on)} -> ${decrpmReading(off)}`,
-                },
-              ],
-            }
+        const off = on !== null && on !== 0 ? await queryDecrpm(ctx, 4, "ansi") : null
+        const decrqm = on !== null && on !== 0 && off !== null && off !== 0 ? { on, off } : null
+        if (decrqm && !(ctx.capture || ctx.cells)) {
+          const { on, off } = decrqm
+          if (on === 1 && off === 2) {
+            return declaredUntestableResult(
+              `Recognized; effect not tested: DECRQM mode 4 reads ${decrpmReading(on)} after CSI 4 h and ${decrpmReading(off)} after CSI 4 l, and the IRM effect needs owned cell readback`,
+              { on: decrpmReading(on), off: decrpmReading(off) },
+            )
+          }
+          // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
+          return {
+            pass: false,
+            response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),
+            observation: { outcome: "unsupported", assertionType: "query_reply" },
+            assertions: [
+              {
+                assertionType: "query_reply" as const,
+                kind: "negative",
+                expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
+                observed: `${decrpmReading(on)} -> ${decrpmReading(off)}`,
+              },
+            ],
           }
         }
         if (ctx.capture || ctx.cells) {
@@ -2707,9 +2725,12 @@ const modeDefinitions: ProbeDefinition[] = [
       headlessDecrpmArm(1006, "sgrMouse", { stateReadback: true }),
       async (ctx) => {
         const decrpm = await queryDecrpm(ctx, 1006)
-        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1006)
+        if (decrpm === 4) return decrpmResult(decrpm, 1006)
+        if (!ctx.input || !ctx.readInput) {
+          return noEffectRoute(decrpm, 1006, "SGR mouse effect needs owned click injection and input readback")
+        }
         const result = await sgrMouse1006(ctx)
-        const note = `${decrpm === 0 ? "DECRPM mode 1006 returned Ps 0" : "No usable DECRPM reply for mode 1006"}; controlled mouse-encoding read`
+        const note = `${decrpmEffectNote(decrpm, 1006)}; controlled mouse-encoding read`
         result.note = note
         if (result.observation) result.observation.note = note
         return result
@@ -2726,9 +2747,12 @@ const modeDefinitions: ProbeDefinition[] = [
       headlessDecrpmArm(1003, "mouseTracking", { stateReadback: true }),
       async (ctx) => {
         const decrpm = await queryDecrpm(ctx, 1003)
-        if (decrpm !== null && decrpm !== 0) return decrpmResult(decrpm, 1003)
+        if (decrpm === 4) return decrpmResult(decrpm, 1003)
+        if (!ctx.input || !ctx.readInput || !ctx.input.injectMove) {
+          return noEffectRoute(decrpm, 1003, "all-motion effect needs owned buttonless movement and input readback")
+        }
         const result = await allMotion1003(ctx)
-        const note = `${decrpm === 0 ? "DECRPM mode 1003 returned Ps 0" : "No usable DECRPM reply for mode 1003"}; controlled buttonless-movement read`
+        const note = `${decrpmEffectNote(decrpm, 1003)}; controlled buttonless-movement read`
         result.note = note
         if (result.observation) result.observation.note = note
         return result

@@ -202,6 +202,16 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
 }
 
 /** Every private DECRQM answers Ps; queryMode keeps the fold for the arms that only ask whether a mode is on. */
+const RECOGNIZED_ONLY_UNDER_REPLAY: ReadonlySet<string> = new Set([
+  "modes.alt-screen.enter",
+  "modes.application-cursor",
+  "modes.bracketed-paste",
+  "modes.deccolm",
+  "modes.mouse-all",
+  "modes.mouse-sgr",
+  "modes.mouse-tracking",
+])
+
 function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
   const reply = (sequence: string) => {
     const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
@@ -346,6 +356,30 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.observation).toBeUndefined()
       expect(result?.notTested).toMatchObject({ reason: "no-semantic-observable" })
       expect(result?.notTested?.noObservable).toContain("owned")
+      continue
+    }
+    // #38772 (@cpo/term 56269cef): DECRPM replay has no effect route, so a mode it recognizes reads Untestable,
+    // "Recognized; effect not tested", never Supported. Auto-wrap always has its cursor route and stays an open probe.
+    if (RECOGNIZED_ONLY_UNDER_REPLAY.has(row.id)) {
+      const result = await probe.term?.(term)
+      expect(result?.observation, row.id).toBeUndefined()
+      expect(result?.tests, row.id).toEqual([
+        expect.objectContaining({
+          status: "untestable",
+          reason: expect.stringMatching(/^Recognized; effect not tested: DECRPM mode \d+ returned set \(Ps 1\)/),
+        }),
+      ])
+      continue
+    }
+    if (row.id === "modes.auto-wrap") {
+      const result = await probe.term?.(term)
+      expect(result?.observation).toBeUndefined()
+      expect(result?.tests).toMatchObject([
+        expect.objectContaining({
+          status: "probe-todo",
+          reason: "Auto-wrap cursor control did not measure home and ordinary text advancing to the right margin",
+        }),
+      ])
       continue
     }
     if (row.id === "modes.alt-screen.exit") {

@@ -2285,9 +2285,7 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
     }
 
     const result = await definition.term(context)
-    expect(queried, `${id}: Ps ${ps}`).toEqual(
-      ps === null || ps === 0 ? [`\x1b[?${number}$p`, "\x1b[18t"] : [`\x1b[?${number}$p`],
-    )
+    expect(queried, `${id}: Ps ${ps}`).toEqual(ps === 4 ? [`\x1b[?${number}$p`] : [`\x1b[?${number}$p`, "\x1b[18t"])
     if (ps === null || ps === 0) {
       expect(result.pass).toBe(false)
       expect(result.observation).toBeUndefined()
@@ -2305,11 +2303,17 @@ test.each(modes)("$id preserves known DECRPM replies and rejects a missing effec
         { kind: "negative", expected: `DECRPM mode ${number} can be set`, observed: "permanently reset (Ps 4)" },
       ])
     } else {
+      // #38772 (@cpo/term 56269cef): the reply is recognition, never the pass; with no size reply or frame the
+      // effect is untested.
       const reading = ps === 1 ? "set (Ps 1)" : ps === 2 ? "reset (Ps 2)" : "permanently set (Ps 3)"
-      expect(result.pass).toBe(true)
-      expect(result.response).toBe(reading)
-      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
+      expect(result.pass).toBe(false)
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toEqual([
+        expect.objectContaining({
+          status: "untestable",
+          reason: `Recognized; effect not tested: DECRPM mode ${number} returned ${reading}, and DECCOLM effect needs a size reply or owned width frame`,
+        }),
+      ])
     }
   }
   expect(definition.termWrites).toBeUndefined()
@@ -3074,22 +3078,46 @@ test("insert-replace capture contrasts replacement with IRM insertion", async ()
   })
 })
 
-// Permanent-state replies are well formed but cannot prove the claimed set/reset toggle.
+// #38772 (@cpo/term 56269cef): DECRQM is context, never the pass. With a capture route the inserted cell decides,
+// whatever the reply said; without one a clean 1-then-2 toggle reads Recognized and a permanent state (Ps 3 or 4),
+// which cannot toggle, stays the refusal it was.
 test.each([
-  [1, 2, "supported"],
-  [3, 2, "unsupported"],
-  [1, 4, "unsupported"],
-  [3, 4, "unsupported"],
-] as const)("insert-replace measures toggle states %i then %i", async (on, off, outcome) => {
+  [1, 2],
+  [3, 2],
+  [1, 4],
+  [3, 4],
+] as const)(
+  "insert-replace grades the inserted cell, not DECRQM toggle states %i then %i, when it can capture",
+  async (on, off) => {
+    const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+    if (!definition?.term) throw new Error("Missing app IRM callback")
+    const writes: string[] = []
+    const ctx = captureSource(24, 80, writes, [])
+    const states = [on, off]
+    ctx.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`)
+    const result = await definition.term(ctx)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
+    expect(writes.some((entry) => entry.includes("\x1b[4h"))).toBe(true)
+  },
+)
+
+test.each([
+  [3, 2],
+  [1, 4],
+  [3, 4],
+] as const)("insert-replace without capture reads DECRQM toggle states %i then %i as a refusal", async (on, off) => {
   const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
   if (!definition?.term) throw new Error("Missing app IRM callback")
   const writes: string[] = []
-  const ctx = captureSource(24, 80, writes, [])
   const states = [on, off]
-  ctx.queryWithSentinel = async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`)
-  const result = await definition.term(ctx)
-  expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+  const result = await definition.term(
+    replayTermProbeSource(new Map(), {
+      write: (bytes) => void writes.push(bytes),
+      queryWithSentinel: async (_sequence, pattern) => pattern.exec(`\x1b[4;${states.shift()}$y`),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  expect(result.assertions?.[0]?.kind).toBe("negative")
   expect(result.response).toContain(`Ps ${on}`)
   expect(result.response).toContain(`Ps ${off}`)
   expect(writes.at(-1)).toBe("\x1b[4l")
@@ -4219,4 +4247,76 @@ test("alt-screen probes declare termScreenMode, stay probe-todo when alternate c
   expect(seenModes.filter((r) => r.label.includes("expected frame")).every((r) => r.screenMode === undefined)).toBe(
     true,
   )
+})
+
+/**
+ * #38772 (@cpo/term 56269cef, rule A): a mode passes only when its effect happened. The card audit of build c73de477
+ * found nine modes graded Supported on WezTerm, VS Code and tmux from the DECRPM reply alone, with the effect never
+ * tested. A DECRPM answer of set or reset now runs the effect route; a context with no route reads Untestable,
+ * "Recognized; effect not tested"; Ps 4 (the terminal knows the mode and cannot set it) stays Unsupported.
+ */
+const DECRPM_ONLY_MODES = [
+  ["modes.alt-screen.enter", 1049],
+  ["modes.application-cursor", 1],
+  ["modes.auto-wrap", 7],
+  ["modes.bracketed-paste", 2004],
+  ["modes.deccolm", 3],
+  ["modes.mouse-all", 1003],
+  ["modes.mouse-sgr", 1006],
+  ["modes.mouse-tracking", 1000],
+] as const
+
+test.each(DECRPM_ONLY_MODES.flatMap(([id, mode]) => [1, 2, 3].map((ps) => [id, mode, ps] as const)))(
+  "%s is never Supported on DECRPM mode %i Ps %i alone",
+  async (id, mode, ps) => {
+    const definition = modesProbes.find((entry) => entry.id === id)
+    if (!definition?.term) throw new Error(`Missing App callback ${id}`)
+    const query = `\x1b[?${mode}$p`
+    const stored = new Map<string, StoredQuery>([
+      [query, { sequence: query, match: null, reason: "reply", raw: `\x1b[?${mode};${ps}$y` }],
+    ])
+    const result = await definition.term(replayTermProbeSource(stored))
+    expect(result.observation?.outcome).not.toBe("supported")
+    if (id === "modes.auto-wrap") {
+      // Every App context can query the cursor, so auto-wrap always has a route; an inert one stays an open probe.
+      expect(result.tests).toEqual(expect.arrayContaining([expect.objectContaining({ status: "probe-todo" })]))
+      return
+    }
+    expect(result.tests).toEqual([
+      expect.objectContaining({
+        status: "untestable",
+        reason: expect.stringMatching(/^Recognized; effect not tested: DECRPM mode \d+ returned .*\(Ps [123]\)/),
+      }),
+    ])
+  },
+)
+
+test.each(DECRPM_ONLY_MODES)("%s stays Unsupported when DECRPM mode %i answers Ps 4", async (id, mode) => {
+  const definition = modesProbes.find((entry) => entry.id === id)
+  if (!definition?.term) throw new Error(`Missing App callback ${id}`)
+  const query = `\x1b[?${mode}$p`
+  const stored = new Map<string, StoredQuery>([
+    [query, { sequence: query, match: null, reason: "reply", raw: `\x1b[?${mode};4$y` }],
+  ])
+  const result = await definition.term(replayTermProbeSource(stored))
+  expect(result.observation?.outcome).toBe("unsupported")
+})
+
+test("modes.insert-replace reads a clean DECRQM 4 toggle as recognized, not Supported, when no cell route exists", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.insert-replace")
+  if (!definition?.term) throw new Error("Missing App insert-replace callback")
+  const answers = ["\x1b[4;1$y", "\x1b[4;2$y"]
+  const result = await definition.term(
+    replayTermProbeSource(new Map(), {
+      queryWithSentinel: async (sequence, pattern) =>
+        sequence === "\x1b[4$p" ? pattern.exec(answers.shift() ?? "") : null,
+    }),
+  )
+  expect(result.observation?.outcome).not.toBe("supported")
+  expect(result.tests).toEqual([
+    expect.objectContaining({
+      status: "untestable",
+      reason: expect.stringMatching(/^Recognized; effect not tested: DECRQM mode 4/),
+    }),
+  ])
 })

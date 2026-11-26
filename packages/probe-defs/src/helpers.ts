@@ -2554,6 +2554,36 @@ export function decrpmReading(ps: DecrpmPs): string {
 }
 
 /**
+ * The DECRPM reading a mode's effect route names beside its own result (#38772): the answer is context for the
+ * effect, never the verdict.
+ */
+export function decrpmEffectNote(ps: DecrpmPs | null, modeNum: number): string {
+  if (ps === null) return `No usable DECRPM reply for mode ${modeNum}`
+  return ps === 0 ? `DECRPM mode ${modeNum} returned Ps 0` : `DECRPM mode ${modeNum} returned ${decrpmReading(ps)}`
+}
+
+/**
+ * A context with no route to a mode's effect (#38772, @cpo/term 56269cef rule A: a pass has to mean the effect
+ * happened). When the terminal said it knows the mode (Ps 1, 2 or 3), the cell is a declared Untestable whose reason
+ * starts "Recognized; effect not tested", never Supported; otherwise it stays the open probe it was.
+ */
+export function noEffectRoute(
+  ps: DecrpmPs | null,
+  modeNum: number,
+  missing: string,
+  query = "DECRPM",
+): ProbeCallbackResult {
+  if (ps === 1 || ps === 2 || ps === 3) {
+    const reading =
+      query === "DECRPM" ? decrpmEffectNote(ps, modeNum) : `${query} mode ${modeNum} returned ${decrpmReading(ps)}`
+    return declaredUntestableResult(`Recognized; effect not tested: ${reading}, and ${missing}`, {
+      decrpm: decrpmReading(ps),
+    })
+  }
+  return methodUnavailable(`${decrpmEffectNote(ps, modeNum)}; ${missing}`)
+}
+
+/**
  * The one grader of a DECRPM reading, shared by the app arm and the headless arm (#30557, @cto 254dd9cf):
  * Ps 1, 2 and 3 grade supported; Ps 4 grades unsupported, because the terminal says it knows the mode and
  * that the mode cannot be set (xterm.js answers exactly that for 1005). The three
