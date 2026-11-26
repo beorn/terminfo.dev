@@ -244,7 +244,11 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
       expect(gradeIconNameReading(id, reading("A", "B")).observation).toMatchObject({ outcome: "unsupported" })
       const noIcon = gradeIconNameReading(id, reading("B", null))
       expect(noIcon.tests).toEqual([
-        expect.objectContaining({ id: "declared-untestable", status: "untestable", reason: expect.stringMatching(/no icon label/) }),
+        expect.objectContaining({
+          id: "declared-untestable",
+          status: "untestable",
+          reason: expect.stringMatching(/no icon label/),
+        }),
       ])
       expect(gradeIconNameReading(id, reading("B", "before")).observation).toMatchObject({ outcome: "unsupported" })
     }

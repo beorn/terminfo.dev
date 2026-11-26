@@ -792,7 +792,14 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     // are the same.
     vi.useFakeTimers()
     try {
-      for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b", "title-only"] as const) {
+      for (const mode of [
+        "applies-b",
+        "absent",
+        "unchanged",
+        "mirrors-title",
+        "title-becomes-b",
+        "title-only",
+      ] as const) {
         let title = "original title"
         let icon: string | null = "original icon"
         const writes: string[] = []

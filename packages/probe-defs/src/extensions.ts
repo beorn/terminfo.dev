@@ -765,9 +765,10 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
               // #38772 (@cpo/term f281df2f): a library row grades what the library does. The seeded set-then-query
               // answers the exact colour, and the starting palette is the embedding app's, so OSC 4 is Supported here.
               return answer({
-                ...oscReplyResult(control.seededRaw, control.seededRaw, expected),
+                pass: true,
                 response: JSON.stringify(state),
                 observation: { outcome: "supported", assertionType: "query_reply", note: ALACRITTY_PALETTE_NOTE },
+                assertions: [{ assertionType: "query_reply", kind: "positive", expected, observed: control.seededRaw }],
               })
             }
             if (ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
