@@ -21,7 +21,7 @@ import { describe, expect, test } from "vitest"
 import { runTraceFacts } from "@terminfo/run-parser"
 import { replyFailureSentence } from "../docs/data/evidence-messages.ts"
 import { describeTracePanes, readCellTrace } from "../docs/data/evidence-reader.ts"
-import { evidenceFacts, evidenceSentences, type StoredEvidence } from "../docs/data/evidence-messages.ts"
+import { evidenceFacts, evidenceSentences, replyValue, type StoredEvidence } from "../docs/data/evidence-messages.ts"
 import { currentTrace } from "../docs/data/run-trace.ts"
 import type { CurrentSelectedVersion } from "../docs/data/selected-results.ts"
 
@@ -601,4 +601,13 @@ describe("OSC 7577 and OSC 88 rows from a real Ghostty capture (#38699)", () => 
       "Of those, 1 moved the cursor, so the terminal showed it on screen.",
     )
   })
+
+  // The full ghostty run fe267bdd stored each silent row's cursor read as a position report; the site build threw
+  // "a reply with no declared shape" on it, which the records above (queries: []) never reach.
+  test.each(["extensions.osc7577-silent", "extensions.osc88-silent"])(
+    "%s shows the cursor position report its run stored",
+    (featureId) => {
+      expect(replyValue(record(featureId, { status: "supported" }), "\u001b[1;3R")).toHaveProperty("shown")
+    },
+  )
 })

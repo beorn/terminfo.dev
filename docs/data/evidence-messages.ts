@@ -540,6 +540,9 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
       "extensions.osc112-reset-cursor",
       "extensions.osc113-reset-pointer-fg",
       "extensions.osc114-reset-pointer-bg",
+      // #38699: the silent rows read back the cursor with a position report (CPR).
+      "extensions.osc7577-silent",
+      "extensions.osc88-silent",
     ],
   ),
   "device.xtversion": ["xtversion"],
