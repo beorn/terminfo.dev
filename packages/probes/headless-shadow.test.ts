@@ -35,7 +35,8 @@ const reassert = (...args: string[]) =>
 
 /**
  * Comparable rows from several families; declaration-predicate rows (kitty keyboard, unsupported; the icon title,
- * supported with a buffer_state assertion only its `then` branch declares); and a census row that reads randomness.
+ * supported with a buffer_state assertion only its `then` branch declares); and a clipboard row whose identifiers
+ * are drawn through the source, so its call log holds them (#30932 AC1).
  */
 const IDS = [
   "erase.character",
@@ -140,15 +141,14 @@ it.runIf(OWNED_LAYOUT)(
         stored.results!.length,
       )
       for (const featureId of IDS) expect(row(report, featureId)?.family).toBe(headlessFamily(featureId))
-      // Exact, so a vacuous pass is visible: eleven comparable rows agree; the census row is the one not comparable.
-      expect(counts(report)).toEqual({ agree: 11, disagree: 0, incomplete: 0, notComparable: 1 })
+      // Exact, so a vacuous pass is visible: every row this suite can speak for agrees (#30932 AC1), including the
+      // clipboard row: its nonce is a draw the source recorded and its repeat pass recorded its own log.
+      expect(counts(report)).toEqual({ agree: 12, disagree: 0, incomplete: 0, notComparable: 0 })
       expect(report.rows.filter((entry) => entry.outcome === "disagree")).toEqual([])
       expect(report.rows.filter((entry) => entry.outcome === "incomplete")).toEqual([])
-      // The clipboard read is silent on xterm.js, so fresh-instance repeats regrade it; that input is named first.
-      expect(row(report, "extensions.osc52-read")).toMatchObject({
-        outcome: "not-comparable",
-        input: "fresh-instance repeat passes regraded this row",
-      })
+      // The clipboard read is silent on xterm.js, so fresh-instance repeats regraded it: the row replays from the
+      // second pass's own recorded log, and its nonce is a recorded draw rather than a side channel.
+      expect(row(report, "extensions.osc52-read")).toMatchObject({ outcome: "agree" })
       // The second pass's log is kept once, beside the repeat record; it is never doubled inside
       // collector.repeatPasses, and the third pass, which never grades a row, records none.
       const repeats = JSON.parse(stored.rawReplies["collector.repeatPasses"]!) as Record<string, Record<string, string>>
@@ -233,13 +233,22 @@ it.runIf(OWNED_LAYOUT)(
       })
     }
 
-    // Without its repeat evidence the census row is still not comparable: its callback reads randomness.
-    const census = await shadowTampered(run, "census", (draft) => {
-      delete draft.rawReplies["collector.repeats.extensions.osc52-read"]
+    // #30932 AC1: the clipboard nonce is a draw the log holds, so a log one draw short refuses by name instead of
+    // letting the replay draw a fresh identifier and grade against it.
+    const shortDraw = await shadowTampered(run, "short-draw", (draft) => {
+      const key = "collector.repeatCallLog.extensions.osc52-read"
+      const log = JSON.parse(draft.rawReplies[key]!) as { calls: Array<{ path: string }> }
+      const at = log.calls.findIndex((call) => call.path.endsWith("randomUUID"))
+      expect(at).toBeGreaterThanOrEqual(0)
+      log.calls.splice(at, 1)
+      draft.rawReplies[key] = JSON.stringify(log)
     })
-    expect(row(census, "extensions.osc52-read")).toMatchObject({
-      outcome: "not-comparable",
-      input: expect.stringContaining("randomUUID"),
+    expect(
+      row(shortDraw, "extensions.osc52-read"),
+      JSON.stringify(row(shortDraw, "extensions.osc52-read")),
+    ).toMatchObject({
+      outcome: "incomplete",
+      reason: expect.stringContaining("missing call"),
     })
 
     // The icon-title declaration predicate and its callback both read getIconLabel from the logged source. Without it

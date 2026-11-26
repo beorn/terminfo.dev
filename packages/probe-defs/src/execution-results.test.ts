@@ -366,6 +366,7 @@ it.each([
           feedCapture: capture,
           ...(id === "extensions.osc0-icon-title" && { getTitle: () => "" }),
           ...(id === "device.decrqss" && { queryWithSentinelOutcome: outcome }),
+          randomUUID: () => globalThis.crypto.randomUUID(),
         } as unknown as LibProbeSource)
       : await definition.term!({
           rows: 24,
@@ -1200,6 +1201,7 @@ it("keeps native missing-observation note overrides and prompt consumption branc
     getCell: () => ({ char: "X" }),
     capabilities: { extensions: new Set<string>() },
     captureGeometryRefusal: "calibration G",
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(record(libCallback)).toMatchObject({
     status: "probe-todo",

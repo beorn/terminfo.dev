@@ -349,24 +349,7 @@ function headlessLiveInput(validated: ValidatedRun, stored: ProbeResult): string
   ) {
     return "live collector error: " + stored.reason
   }
-  const external = LIB_EXTERNAL_READS[id]
-  if (external) return "callback reads outside its source: " + external
   return undefined
-}
-
-/**
- * Lib callbacks that read something their source does not hand them (census for #30932 S3). A replay cannot give
- * them that read, so their rows are not comparable by name.
- */
-const LIB_EXTERNAL_READS: Readonly<Record<string, string>> = {
-  // probe-defs extensions.ts: each fresh random value goes into what the callback feeds and expects.
-  "extensions.osc52-clipboard": "randomUUID clipboard nonce (headlessClipboardRoundtrip)",
-  "extensions.osc52-write": "randomUUID control and target payloads (headlessOsc52Write)",
-  "extensions.osc52-read": "randomUUID clipboard nonce (headlessClipboardRead)",
-  "extensions.clipboard-paste": "randomUUID paste text (headlessClipboardPaste)",
-  "extensions.kitty-graphics.transmit": "crypto.randomUUID image number (newNumber)",
-  "extensions.kitty-graphics.display": "crypto.randomUUID image number (newNumber)",
-  "extensions.osc99-kitty-notify": "crypto.randomUUID notification id",
 }
 
 /** The query captures the live collector handed `withReplyFailureEvidence` for this row. */

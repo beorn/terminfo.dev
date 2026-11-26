@@ -59,6 +59,7 @@ function clipboardHandoffSource(options: {
           }
     },
     getClipboardState: () => ({ writes: [], ...(selector === undefined ? {} : { pasteSelector: selector }) }),
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource
   return { source, asked: () => asked }
 }
@@ -965,6 +966,7 @@ function nativePasteModel(
       calls.push({ text, enabled, raw })
       return new TextEncoder().encode(raw)
     },
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as LibProbeSource
   return { ctx, feeds, calls, enabled: () => enabled }
 }

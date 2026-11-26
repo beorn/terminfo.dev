@@ -146,6 +146,7 @@ test.each(formerSourceNegativeOsc)(
           capabilities: { extensions: new Set() },
           feed: (bytes: string) => void writes.push(bytes),
           getCell: () => ({ char }),
+          randomUUID: () => globalThis.crypto.randomUUID(),
         } as unknown as LibProbeSource)
         expect(writes).toEqual([fed])
         expect(result).toEqual({
@@ -172,6 +173,7 @@ test.each(["extensions.notifications", "extensions.osc7-cwd", "extensions.iterm2
           capabilities: { extensions: new Set(declared ? ["osc7", "osc9", "iterm2Images"] : []) },
           feed: (data: string) => void fed.push(data),
           getCell: () => ({ char: "X" }),
+          randomUUID: () => globalThis.crypto.randomUUID(),
         } as unknown as LibProbeSource)
         expect(result.criterionBranch).toBe("headless-observable-review")
         expect(result.tests).toMatchObject([
@@ -201,6 +203,7 @@ test("sixel keeps the observable review with or without Sixel storage and never 
       capabilities: { extensions: new Set(), sixel: false },
       feed: (data: string) => void fed.push(data),
       getCell: () => ({ char: "X" }),
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(inert.criterionBranch).toBe("headless-observable-review")
     expect(inert.assertions).toBeUndefined()
@@ -215,6 +218,7 @@ test("sixel keeps the observable review with or without Sixel storage and never 
       },
       getCell: () => ({ char: "X" }),
       getSixelImages: () => [...images],
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(supporting.criterionBranch).toBe("headless-observable-review")
     expect(supporting.assertions).toBeUndefined()
@@ -226,6 +230,7 @@ test("library TERM_FEATURES is one per-kind result, the same with or without a s
   const audited = definition.lib!({ runtimeIdentity: auditedArtifacts[0] } as unknown as LibProbeSource)
   const unaudited = definition.lib!({
     runtimeIdentity: { ...auditedArtifacts[0]!, adapterSources: [] },
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(unaudited).toEqual(audited)
   expect(definition.lib!({} as unknown as LibProbeSource)).toEqual(audited)
@@ -333,6 +338,7 @@ function indexedPalette(
         bg: null,
       }
     },
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource
   if (options.sentinel) {
     source.queryWithSentinelOutcome = () => ({
@@ -376,6 +382,7 @@ function silentHostSlot(code: 10 | 11 | 12 | 13 | 14, seeded: string, restored: 
       rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
       sentinel: { atMs: 1, graceMs: 250 },
     }),
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource
 }
 
@@ -558,6 +565,7 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
     capabilities: { truecolor: true },
     feed: () => undefined,
     getCell: () => ({ char: "X", fg: null, bg: null }),
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(result.assertions).toBeUndefined()
@@ -579,6 +587,7 @@ test("extensions.truecolor qualifies RGB samples and retains their encoding on u
         fg: [null, ...controls, ...targets][col] ?? null,
         bg: null,
       }),
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
   const ignored = run([
     { r: 128, g: 0, b: 0 },
@@ -662,6 +671,7 @@ test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
   const result = definition.lib!({
     feed: () => undefined,
     feedCapture: () => "\x1b[?1;2c",
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions).toBeUndefined()
@@ -699,6 +709,7 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
         libraryWrites.push(sequence)
         return raw
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     const query = async (sequence: string, pattern: RegExp) => {
       terminalWrites.push(sequence)
@@ -789,6 +800,7 @@ test.each(directReplies)("%s requires a complete, bound reply", async (id, frame
     const silent = definition.lib!({
       runtimeIdentity: xtermOscIdentity,
       feedCapture: () => "",
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     // Total silence with no same-path control is PROBE TODO on every library engine (@cto batch7 A-F4).
     expect(silent.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_SAME_PATH_CONTROL })
@@ -884,6 +896,7 @@ test.each([
         feed.push(sequence)
       },
       feedCapture: () => replies.shift() ?? "",
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     return { result, feed }
   }
@@ -974,6 +987,7 @@ test.each([
       feedCapture: () => {
         throw new Error("direct default-color arm must not query")
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     return { result, writes }
   }
@@ -1054,6 +1068,7 @@ test.each([
         queries.push(bytes)
         return ""
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(queries).toEqual([query])
     expect(writes).toEqual([])
@@ -1079,12 +1094,14 @@ test.each([
         },
         feed: () => {},
         feedCapture: () => "",
+        randomUUID: () => globalThis.crypto.randomUUID(),
       } as unknown as LibProbeSource),
     ).toThrow("default-color getter boom")
 
     const withoutGetter = callback(id).lib!({
       feed: () => {},
       feedCapture: () => "",
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(withoutGetter.criterionBranch).toBe("color-readback-review")
   },
@@ -1458,7 +1475,12 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
     if (imageNumber !== undefined) return allocation(Number(imageNumber))
     return /a=p,i=2,/.test(sequence) ? "\x1b_Gi=2;OK\x1b\\" : ""
   }
-  const headless = () => definition.lib!({ feed: () => undefined, feedCapture: answer } as unknown as LibProbeSource)
+  const headless = () =>
+    definition.lib!({
+      feed: () => undefined,
+      feedCapture: answer,
+      randomUUID: () => globalThis.crypto.randomUUID(),
+    } as unknown as LibProbeSource)
   const app = () =>
     definition.term!({
       queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
@@ -1647,6 +1669,7 @@ test.each(["sentinel", "timeout"] as const)(
           : { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
       },
       write: () => undefined,
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource
     const result = callback("extensions.kitty-graphics.transmit").lib!(source)
     expect(asked.filter((sequence) => sequence.includes("a=q"))).toHaveLength(1)
@@ -1716,6 +1739,7 @@ test.each([
       }
       return raw
     },
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(result.response).toBe(raw)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
@@ -1773,6 +1797,7 @@ function highlightTerminal(
       return bytes === `\x1b]${setCode};?\x07` ? `\x1b]${setCode};rgb:${colour}\x07` : ""
     },
     getCell: () => ({ char: "X" }),
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource
   return { ctx, lib, writes, queries, colour: () => colour }
 }
@@ -1935,6 +1960,7 @@ test.each([
           }),
           feed: (bytes: string) => calls.push(bytes),
           getCell: () => ({ char: "X" }),
+          randomUUID: () => globalThis.crypto.randomUUID(),
         } as unknown as LibProbeSource)
         expect(calls).toEqual([query])
         expect(result.observation).toBeUndefined()
@@ -2033,6 +2059,7 @@ test.each(geometryReplies)("$id keeps a complete zero geometry reply PROBE TODO 
   const silent = callback(id).lib!({
     feedCapture: () => "",
     runtimeIdentity: geometryRuntime,
+    randomUUID: () => globalThis.crypto.randomUUID(),
   } as unknown as LibProbeSource)
   expect(silent.notTested?.noObservable).toBe(NO_SAME_PATH_CONTROL)
   for (const reply of [raw.slice(0, 4), "foreign", raw + "foreign", "foreign" + raw]) {
@@ -2064,6 +2091,7 @@ test.each(geometryReplies)(
       backendName: "vterm",
       feedCapture: () => raw,
       runtimeIdentity: vterm0131Runtime,
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource
     const result = callback(id).lib!(ctx)
     expect(result.pass).toBe(false)
@@ -2076,6 +2104,7 @@ test.each(geometryReplies)(
       backendName: "vterm",
       feedCapture: () => withoutDa1,
       runtimeIdentity: vterm0131Runtime,
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(noControl.notTested?.reason).toBe("no-semantic-observable")
     expect(noControl.observation).toBeUndefined()
@@ -2095,6 +2124,7 @@ test("OSC 1 without an icon-label reader keeps the stimulus and title state as P
         writes.push(bytes)
         title = "after"
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(writes).toEqual(["\x1b]1;test-icon\x07"])
     expect(result).toEqual({
@@ -2127,6 +2157,7 @@ test.each(["alacritty", "vt100-rust"])("%s absent mouse encodings stay PROBE TOD
         getMode: () => tracking,
         feedCapture: () => "",
         encodeMouse: () => (tracking ? new TextEncoder().encode("\x1b[M %#") : null),
+        randomUUID: () => globalThis.crypto.randomUUID(),
       } as unknown as LibProbeSource
       const result = definition.lib!(ctx)
       expect(result.pass, id).toBe(false)
@@ -2174,6 +2205,7 @@ test.each(["xtermjs", "ghostty", "alacritty", "vt100-rust"])("%s keeps the other
       },
       getMode: () => tracking,
       encodeMouse: () => (tracking ? new TextEncoder().encode(report) : null),
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
     expect(result.pass, id).toBe(true)
     expect(result.observation, id).toEqual({ outcome: "supported", assertionType: "input_bytes" })

@@ -63,6 +63,7 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1138,6 +1139,7 @@ describe("zero-byte replies on a loaded artifact", () => {
           ],
         }
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
     } as unknown as LibProbeSource)
   }
 

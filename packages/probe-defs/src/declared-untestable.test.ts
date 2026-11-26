@@ -39,6 +39,7 @@ const fold = (featureId: string, result: ProbeCallbackResult) =>
 const library = (backendName = "alacritty"): LibProbeSource =>
   ({
     backendName,
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     rows: 24,
     capabilities: { kittyGraphics: true, sixel: true, extensions: new Set(["iterm2Images"]) },

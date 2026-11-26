@@ -274,10 +274,13 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
     }
     return lines.join("\n")
   }
+  let draws = 0
   const source: LibProbeSource = {
     backendName: "scripted-model",
     kind: "live",
     locale: () => "en_US.UTF-8",
+    // A fixture draw is deterministic and different per call, so a test can see order without live randomness.
+    randomUUID: () => `00000000-0000-4000-8000-${String(++draws).padStart(12, "0")}`,
     getHyperlinkAt: () => null,
     feedCapture: (text) => {
       model.feed(text)
@@ -316,10 +319,13 @@ export function libProbeSource(model: HeadlessModel): LibProbeSource {
  * false, encodeMouse returns null, extensions empty, and every cell is an unstyled space.
  */
 export function inertLibProbeSource(): LibProbeSource {
+  let draws = 0
   return {
     backendName: "inert-model",
     kind: "live",
     locale: () => "en_US.UTF-8",
+    // Deterministic, and different per draw, so a test can see order and identity without live randomness.
+    randomUUID: () => `00000000-0000-4000-8000-${String(++draws).padStart(12, "0")}`,
     cols: 80,
     feed: () => {},
     feedCapture: () => "",

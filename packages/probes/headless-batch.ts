@@ -471,6 +471,9 @@ export function createLibProbeSource(
     locale: () => localeOf(process.env),
     backendName: backend.name,
     kind: "live",
+    // #30932 AC1: a draw the callback makes through the source is a logged call, so its value is evidence a replay
+    // can hand back. Direct crypto.randomUUID calls would be a side channel the log cannot see.
+    randomUUID: () => globalThis.crypto.randomUUID(),
     nativeCellKeys: typeof backend.nativeCellKeys === "function" ? backend.nativeCellKeys.bind(backend) : undefined,
     ...(runtimeIdentity && { runtimeIdentity }),
     cols,

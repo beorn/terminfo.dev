@@ -4422,12 +4422,14 @@ function kittyUnobservableResult(id: string, note: string): ProbeCallbackResult 
 }
 
 function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefinition {
-  const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
+  // The library arm draws through the source (#30932 AC1), so its call log holds the number and a replay hands it
+  // back; the live terminal arm draws directly, since no replay speaks for it.
+  const newNumber = (draw: () => string) => (Number.parseInt(draw().slice(0, 8), 16) % 0xfffffffe) + 1
   return {
     ...probe(
       id,
       (ctx) => {
-        const imageNumber = newNumber()
+        const imageNumber = newNumber(() => ctx.randomUUID())
         let imageId: number | null = null
         try {
           if (ctx.queryWithSentinelOutcome) {
@@ -4487,7 +4489,7 @@ function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefi
         }
       },
       async (ctx) => {
-        const imageNumber = newNumber()
+        const imageNumber = newNumber(() => globalThis.crypto.randomUUID())
         let imageId: number | null = null
         try {
           const transfer = await ctx.queryWithSentinelOutcome(
@@ -4621,12 +4623,12 @@ const ENGINE_CLIPBOARD_NOTE = "engine copy_to_clipboard callback read via getCli
 
 function headlessOsc52Write(ctx: LibProbeSource): ProbeCallbackResult {
   if (typeof ctx.getClipboardState !== "function") return headlessOsc52WriteWithoutWitness(ctx)
-  const control = btoa(`terminfo-osc52-control-${randomUUID()}`)
+  const control = btoa(`terminfo-osc52-control-${ctx.randomUUID()}`)
   ctx.feed(`\x1b]52;c;${control}\x07`)
   const controlled = ctx.getClipboardState().writes
   const controlVerified = controlled.some((write) => write.selector === "c" && write.payload === control)
   const priorWrites = new Set(controlled.map((write) => JSON.stringify([write.selector, write.payload])))
-  const nonce = `terminfo-osc52-${randomUUID()}`
+  const nonce = `terminfo-osc52-${ctx.randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
   const retained = ctx.getClipboardState()
@@ -4730,7 +4732,7 @@ function withClipboardControlNote(ctx: LibProbeSource, result: ProbeCallbackResu
 }
 
 function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
-  const nonce = `terminfo-osc52-${randomUUID()}`
+  const nonce = `terminfo-osc52-${ctx.randomUUID()}`
   const encoded = btoa(nonce)
   const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
@@ -4771,7 +4773,7 @@ function clipboardPasteHandoff(ctx: LibProbeSource, before: string | undefined):
 
 /** A read negative needs a qualified reply path; a fresh typed app handoff does not grade reply support. */
 function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
-  const nonce = `terminfo-osc52-${randomUUID()}`
+  const nonce = `terminfo-osc52-${ctx.randomUUID()}`
   const pasteBefore = ctx.getClipboardState?.().pasteSelector
   ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
   if (ctx.queryWithSentinelOutcome) {
@@ -5586,7 +5588,7 @@ function headlessClipboardPaste(ctx: LibProbeSource): ProbeCallbackResult {
   const samples: { phase: string; text: string; bytes: number[]; raw: string }[] = []
   const calls: { method: string; input: string }[] = []
   const sample = (phase: string) => {
-    const text = `terminfo-paste-${randomUUID()}`
+    const text = `terminfo-paste-${ctx.randomUUID()}`
     calls.push({ method: "encodePaste", input: text })
     const bytes = encodePaste(text)
     const raw = new TextDecoder().decode(bytes)
@@ -9600,7 +9602,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       probe(
         "extensions.osc99-kitty-notify",
         (ctx) => {
-          const id = globalThis.crypto.randomUUID()
+          const id = ctx.randomUUID()
           const sequence = `\x1b]99;i=${id}:p=?;\x1b\\`
           const pattern = new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`)
           if (ctx.queryWithSentinelOutcome) {

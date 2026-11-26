@@ -1442,6 +1442,12 @@ export interface LibProbeSource {
   encodePaste?(text: string): Uint8Array
   /** Library-native key bytes in this instance's modes; absent for host-encoded adapters. */
   encodeKey?(event: LibKeyEvent): Uint8Array
+  /**
+   * A fresh identifier this run generated, named as Web Crypto names it. Probes never call `crypto.randomUUID`
+   * directly: the collector's call log records each draw as a call, so a replay hands back the same values in the
+   * same order, and a draw the log does not hold refuses by name instead of drawing a fresh one (#30932 AC1).
+   */
+  randomUUID(): string
   getTitle(): string
   reset(): void
   capabilities: {
