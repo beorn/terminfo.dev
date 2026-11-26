@@ -68,6 +68,8 @@ function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: Ter
     queryWithSentinelOutcome: timeout,
     queryMode: async () => null,
     utf8Decoding: async () => decoding,
+    // The run's locale, named, so the ambiguous-width row reaches its glyph (#38772): a UTF-8 run, as measured.
+    locale: () => "en_US.UTF-8",
     cols: GEOMETRY.cols,
     rows: GEOMETRY.rows,
   }

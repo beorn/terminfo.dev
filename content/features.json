@@ -1545,7 +1545,7 @@
     "tags": ["unicode"],
     "group": "wide",
     "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation.\n\nVS-16 is how Unicode asks for emoji presentation when a character has both text and emoji forms. Terminals must combine presentation selection with width calculation: the same base character can occupy one column as text and two columns as emoji. This is why emoji support cannot be reduced to a single wcwidth table.",
-    "probe": "Write a character with Variation Selector 16 (e.g., U+263A + U+FE0F), verify it occupies 2 columns in emoji presentation.",
+    "probe": "Write U+263A alone, which must take one column, then U+263A + U+FE0F, and verify the pair occupies 2 columns in emoji presentation. If the bare base is already 2 columns wide, the selector shows nothing and the result is not decided.",
     "baseline": "unicode",
     "url": "https://unicode.org/reports/tr51/#Presentation_Style"
   },
@@ -1586,12 +1586,12 @@
     "url": "https://unicode.org/reports/tr11/"
   },
   "text.tab": {
-    "name": "Tab stops",
+    "name": "Tab stop set by the program (HTS)",
     "slug": "ht-tab-stops",
     "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.\n\nTabs are cursor motion, not spacing characters painted into the grid. The default eight-column stops are a convention inherited from mechanical devices and codified in terminal behavior. Custom stops are rarely used by modern TUIs, but correct HT behavior is still visible in shells, logs, Makefile output, and legacy full-screen programs.",
-    "probe": "Write tab then \"X\", verify X appears at column 8 (after the default 8-column tab stop).",
+    "probe": "Clear every tab stop (<code>CSI 3 g</code>), set one at column 9 (<code>ESC H</code>), return home, then write tab and \"X\": X must land on the stop the program set. The default eight-column stops are tested by Tab Stops (HT).",
     "baseline": "core"
   },
   "unicode.tab-stops": {
