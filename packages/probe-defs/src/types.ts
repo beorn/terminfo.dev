@@ -1675,7 +1675,7 @@ export type ProgramResumeTokenReading =
       pid: number
       tty: string
       /** As for TERM_FEATURES (#32569): inside a multiplexer a present token may be the outer terminal's. */
-      mux?: "tmux" | "screen"
+      mux?: "tmux" | "screen" | "herdr" | "zellij"
     }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
