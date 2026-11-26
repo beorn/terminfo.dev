@@ -241,11 +241,13 @@ describe("loadReopenedCells", () => {
   // iTerm2's row stays: its same-night run is open/capture-too-slow and decides nothing.
   // #38772 (@cto 31a78f3f) adds nine remeasured rows: the Unsupported grades the pre-455b028f1 DECRQSS decider gave an
   // attribute its reply left out, on Ghostty 1.3.1 (eight features) and iTerm2 3.6.11 on macOS 26.6.2 (sgr.bg.bright).
-  it("the committed file holds the 6 remaining multiplexer rows and 10 remeasured rows, all current (#34674 retired six tmux rows whose exit was met)", async () => {
+  // #38772 (@cto 94288a3f) adds sixteen more remeasured rows for 19 cells: an Unsupported graded by a method since ruled
+  // invalid, or one a later run of the same app version and OS disagrees with (/hh/var/@dev2/38772-stale-proposed.tsv).
+  it("the committed file holds the 6 remaining multiplexer rows and 26 remeasured rows, all current (#34674 retired six tmux rows whose exit was met)", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(16)
+    expect(rows).toHaveLength(32)
     // The set, not only the count: a wrong swap keeps the row count, one kind, one os and one reason, so the count
     // alone would stay green while the file names different cells (@dev/11 carve-out on the 34674 GO).
     expect(rows.map((row) => `${row.kind}/${row.id}/${row.os}/${row.featureId}`)).toEqual([
@@ -265,6 +267,22 @@ describe("loadReopenedCells", () => {
       "term/ghostty/linux/sgr.underline.dotted",
       "term/ghostty/linux/sgr.underline.double",
       "term/iterm2/macos/sgr.bg.bright",
+      "term/warp/macos/extensions.osc104-reset-palette",
+      "term/alacritty/linux/extensions.osc112-reset-cursor",
+      "term/alacritty/linux/extensions.osc113-reset-pointer-fg",
+      "term/iterm2/macos/extensions.osc113-reset-pointer-fg",
+      "term/warp/macos/extensions.osc113-reset-pointer-fg",
+      "term/alacritty/linux/extensions.osc114-reset-pointer-bg",
+      "term/iterm2/macos/extensions.osc114-reset-pointer-bg",
+      "term/warp/macos/extensions.osc114-reset-pointer-bg",
+      "term/alacritty/linux/input.button-event-mouse",
+      "term/ghostty/linux/input.button-event-mouse",
+      "term/kitty/linux/input.button-event-mouse",
+      "term/kitty/linux/input.kitty-click-events",
+      "term/ghostty/linux/input.x10-mouse",
+      "term/alacritty/linux/input.xtest-key",
+      "term/kitty/linux/input.xtest-key",
+      "term/alacritty/linux/modes.alt-scroll-1007",
     ])
     const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
     expect(criterion).toHaveLength(6)
@@ -283,6 +301,22 @@ describe("loadReopenedCells", () => {
       "ghostty/sgr.underline.dotted",
       "ghostty/sgr.underline.double",
       "iterm2/sgr.bg.bright",
+      "warp/extensions.osc104-reset-palette",
+      "alacritty/extensions.osc112-reset-cursor",
+      "alacritty/extensions.osc113-reset-pointer-fg",
+      "iterm2/extensions.osc113-reset-pointer-fg",
+      "warp/extensions.osc113-reset-pointer-fg",
+      "alacritty/extensions.osc114-reset-pointer-bg",
+      "iterm2/extensions.osc114-reset-pointer-bg",
+      "warp/extensions.osc114-reset-pointer-bg",
+      "alacritty/input.button-event-mouse",
+      "ghostty/input.button-event-mouse",
+      "kitty/input.button-event-mouse",
+      "kitty/input.kitty-click-events",
+      "ghostty/input.x10-mouse",
+      "alacritty/input.xtest-key",
+      "kitty/input.xtest-key",
+      "alacritty/modes.alt-scroll-1007",
     ])
     for (const row of rows) {
       expect(publicReopenedReason(row), cellLabel(row)).not.toMatch(/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/)
