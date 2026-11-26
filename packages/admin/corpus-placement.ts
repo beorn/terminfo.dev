@@ -208,6 +208,13 @@ type PlacementIdentityRule = TerminalIdentityRule & {
   versionSource?: "mux-executable"
 }
 
+/** A mux whose release version comes from its attached executable (#38759); its protocol rule must exist. */
+function muxExecutableVersionRule(id: string): PlacementIdentityRule {
+  const rule = TERMINAL_IDENTITY_RULES[id]
+  if (rule === undefined) throw new Error(`No terminal identity rule for mux ${id}`)
+  return { ...rule, versionSource: "mux-executable" }
+}
+
 const PLACEMENT_IDENTITY_RULES: Record<string, PlacementIdentityRule> = {
   ...TERMINAL_IDENTITY_RULES,
   alacritty: {
@@ -221,8 +228,8 @@ const PLACEMENT_IDENTITY_RULES: Record<string, PlacementIdentityRule> = {
     forbidXtversion: true,
   },
   // herdr answers XTVERSION "libghostty" and Zellij "Zellij(4600)": neither names a release (#38759).
-  herdr: { ...TERMINAL_IDENTITY_RULES.herdr!, versionSource: "mux-executable" },
-  zellij: { ...TERMINAL_IDENTITY_RULES.zellij!, versionSource: "mux-executable" },
+  herdr: muxExecutableVersionRule("herdr"),
+  zellij: muxExecutableVersionRule("zellij"),
   cmux: { terminal: "cmux", identitySource: "hosted-darwin" },
   cursor: { terminal: "cursor", identitySource: "hosted-darwin" },
   "com.microsoft.VSCode": { terminal: "com.microsoft.VSCode", identitySource: "hosted-darwin" },
