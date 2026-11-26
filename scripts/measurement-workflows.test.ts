@@ -2148,6 +2148,9 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
       "env",
       "-u",
       "TERM_FEATURES",
+      // #38699: an inherited OSC 7577 token would read as the terminal's own export.
+      "-u",
+      "OSC7577_TOKEN",
       "TERMINFO_TERM_FEATURES_LAUNCH=0123456789abcdef0123456789abcdef",
       "TERMINFO_RUN_ID=0123456789abcdef0123456789abcdef",
     ])
