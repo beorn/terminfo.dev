@@ -30,8 +30,12 @@ const suite: ProbeSuiteManifest & { schemaVersion: 4 } = {
   probes: { term: [], lib: [], mux: [] },
 }
 const UNDECIDED = /"probe-(?:todo|invalid|conflict)"/
-/** The words withReplyFailureEvidence writes into an open or invalid test: never on a public card (@cto 760e9219). */
-const REPLY_FAILURE = 'query 1: sent "\\u001b[c"; received "\\u001b[?62;41c"; no match'
+/** The structured fields withReplyFailureEvidence stores on an open or invalid test: never on a public card (@cto 760e9219, #37342). */
+const REPLY_FAILURE_REASON = "no parsable cursor position reply"
+const REPLY_FAILURE_FIELDS = {
+  producer: "TTY" as const,
+  attempts: [{ sent: "\x1b[c", received: "\x1b[?62;41c", timeoutMs: 37, matchState: "no-match" as const }],
+}
 const TODO_REASON = "Required probe test has not started for this fixture"
 
 type Row = {
@@ -84,8 +88,16 @@ function run(name: string, hour: number, rows: Row[], selected?: string[]) {
         featureId: row.id,
         status: row.status,
         attempt,
-        reason: REPLY_FAILURE,
-        tests: [{ id: "criterion", status: row.status, attempt, reason: REPLY_FAILURE }],
+        reason: REPLY_FAILURE_REASON,
+        tests: [
+          {
+            id: "criterion",
+            status: row.status,
+            attempt,
+            reason: REPLY_FAILURE_REASON,
+            replyFailure: REPLY_FAILURE_FIELDS,
+          },
+        ],
       }
     }
   }
@@ -213,13 +225,15 @@ describe("publicResults publishes decided results only (Q4)", () => {
     expect(JSON.stringify(published.selectedByBackend)).not.toMatch(UNDECIDED)
   })
 
-  it("never publishes an undecided test's reason or an undecided result's reason (@cto 760e9219)", () => {
+  it("never publishes an undecided test's reason, replyFailure fields, or an undecided result's reason (@cto 760e9219, #37342)", () => {
     const everything = [
       JSON.stringify(published.projection),
       JSON.stringify(published.selectedByBackend),
       ...[...published.documents.values()].map((document) => document.bytes),
     ].join("\n")
-    expect(everything).not.toContain("no match")
+    expect(everything).not.toContain(REPLY_FAILURE_REASON)
+    expect(everything).not.toContain("replyFailure")
+    expect(everything).not.toContain("no-match")
     expect(everything).not.toContain(TODO_REASON)
   })
 

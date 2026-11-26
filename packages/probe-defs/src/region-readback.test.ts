@@ -1119,13 +1119,20 @@ test.each([
   expect(stored).not.toHaveProperty("replyFailureTestIds")
   if (observed) expect(stored.reason).toBe(observation?.note)
   if (marked) {
-    for (const entry of attempts) {
-      expect(stored.tests[0]?.reason).toContain(
-        `sent ${JSON.stringify(entry.sequence)}; received ${JSON.stringify(entry.received)}`,
-      )
-    }
-    expect(stored.tests[0]?.reason).toContain("timeout 37 ms")
-  } else expect(stored.tests[0]?.reason).toBe(criterionReason)
+    expect(stored.tests[0]?.reason).toBe(criterionReason)
+    expect(stored.tests[0]?.replyFailure).toEqual({
+      producer: "TTY",
+      attempts: attempts.map((entry) => ({
+        sent: entry.sequence,
+        received: entry.received === "" ? null : entry.received,
+        timeoutMs: entry.timeoutMs,
+        matchState: entry.match !== null ? "matched" : entry.reason === "timeout" ? "timeout" : "no-match",
+      })),
+    })
+  } else {
+    expect(stored.tests[0]?.reason).toBe(criterionReason)
+    expect(stored.tests[0]?.replyFailure).toBeUndefined()
+  }
   expect(fake.requests).toEqual([])
 })
 
@@ -3062,29 +3069,42 @@ test("calibratedScreenModeExemption accepts Warp primary vs calibrated alternate
       b: { cell: { row: 3, col: 1 }, box: { x: origin.x, y: origin.y + 32 } },
     },
   })
-  const altCrop = (
-    origin: { x: number; y: number },
-    overrides: Partial<PixelCellCrop> = {},
-  ): PixelCellCrop => ({
+  const altCrop = (origin: { x: number; y: number }, overrides: Partial<PixelCellCrop> = {}): PixelCellCrop => ({
     ...primaryCrop(origin),
     screenMode: "alternate-1049",
     ...overrides,
   })
   const warpCompared = [
     { role: "the seed frame", rectangle: { x: 1, y: 36, width: 56, height: 16 }, crop: altCrop({ x: 1, y: 36 }) },
-    { role: "the post-sequence frame", rectangle: { x: 17, y: 46, width: 56, height: 16 }, crop: primaryCrop({ x: 17, y: 46 }) },
-    { role: "the expected frame", rectangle: { x: 17, y: 46, width: 56, height: 16 }, crop: primaryCrop({ x: 17, y: 46 }) },
-    { role: "the ignored-attribute frame", rectangle: { x: 1, y: 36, width: 56, height: 16 }, crop: altCrop({ x: 1, y: 36 }) },
+    {
+      role: "the post-sequence frame",
+      rectangle: { x: 17, y: 46, width: 56, height: 16 },
+      crop: primaryCrop({ x: 17, y: 46 }),
+    },
+    {
+      role: "the expected frame",
+      rectangle: { x: 17, y: 46, width: 56, height: 16 },
+      crop: primaryCrop({ x: 17, y: 46 }),
+    },
+    {
+      role: "the ignored-attribute frame",
+      rectangle: { x: 1, y: 36, width: 56, height: 16 },
+      crop: altCrop({ x: 1, y: 36 }),
+    },
   ]
   // New path: both modes calibrated with identical 8x16 cell and 123x39 grid -> accepted.
-  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: warpCompared, response: "{}", frames: [] })).toBeNull()
+  expect(
+    cropPositionRefusal({ id: "modes.alt-screen.enter", compared: warpCompared, response: "{}", frames: [] }),
+  ).toBeNull()
 
   // Old path: without screenMode on the alternate frames, -16,-10 px is refused by name.
   const unmodeled = warpCompared.map((entry) => ({
     ...entry,
     crop: { ...entry.crop, screenMode: undefined },
   }))
-  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: unmodeled, response: "{}", frames: [] })?.tests?.[0]).toMatchObject({
+  expect(
+    cropPositionRefusal({ id: "modes.alt-screen.enter", compared: unmodeled, response: "{}", frames: [] })?.tests?.[0],
+  ).toMatchObject({
     status: "probe-invalid",
     reason: expect.stringContaining("Compared frames were cropped from different positions"),
   })
@@ -3093,29 +3113,41 @@ test("calibratedScreenModeExemption accepts Warp primary vs calibrated alternate
   const diffCell = [
     {
       ...warpCompared[0]!,
-      crop: altCrop({ x: 1, y: 36 }, {
-        cell: { width: 9, height: 16 },
-        witness: {
-          a: { cell: { row: 2, col: 2 }, box: { x: 1 + 9, y: 36 + 16 } },
-          b: { cell: { row: 3, col: 1 }, box: { x: 1, y: 36 + 32 } },
+      crop: altCrop(
+        { x: 1, y: 36 },
+        {
+          cell: { width: 9, height: 16 },
+          witness: {
+            a: { cell: { row: 2, col: 2 }, box: { x: 1 + 9, y: 36 + 16 } },
+            b: { cell: { row: 3, col: 1 }, box: { x: 1, y: 36 + 32 } },
+          },
         },
-      }),
+      ),
     },
     ...warpCompared.slice(1),
   ]
-  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffCell, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
+  expect(
+    cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffCell, response: "{}", frames: [] })?.tests?.[0]
+      ?.status,
+  ).toBe("probe-invalid")
 
   // Refuses when grid dimensions differ between primary and alternate screen.
   const diffGrid = [
     { ...warpCompared[0]!, crop: altCrop({ x: 1, y: 36 }, { grid: { columns: 125, rows: 39 } }) },
     ...warpCompared.slice(1),
   ]
-  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffGrid, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
+  expect(
+    cropPositionRefusal({ id: "modes.alt-screen.enter", compared: diffGrid, response: "{}", frames: [] })?.tests?.[0]
+      ?.status,
+  ).toBe("probe-invalid")
 
   // Refuses when one side is uncalibrated (no basis or no witness).
   const uncalibrated = [
     { ...warpCompared[0]!, crop: altCrop({ x: 1, y: 36 }, { basis: undefined }) },
     ...warpCompared.slice(1),
   ]
-  expect(cropPositionRefusal({ id: "modes.alt-screen.enter", compared: uncalibrated, response: "{}", frames: [] })?.tests?.[0]?.status).toBe("probe-invalid")
+  expect(
+    cropPositionRefusal({ id: "modes.alt-screen.enter", compared: uncalibrated, response: "{}", frames: [] })
+      ?.tests?.[0]?.status,
+  ).toBe("probe-invalid")
 })

@@ -660,8 +660,14 @@ it.each([false, true])("attaches completed TTY evidence only to marked failure r
     })
     const result = batch.results.find((entry) => entry.featureId === probe.id)!
     expect(result.status).toBe("probe-invalid")
-    expect(result.reason).toBe(
-      marked ? 'No probe reply; query 1: sent "\\u001b[6n"; received ""; timeout 37 ms' : "No probe reply",
+    expect(result.reason).toBe("No probe reply")
+    expect(result.tests[0]?.replyFailure).toEqual(
+      marked
+        ? {
+            producer: "TTY",
+            attempts: [{ sent: "\x1b[6n", received: null, timeoutMs: 37, matchState: "timeout" }],
+          }
+        : undefined,
     )
     expect(JSON.parse(batch.rawReplies[probe.id + ".trace"]!)).toMatchObject({
       queries: [{ sequence: "\x1b[6n", timeoutMs: 37, reason: "timeout", raw: "" }],

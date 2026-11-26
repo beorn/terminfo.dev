@@ -77,10 +77,14 @@ export {
   HOST_INPUT_NAMES,
   SILENCE_RULES,
   KNOWN_OBSERVERS,
+  REPLY_FAILURE_MATCH_STATES,
   frameDigests,
   type SilenceDeclaration,
   type SilenceRule,
   type KnownObserver,
+  type ReplyFailureMatchState,
+  type ReplyFailureAttempt,
+  type ReplyFailureEvidence,
 } from "./types.ts"
 export type {
   ObservationOutcome,

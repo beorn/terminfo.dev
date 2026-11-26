@@ -520,7 +520,10 @@ describe("live OSC 52 write ordering", () => {
         attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
       })
       expect(stored.status).toBe("probe-invalid")
-      expect(stored.reason).toContain('sent "\\u001b[6n"; received "\\u001b?"; timeout 37 ms')
+      expect(stored.tests[0]?.replyFailure).toEqual({
+        producer: "TTY",
+        attempts: [{ sent: "\x1b[6n", received: "\x1b?", timeoutMs: 37, matchState: "timeout" }],
+      })
       expect(stored).not.toHaveProperty("replyFailureTestIds")
       expect(clipboard).toBe("baseline")
     },
