@@ -640,6 +640,14 @@
   font-size: 0.8rem;
   color: var(--vp-c-text-2);
 }
+/* Name, platform icon, version: the home list's terminal pattern (#38757), spaced the same whatever the markup's
+   whitespace. */
+.rc-who-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .rc-pill {
   display: inline-flex;
   align-items: center;

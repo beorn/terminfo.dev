@@ -25,10 +25,10 @@ import {
   countVerdictWords,
   expectedVisualSpecimen,
   explainReplyCommand,
-  formatWhoLine,
   shortTerminalName,
   truncateCode,
   vendorExtensionOrigin,
+  whoLineParts,
 } from "../docs/.vitepress/theme/card-explain.ts"
 import { validateMeasuredCard, validateUntestableCard } from "./validate-style5-cards.ts"
 import { formatControlBytes, readCellTrace } from "../docs/data/evidence-reader.ts"
@@ -635,8 +635,8 @@ describe("card-explain Style 5 — all 10 measured kinds + non-measured kinds (#
     expect(countVerdictWords("Overline didn’t stick")).toBe(3)
 
     expect(
-      formatWhoLine({ subjectName: "Kitty (lib)", subjectKind: "lib", osName: "Linux", measuredDate: "Nov 20, 2026" }),
-    ).toBe("Kitty · library (no window) · Linux · tested Nov 20, 2026")
+      whoLineParts({ subjectName: "Kitty (lib)", subjectKind: "lib", osName: "Linux", measuredDate: "Nov 20, 2026" }),
+    ).toEqual({ name: "Kitty", osName: "Linux", details: ["library (no window)", "tested Nov 20, 2026"] })
     expect(shortTerminalName("Kitty (Linux)", "term")).toBe("Kitty")
     expect(vendorExtensionOrigin("extensions.osc776-cell-size")).toBe("rxvt-unicode extension")
     expect(vendorExtensionOrigin("extensions.osc776-cell-size", undefined, "WezTerm")).toBe(

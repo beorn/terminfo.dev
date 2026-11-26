@@ -304,26 +304,37 @@ export function shortTerminalName(subjectName: string, subjectKind?: string): st
   return clean || subjectName
 }
 
-export function formatWhoLine(input: {
+/**
+ * The card's who line in parts (#38757): the short name, the platform (the card draws its icon, as the home list
+ * does, with these words as the hover), the version, then what follows the name: the library note and the date.
+ */
+export function whoLineParts(input: {
   readonly subjectName: string
   readonly version?: string
   readonly subjectKind?: string
+  readonly os?: string
   readonly osName?: string
   readonly measuredDate?: string
-}): string {
+}): {
+  readonly name: string
+  readonly os?: string
+  readonly osName?: string
+  readonly version?: string
+  readonly details: readonly string[]
+} {
   const isLib = input.subjectKind === "lib" || /\(lib\)\s*$/iu.test(input.subjectName)
-  const base = shortTerminalName(input.subjectName, input.subjectKind)
   const datePart = input.measuredDate
     ? /^tested\s+/iu.test(input.measuredDate)
       ? input.measuredDate
       : `tested ${input.measuredDate}`
     : undefined
-  if (isLib) {
-    const namePart = input.version ? `${base} ${input.version}` : base
-    return [namePart, "library (no window)", input.osName, datePart].filter(Boolean).join(" · ")
+  return {
+    name: shortTerminalName(input.subjectName, input.subjectKind),
+    os: input.os,
+    osName: input.osName,
+    version: input.version,
+    details: [isLib ? "library (no window)" : undefined, datePart].filter((part): part is string => Boolean(part)),
   }
-  const namePart = input.version ? `${base} ${input.version}` : base
-  return [namePart, input.osName, datePart].filter(Boolean).join(" · ")
 }
 
 function isCollectorScaffoldingWrite(raw: string): boolean {

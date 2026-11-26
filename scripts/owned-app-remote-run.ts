@@ -280,6 +280,7 @@ const IDENTITY_SCRIPT = "scripts/owned-host-identity.ts"
 const CONTEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export interface OwnedAppRemoteOptions {
+  readonly mode?: "run"
   readonly transport: string
   readonly stage?: string
   readonly output: string
@@ -300,6 +301,35 @@ export interface OwnedAppRemoteOptions {
   /** The wall a re-attach gets after the first wall fires; the remote probe is never abandoned (#34834). */
   readonly reattachTimeoutMs: number
   readonly argv: readonly string[]
+}
+
+/** #34303: Standalone removal mode for a stage (or named runs/ entries) an EARLIER run created. */
+export interface OwnedAppStageRemovalOptions {
+  readonly mode: "remove-existing-stage"
+  readonly transport: string
+  readonly stage: string
+  readonly knownHosts: string
+  readonly sshTimeoutMs: number
+  readonly removeExistingStage: boolean
+  readonly removeRuns: readonly string[]
+}
+
+export interface OwnedAppStageRemovalProof {
+  readonly mode: "remove-existing-stage"
+  readonly runner: string
+  readonly host: { readonly hostname: string; readonly home: string }
+  readonly hostKeyFingerprint: string
+  readonly stage: string
+  readonly marker: string
+  readonly scope: "stage" | "stage-preserving-runs" | "runs"
+  readonly listed: {
+    readonly files: number
+    readonly bytes: number
+    readonly targets: readonly string[]
+    readonly runsRemoved: readonly string[]
+    readonly runsKept: readonly string[]
+  }
+  readonly removed: true
 }
 
 /** A counter rsync reported, or "unmeasured" when its stats were missing or unreadable: never a zero. */
@@ -469,10 +499,16 @@ function firstDifference(local: readonly string[], remote: readonly string[]): s
 }
 
 type Parsed = OwnedAppRemoteOptions
+type ParsedCommand = OwnedAppRemoteOptions | OwnedAppStageRemovalOptions
+type SshTargetOptions = Pick<OwnedAppRemoteOptions, "transport" | "knownHosts" | "sshTimeoutMs">
 
-function parseArgs(argv: readonly string[]): Parsed {
+const RUN_ENTRY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+function parseArgs(argv: readonly string[]): ParsedCommand {
   const values: Record<string, string> = {}
+  const removeRuns: string[] = []
   let removeStage = false
+  let removeExistingStage = false
   let index = 0
   for (; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -483,6 +519,23 @@ function parseArgs(argv: readonly string[]): Parsed {
     }
     if (arg === "--remove-stage") {
       removeStage = true
+      continue
+    }
+    if (arg === "--remove-existing-stage") {
+      removeExistingStage = true
+      continue
+    }
+    if (arg === "--remove-run") {
+      const value = argv[index + 1]
+      if (value === undefined || value.startsWith("--")) usage()
+      if (!RUN_ENTRY_PATTERN.test(value) || value === "." || value === "..") {
+        fail(
+          "invalid stage",
+          `--remove-run ${JSON.stringify(value)} must be a single plain runs/ directory name (letters, digits, dot, underscore, dash; no separators)`,
+        )
+      }
+      if (!removeRuns.includes(value)) removeRuns.push(value)
+      index += 1
       continue
     }
     if (
@@ -510,7 +563,50 @@ function parseArgs(argv: readonly string[]): Parsed {
   }
   const rest = argv.slice(index)
   const transport = values.transport ?? usage()
+  if (!/^ssh:[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(transport)) {
+    fail(
+      "host unreachable",
+      `unsupported transport ${JSON.stringify(transport)}; this driver speaks ssh:<user>@<host> only`,
+    )
+  }
   const rawStage = values.stage
+  const stage = rawStage?.replace(/\/+$/, "")
+  if (stage !== undefined) validateStage(stage)
+  const knownHosts = values["known-hosts"] ?? usage()
+  const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
+
+  if (removeExistingStage || removeRuns.length > 0) {
+    if (stage === undefined) {
+      fail(
+        "invalid stage",
+        "earlier-stage removal requires an explicit --stage <remote-dir>; the default stage is never assumed for deletion",
+      )
+    }
+    if (
+      rest.length > 0 ||
+      removeStage ||
+      values.output !== undefined ||
+      values["source-revision"] !== undefined ||
+      values.context !== undefined ||
+      values["run-id"] !== undefined ||
+      values.check !== undefined
+    ) {
+      fail(
+        "invalid argv",
+        "--remove-existing-stage/--remove-run is a standalone cleanup mode and cannot be combined with probe argv or run-only flags (--output, --source-revision, --context, --run-id, --check, --remove-stage)",
+      )
+    }
+    return {
+      mode: "remove-existing-stage",
+      transport,
+      stage,
+      knownHosts: resolve(knownHosts),
+      sshTimeoutMs,
+      removeExistingStage,
+      removeRuns,
+    }
+  }
+
   const output = values.output ?? usage()
   const sourceRevision = values["source-revision"] ?? usage()
   const context = values.context ?? usage()
@@ -525,8 +621,6 @@ function parseArgs(argv: readonly string[]): Parsed {
       `run id ${JSON.stringify(runId)} is not 32 lowercase hex characters; the transport carries the identity it was given and never mints one`,
     )
   }
-  const knownHosts = values["known-hosts"] ?? usage()
-  const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
   const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
   const probeBudgetMs =
     values["probe-budget-ms"] === undefined ? undefined : limitOf(values["probe-budget-ms"], DEFAULT_SSH_TIMEOUT_MS)
@@ -551,12 +645,6 @@ function parseArgs(argv: readonly string[]): Parsed {
   }
   const check: CheckDepth = rawCheck === "light" ? "light" : "full"
   if (!rest.length) usage()
-  if (!/^ssh:[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(transport)) {
-    fail(
-      "host unreachable",
-      `unsupported transport ${JSON.stringify(transport)}; this driver speaks ssh:<user>@<host> only`,
-    )
-  }
   if (!/^[a-f0-9]{40}$/.test(sourceRevision)) {
     fail("bundle missing objects", `source revision ${JSON.stringify(sourceRevision)} is not a full sha`)
   }
@@ -566,9 +654,8 @@ function parseArgs(argv: readonly string[]): Parsed {
       `context ${JSON.stringify(context)} is not a plain identifier (letters, digits, dot, underscore, dash; no separators)`,
     )
   }
-  const stage = rawStage?.replace(/\/+$/, "")
-  if (stage !== undefined) validateStage(stage)
   return {
+    mode: "run",
     transport,
     stage,
     output: resolve(output),
@@ -622,7 +709,10 @@ function usage(): never {
       "         --known-hosts <path> [--remove-stage] [--check full|light] [--ssh-timeout-ms <ms>]\n" +
       "         [--rsync-timeout-ms <ms>] [--probe-budget-ms <cohort bound>] [--reattach-timeout-ms <ms>]\n" +
       "         -- <owned-app argv starting with bun>\n" +
-      "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.",
+      "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.\n" +
+      "       Cleanup mode (#34303): bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host>\n" +
+      "         --stage <exact-remote-dir> --known-hosts <path> [--remove-existing-stage]\n" +
+      "         [--remove-run <runs-subdir> ...] [--ssh-timeout-ms <ms>]",
   )
   process.exit(2)
 }
@@ -642,7 +732,7 @@ function defaultStage(home: string): string {
  * explicitly; nothing here writes to it, and the global file is disabled so trust is exactly what
  * the caller named. `-F /dev/null` keeps every ssh_config file out, the user's and the system's;
  * and since ssh keeps the FIRST value it reads for an option, nothing may be placed ahead of these. */
-function sshOptions(options: Parsed): string[] {
+function sshOptions(options: SshTargetOptions): string[] {
   return [
     "-F",
     "/dev/null",
@@ -664,7 +754,7 @@ function sshOptions(options: Parsed): string[] {
 }
 
 /** rsync splits `-e` with its own quote rule, so every token is quoted for that rule. */
-function sshCommandLine(options: Parsed): string {
+function sshCommandLine(options: SshTargetOptions): string {
   return ["ssh", ...sshOptions(options)].map(rsyncWord).join(" ")
 }
 
@@ -714,7 +804,7 @@ function awaitOutlivedProbe(options: Parsed, where: { pidFile: string; stage: st
 }
 
 function sshRun(
-  options: Parsed,
+  options: SshTargetOptions,
   label: string,
   failure: string,
   command: string,
@@ -1023,20 +1113,207 @@ function trackedExtract(entry: string, closure: string, recorded?: { repository:
 /** Removal renames the stage aside first, so an interrupted delete never leaves a half-deleted
  * directory at the stage path that the next run would read as a stranger's: the stage path is
  * either whole or gone, and only the aside can be partial. */
-function removeStage(options: Parsed, stage: string): void {
+function removeStage(options: SshTargetOptions, stage: string): void {
   sshRun(
     options,
     "stage removal",
     "stage not owned",
     `test "$(cat ${shq(`${stage}/${STAGE_MARKER}`)} 2>/dev/null)" = ${shq(STAGE_MARKER_VALUE)} || { echo ${shq(`stage ${stage} has no valid marker; refusing to delete it`)} >&2; exit 7; }`,
   )
-  const aside = `${stage}.removing-${randomBytes(6).toString("hex")}`
+  renameAsideAndDelete(options, stage)
+}
+
+function renameAsideAndDelete(options: SshTargetOptions, target: string): void {
+  const aside = `${target}.removing-${randomBytes(6).toString("hex")}`
   sshRun(
     options,
     "stage removal",
     "stage removal failed",
-    `mv -- ${shq(stage)} ${shq(aside)} || exit 1; find ${shq(aside)} -depth -delete || { echo ${shq(`the stage was moved to ${aside} and only part of it was deleted`)} >&2; exit 1; }`,
+    `mv -- ${shq(target)} ${shq(aside)} || exit 1; find ${shq(aside)} -depth -delete || { echo ${shq(`the stage was moved to ${aside} and only part of it was deleted`)} >&2; exit 1; }`,
   )
+}
+
+/**
+ * #34303: Remove a stage (or named runs/ entries inside it) created by an earlier run.
+ * Requires the exact stage path, verifies reachability, host key, remote home, and the stage marker,
+ * lists what will go (file count, byte total, runs removed, and runs kept) BEFORE removing, and
+ * removes each target with the same rename-aside-then-walk step. Non-empty runs/ entries are never
+ * removed by default unless named via `--remove-run <run-dir>`.
+ */
+function removeExistingStageMain(options: OwnedAppStageRemovalOptions): OwnedAppStageRemovalProof {
+  const userAndHost = options.transport.slice(4)
+  if (!existsSync(options.knownHosts)) {
+    fail("host key mismatch", `no environment-owned known-hosts file at ${options.knownHosts}; trust is never invented`)
+  }
+  const reach = sshRun(options, "reachability probe", "host unreachable", `printf '%s\\n%s\\n' "$(hostname)" "$HOME"`, {
+    verbose: true,
+  })
+  const [hostname, home] = reach.stdout.trim().split("\n")
+  if (!hostname) fail("host unreachable", `${userAndHost} answered no hostname`)
+  const key = hostKeyOf(reach.stderr)
+  if (home === undefined || !home.startsWith("/")) {
+    fail("invalid stage", `${hostname} answered no usable home directory; the stage cannot be checked against it`)
+  }
+  const stage = options.stage
+  if (stage === home || home.startsWith(`${stage}/`)) {
+    fail("invalid stage", `stage ${JSON.stringify(stage)} is the remote home or contains it`)
+  }
+
+  // Verify the stage exists and carries this driver's exact marker before inspecting or removing anything.
+  sshRun(
+    options,
+    "stage ownership",
+    "stage not owned",
+    [
+      `if [ ! -d ${shq(stage)} ]; then`,
+      `  echo ${shq(`stage ${stage} does not exist on ${hostname}`)} >&2`,
+      `  exit 7`,
+      `fi`,
+      `test "$(cat ${shq(`${stage}/${STAGE_MARKER}`)} 2>/dev/null)" = ${shq(STAGE_MARKER_VALUE)} || {`,
+      `  echo ${shq(`stage ${stage} has no valid marker; refusing to delete it`)} >&2`,
+      `  exit 7`,
+      `}`,
+    ].join("\n"),
+  )
+
+  // Inspect top-level stage entries and runs/ subdirectories (with non-directory file counts per run).
+  const inspection = sshRun(
+    options,
+    "stage listing inspection",
+    "stage removal failed",
+    [
+      `set -e`,
+      `for entry in ${shq(stage)}/* ${shq(stage)}/.[!.]* ${shq(stage)}/..?*; do`,
+      `  [ -e "$entry" ] || [ -L "$entry" ] || continue`,
+      `  base="$(basename "$entry")"`,
+      `  printf 'TOP\\t%s\\n' "$base"`,
+      `done`,
+      `if [ -d ${shq(`${stage}/runs`)} ]; then`,
+      `  for run_entry in ${shq(`${stage}/runs`)}/* ${shq(`${stage}/runs`)}/.[!.]* ${shq(`${stage}/runs`)}/..?*; do`,
+      `    [ -e "$run_entry" ] || [ -L "$run_entry" ] || continue`,
+      `    run_base="$(basename "$run_entry")"`,
+      `    run_files="$(find "$run_entry" ! -type d 2>/dev/null | wc -l | tr -d ' ')"`,
+      `    printf 'RUN\\t%s\\t%s\\n' "$run_base" "$run_files"`,
+      `  done`,
+      `fi`,
+    ].join("\n"),
+  ).stdout
+
+  const topEntries: string[] = []
+  const runEntries = new Map<string, number>()
+  for (const line of inspection.split("\n")) {
+    const trimmed = line.trim()
+    if (trimmed === "") continue
+    const parts = trimmed.split("\t")
+    if (parts[0] === "TOP" && parts[1] !== undefined) {
+      topEntries.push(parts[1])
+    } else if (parts[0] === "RUN" && parts[1] !== undefined) {
+      runEntries.set(parts[1], Number(parts[2] ?? "0"))
+    }
+  }
+  topEntries.sort()
+  const allRuns = [...runEntries.keys()].sort()
+
+  for (const namedRun of options.removeRuns) {
+    if (!runEntries.has(namedRun)) {
+      fail("invalid stage", `stage ${stage} has no runs/${namedRun} entry to remove`)
+    }
+  }
+
+  let scope: OwnedAppStageRemovalProof["scope"]
+  let targets: string[]
+  let runsRemoved: string[]
+  let runsKept: string[]
+
+  if (!options.removeExistingStage) {
+    // Only remove the explicitly named runs/<entry> directories.
+    scope = "runs"
+    runsRemoved = [...options.removeRuns].sort()
+    const removedSet = new Set(runsRemoved)
+    runsKept = allRuns.filter((name) => !removedSet.has(name))
+    targets = runsRemoved.map((name) => `${stage}/runs/${name}`)
+  } else {
+    // --remove-existing-stage: keep non-empty runs/ entries unless explicitly named via --remove-run;
+    // empty runs/ subdirectories (e.g. from a probe that died at CLI validation) hold no retained files and go with the stage.
+    const explicitRemove = new Set(options.removeRuns)
+    runsRemoved = allRuns.filter((name) => explicitRemove.has(name) || (runEntries.get(name) ?? 0) === 0)
+    const removedSet = new Set(runsRemoved)
+    runsKept = allRuns.filter((name) => !removedSet.has(name))
+    if (runsKept.length === 0) {
+      scope = "stage"
+      targets = [stage]
+    } else {
+      scope = "stage-preserving-runs"
+      const otherTop = topEntries
+        .filter((name) => name !== STAGE_MARKER && name !== "runs")
+        .map((name) => `${stage}/${name}`)
+      const runTargets = runsRemoved.map((name) => `${stage}/runs/${name}`)
+      targets = [...otherTop, ...runTargets]
+    }
+  }
+
+  // Measure exact file count (all non-directory entries in targets) and byte total (all regular files in targets) BEFORE removal.
+  let files = 0
+  let bytes = 0
+  if (targets.length > 0) {
+    const quotedTargets = targets.map(shq).join(" ")
+    const measured = sshRun(
+      options,
+      "stage listing measure",
+      "stage removal failed",
+      [
+        `set -e`,
+        `files="$(find ${quotedTargets} ! -type d 2>/dev/null | wc -l | tr -d ' ')"`,
+        `if stat -c %s . >/dev/null 2>&1; then`,
+        `  bytes="$(find ${quotedTargets} -type f -exec stat -c %s {} + 2>/dev/null | awk '{s+=$1} END {printf "%.0f\\n", s+0}')"`,
+        `else`,
+        `  bytes="$(find ${quotedTargets} -type f -exec stat -f %z {} + 2>/dev/null | awk '{s+=$1} END {printf "%.0f\\n", s+0}')"`,
+        `fi`,
+        `printf '%s\\n%s\\n' "$files" "$bytes"`,
+      ].join("\n"),
+    )
+      .stdout.trim()
+      .split("\n")
+    files = Number(measured[0] ?? "0")
+    bytes = Number(measured[1] ?? "0")
+  }
+
+  console.error(
+    `owned-app transport: listing for ${scope} removal at ${stage}: ${String(files)} files, ${String(bytes)} bytes; runs removed: [${runsRemoved.join(", ")}]; runs kept: [${runsKept.join(", ")}]`,
+  )
+
+  if (scope === "stage") {
+    removeStage(options, stage)
+  } else {
+    // Re-check marker right before moving targets aside.
+    sshRun(
+      options,
+      "stage removal",
+      "stage not owned",
+      `test "$(cat ${shq(`${stage}/${STAGE_MARKER}`)} 2>/dev/null)" = ${shq(STAGE_MARKER_VALUE)} || { echo ${shq(`stage ${stage} has no valid marker; refusing to delete it`)} >&2; exit 7; }`,
+    )
+    for (const target of targets) {
+      renameAsideAndDelete(options, target)
+    }
+  }
+
+  return {
+    mode: "remove-existing-stage",
+    runner: options.transport,
+    host: { hostname, home },
+    hostKeyFingerprint: key.fingerprint,
+    stage,
+    marker: STAGE_MARKER_VALUE,
+    scope,
+    listed: {
+      files,
+      bytes,
+      targets,
+      runsRemoved,
+      runsKept,
+    },
+    removed: true,
+  }
 }
 
 function rsync(
@@ -1222,7 +1499,10 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (!light) {
       const localHeadRes = spawnSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" })
       if (localHeadRes.error || localHeadRes.status !== 0) {
-        fail("bundle missing objects", `git rev-parse HEAD: ${localHeadRes.error?.message ?? localHeadRes.stderr.trim()}`)
+        fail(
+          "bundle missing objects",
+          `git rev-parse HEAD: ${localHeadRes.error?.message ?? localHeadRes.stderr.trim()}`,
+        )
       }
       const localHead = localHeadRes.stdout.trim()
       if (localHead !== options.sourceRevision) {
@@ -1665,7 +1945,8 @@ function main(options: Parsed): OwnedAppTransportProof {
 
 if (import.meta.main) {
   try {
-    const proof = main(parseArgs(process.argv.slice(2)))
+    const parsed = parseArgs(process.argv.slice(2))
+    const proof = parsed.mode === "remove-existing-stage" ? removeExistingStageMain(parsed) : main(parsed)
     console.log(JSON.stringify(proof))
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))

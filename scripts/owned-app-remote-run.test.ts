@@ -295,6 +295,38 @@ function run(
   return result
 }
 
+function runCleanup(
+  extraArgs: string[] = [],
+  stageArgument: string | null = stage,
+  extraEnv: Record<string, string> = {},
+) {
+  const env = {
+    ...process.env,
+    PATH: `${shims}:/usr/bin:/bin`,
+    OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
+    OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+    OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
+    SHIM_SSH_LOG: sshLog,
+    SHIM_RSYNC_LOG: rsyncLog,
+    REAL_RSYNC: "/usr/bin/rsync",
+    REAL_BUN: process.execPath,
+    ...extraEnv,
+  }
+  return spawnSync(
+    process.execPath,
+    [
+      driver,
+      "--transport",
+      "ssh:fixture@fixture.invalid",
+      ...(stageArgument === null ? [] : ["--stage", stageArgument]),
+      "--known-hosts",
+      knownHosts,
+      ...extraArgs,
+    ],
+    { encoding: "utf8", env },
+  )
+}
+
 /** The pinned ssh options, in order, exactly as every ssh spawn and rsync -e must carry them. */
 function pinned(hosts: string): string[] {
   return [
@@ -1483,9 +1515,9 @@ describe("run identity on the output path, per-call rsync counters, phase interv
     expect(receipt.transfers.map((transfer) => transfer.label)).not.toContain("bundle transfer")
     expect(receipt.phases.map((phase) => phase.name)).not.toContain("bundle transfer")
     expect(receipt.phases.map((phase) => phase.name)).not.toContain("stage checkout")
-    expect(
-      existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "transport-receipt.json")),
-    ).toBe(true)
+    expect(existsSync(join(stage, "runs", `${revision.slice(0, 12)}-kitty-${RUN_ID}`, "transport-receipt.json"))).toBe(
+      true,
+    )
   }, 60_000)
 
   it("prunes unrelated monorepo workspace links and their .bin entries while keeping transitive required deps (#33797)", () => {
@@ -1559,4 +1591,147 @@ describe("run identity on the output path, per-call rsync counters, phase interv
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("broken staged symlink")
   }, 60_000)
+})
+
+/**
+ * @failure #34303: A stage created by an earlier run (e.g. owned-app-stage-34259 with an empty runs/
+ *          subdir after a probe failed CLI validation, or old runs in the shared stage) cannot be
+ *          removed by the transport tool, or is removed without requiring the marker and exact path,
+ *          listing file count/bytes/kept runs first, or preserving shared-stage runs by default.
+ * @level   l1 — exercises the real driver cleanup mode against owned temporary stage trees and ssh shims.
+ */
+describe("remove a stage or runs created by an earlier run (#34303)", () => {
+  it("lists count and bytes and removes an earlier run's whole stage when runs/ holds only empty dirs", () => {
+    mkdirSync(join(stage, "source", "pkg"), { recursive: true })
+    mkdirSync(join(stage, "runs", "252110ebd717-cmux"), { recursive: true })
+    writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
+    writeFileSync(join(stage, "source", "pkg", "a.txt"), "12345")
+    writeFileSync(join(stage, "source", "pkg", "b.txt"), "1234567890")
+
+    const result = runCleanup(["--remove-existing-stage"])
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain(
+      `owned-app transport: listing for stage removal at ${stage}: 3 files, 44 bytes; runs removed: [252110ebd717-cmux]; runs kept: []`,
+    )
+    const parsed = JSON.parse(result.stdout) as {
+      mode: string
+      scope: string
+      stage: string
+      listed: { files: number; bytes: number; runsRemoved: string[]; runsKept: string[] }
+      removed: boolean
+    }
+    expect(parsed).toMatchObject({
+      mode: "remove-existing-stage",
+      scope: "stage",
+      stage,
+      listed: {
+        files: 3,
+        bytes: 44,
+        runsRemoved: ["252110ebd717-cmux"],
+        runsKept: [],
+      },
+      removed: true,
+    })
+    expect(existsSync(stage)).toBe(false)
+    expect(
+      lines(sshLog).some((spawn) => /mv -- '[^']*\/stage' '[^']*\/stage\.removing-[0-9a-f]{12}'/.test(spawn)),
+    ).toBe(true)
+  })
+
+  it("preserves non-empty runs/ entries by default on a shared stage and removes only the stage payload and empty runs", () => {
+    const first = run()
+    expect(first.status, first.stderr).toBe(0)
+    const keptRun = `${revision.slice(0, 12)}-kitty-${RUN_ID}`
+    mkdirSync(join(stage, "runs", "empty-failed-run"), { recursive: true })
+
+    const cleanup = runCleanup(["--remove-existing-stage"])
+    expect(cleanup.status, cleanup.stderr).toBe(0)
+    const parsed = JSON.parse(cleanup.stdout) as {
+      scope: string
+      listed: { files: number; bytes: number; runsRemoved: string[]; runsKept: string[] }
+    }
+    expect(parsed.scope).toBe("stage-preserving-runs")
+    expect(parsed.listed.runsKept).toEqual([keptRun])
+    expect(parsed.listed.runsRemoved).toEqual(["empty-failed-run"])
+    expect(parsed.listed.files).toBeGreaterThan(0)
+    expect(parsed.listed.bytes).toBeGreaterThan(0)
+    expect(existsSync(join(stage, ".owned-app-transport-stage"))).toBe(true)
+    expect(existsSync(join(stage, "runs", keptRun, "transport-receipt.json"))).toBe(true)
+    expect(existsSync(join(stage, "runs", "empty-failed-run"))).toBe(false)
+    expect(existsSync(join(stage, "source"))).toBe(false)
+  }, 60_000)
+
+  it("removes only the named runs/ entries when --remove-run is given, and removes the whole stage when all runs are named with --remove-existing-stage", () => {
+    mkdirSync(join(stage, "source"), { recursive: true })
+    writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
+    writeFileSync(join(stage, "source", "bundle.txt"), "stage-payload")
+    mkdirSync(join(stage, "runs", "run-old-1"), { recursive: true })
+    writeFileSync(join(stage, "runs", "run-old-1", "out.json"), '{"run":1}')
+    mkdirSync(join(stage, "runs", "run-old-2"), { recursive: true })
+    writeFileSync(join(stage, "runs", "run-old-2", "out.json"), '{"run":22}')
+
+    // First remove only run-old-1 while keeping source and run-old-2.
+    const first = runCleanup(["--remove-run", "run-old-1"])
+    expect(first.status, first.stderr).toBe(0)
+    const firstProof = JSON.parse(first.stdout) as {
+      scope: string
+      listed: { files: number; bytes: number; runsRemoved: string[]; runsKept: string[] }
+    }
+    expect(firstProof).toMatchObject({
+      scope: "runs",
+      listed: {
+        files: 1,
+        bytes: 9,
+        runsRemoved: ["run-old-1"],
+        runsKept: ["run-old-2"],
+      },
+    })
+    expect(existsSync(join(stage, "runs", "run-old-1"))).toBe(false)
+    expect(existsSync(join(stage, "runs", "run-old-2", "out.json"))).toBe(true)
+    expect(existsSync(join(stage, "source", "bundle.txt"))).toBe(true)
+
+    // Now remove the entire stage along with the remaining run-old-2.
+    const second = runCleanup(["--remove-existing-stage", "--remove-run", "run-old-2"])
+    expect(second.status, second.stderr).toBe(0)
+    const secondProof = JSON.parse(second.stdout) as {
+      scope: string
+      listed: { runsRemoved: string[]; runsKept: string[] }
+    }
+    expect(secondProof.scope).toBe("stage")
+    expect(secondProof.listed.runsRemoved).toEqual(["run-old-2"])
+    expect(secondProof.listed.runsKept).toEqual([])
+    expect(existsSync(stage)).toBe(false)
+  })
+
+  it("refuses without an explicit --stage, without a valid marker, on the remote home, or on a missing run", () => {
+    // 1. Omitted --stage refused before any ssh spawn.
+    const noStage = runCleanup(["--remove-existing-stage"], null)
+    expect(noStage.status).toBe(1)
+    expect(noStage.stderr).toContain("earlier-stage removal requires an explicit --stage")
+    expect(lines(sshLog)).toHaveLength(0)
+
+    // 2. Missing marker refused without deleting anything.
+    mkdirSync(stage, { recursive: true })
+    writeFileSync(join(stage, "stranger.txt"), "keep me\n")
+    const noMarker = runCleanup(["--remove-existing-stage"])
+    expect(noMarker.status).toBe(1)
+    expect(noMarker.stderr).toContain("stage not owned")
+    expect(noMarker.stderr).toContain("has no valid marker; refusing to delete it")
+    expect(existsSync(join(stage, "stranger.txt"))).toBe(true)
+
+    // 3. Stage equal to or containing the remote home refused.
+    writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
+    for (const home of [stage, join(stage, "home")]) {
+      const homeRefusal = runCleanup(["--remove-existing-stage"], stage, { SHIM_SSH_HOME: home })
+      expect(homeRefusal.status, home).toBe(1)
+      expect(homeRefusal.stderr, home).toContain("is the remote home or contains it")
+    }
+    expect(existsSync(stage)).toBe(true)
+
+    // 4. Unknown --remove-run refused without deleting the stage.
+    const missingRun = runCleanup(["--remove-run", "no-such-run"])
+    expect(missingRun.status).toBe(1)
+    expect(missingRun.stderr).toContain("has no runs/no-such-run entry to remove")
+    expect(existsSync(stage)).toBe(true)
+  })
 })
