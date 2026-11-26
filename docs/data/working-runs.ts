@@ -35,6 +35,7 @@ import { retainedSuiteManifestPath } from "../../packages/admin/suite-retention.
 import { compatibilitySubjects, loadCurrentResults, type CurrentResult } from "./current-results.ts"
 import { admittedContextKeys, originalRunFor, workingSubjectKey, type SelectedProjection } from "./selected-results.ts"
 import { rollupTerminalStatuses, type TerminalStatusRollup } from "./release-scope.ts"
+import type { AnalysisProgressReporter } from "./analysis-progress.ts"
 import { fullContextCensus, type CensusContext } from "./full-census.ts"
 
 export const WORKING_RUNS_ENV = "TERMINFO_SITE_WORKING_RUNS_DIR"
@@ -711,7 +712,11 @@ function unappliedSupplements(supplements: unknown): string | undefined {
 }
 
 /** Private page history uses the same raw reader and view; public API generation remains newest-only. */
-export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = process.env): WorkingView[] | null {
+export function siteWorkingHistory(
+  contentDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+  progress?: AnalysisProgressReporter,
+): WorkingView[] | null {
   const newest = selectedSiteWorkingRun(env)
   if (newest === null) return null
   const dir = dirname(newest.dir)
@@ -746,7 +751,8 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
   const earlier = new Map<string, WorkingView>()
   const runtimeReceipts = new Map<string, Map<string, string | undefined>>()
   // Keep the small page views across loaders, not every historical capture's full evidence payload.
-  const views = selections.map(({ selection, context: app }): WorkingView => {
+  progress?.phase("working-history", selections.length)
+  const views = selections.map(({ selection, context: app }, index): WorkingView => {
     try {
       const loaded = app
         ? loadAppWorkingRun(selection, app, dir, Object.keys(loadFeatures(contentDir)))
@@ -822,6 +828,7 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
           reason: view.unreadable.reason.replaceAll(dir, "retained runs").replaceAll(REPO_ROOT, "source tree"),
         }
       }
+      progress?.tick(index + 1, selections.length)
       return view
     } catch (error) {
       // A reader diagnostic naming this older collection is an input gap, not zero results.
@@ -843,6 +850,7 @@ export function siteWorkingHistory(contentDir: string, env: NodeJS.ProcessEnv = 
       const reason = error.message.replaceAll(selection.dir, selection.id)
       const banner = `Retained collection ${app ? app.context + "/" : ""}${selection.id} has unreadable input; results and counts are unavailable.`
       console.warn(`terminfo-site: WARNING ${banner} (${reason})`)
+      progress?.tick(index + 1, selections.length)
       return {
         label: RAW_LABEL,
         rule: "Missing retained inputs are not zero results and do not change accepted answers.",

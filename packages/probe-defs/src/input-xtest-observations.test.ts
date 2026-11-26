@@ -1121,14 +1121,16 @@ test("input.pixel-mouse records unsupported interaction when 1016 still reports 
   expect(observed).toMatchObject({ mode: "1016", control: cell, report: cell })
 })
 
-// Distinctness alone also accepts shifted cell coordinates and pixels in an adjacent cell.
+// Distinctness alone also accepts shifted cell coordinates and pixels in an adjacent cell. #38772: a terminal may
+// count pixels from 0 (kitty) or from 1, so the box is the cell's span under either origin: x 72..80, y 64..80 here.
 test.each([
   ["\x1b[<0;73;65M", "supported"],
   ["\x1b[<0;80;80M", "supported"],
+  ["\x1b[<0;72;64M", "supported"],
   ["\x1b[<0;11;6M", "unsupported"],
-  ["\x1b[<0;72;65M", "unsupported"],
+  ["\x1b[<0;71;65M", "unsupported"],
   ["\x1b[<0;81;65M", "unsupported"],
-  ["\x1b[<0;73;64M", "unsupported"],
+  ["\x1b[<0;73;63M", "unsupported"],
   ["\x1b[<0;73;81M", "unsupported"],
 ] as const)("input.pixel-mouse measures the predicted pixel box for %j", async (report, outcome) => {
   const { ctx } = inputAndRead({
@@ -1138,6 +1140,17 @@ test.each([
   const result = await probe("input.pixel-mouse").term!(ctx)
   expect(result.observation).toMatchObject({ outcome, assertionType: "input_bytes" })
   expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+})
+
+// #38772, the audit of build c73de477: kitty answers 0-based pixels. Cell 31;11 at 13x29 starts at pixel 390;290,
+// and kitty reported a click on that first pixel row; the old exclusive lower edge graded it Unsupported.
+test("input.pixel-mouse accepts kitty's 0-based report of a cell's first pixel row", async () => {
+  const { ctx } = inputAndRead({
+    clickReports: ["\x1b[<0;31;11M", "\x1b[<0;397;290M"],
+    cellSize: { width: 13, height: 29 },
+  })
+  const result = await probe("input.pixel-mouse").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
 })
 
 test("input.pixel-mouse keeps missing cell geometry as named coverage without a feature verdict", async () => {
@@ -1575,6 +1588,13 @@ test("input.button-event-mouse records unsupported interaction when the release 
 
 test("input.button-event-mouse throws when the drag reports only its press", async () => {
   const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"], dragReports: ["\x1b[<0;31;12M"] })
+  await expect(probe("input.button-event-mouse").term!(ctx)).rejects.toThrow(/motion or release/)
+})
+
+// #38772: build c73de477 graded kitty, Ghostty and Alacritty Unsupported on `<0;31;13M` twice (the press repeated, no
+// motion). All four runs predate 3fa8ddf9 (2026-11-07, #32582), which reads past the press; today that drag decides nothing.
+test("input.button-event-mouse throws, never grades, on the audit's repeated press with no motion", async () => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;31;11M"], dragReports: ["\x1b[<0;31;13M\x1b[<0;31;13M"] })
   await expect(probe("input.button-event-mouse").term!(ctx)).rejects.toThrow(/motion or release/)
 })
 

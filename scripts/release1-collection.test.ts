@@ -1824,6 +1824,61 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
   ).toThrow(/requires --owned-app-known-hosts/)
 })
 
+it("forwards owned-app transport timeouts to the remote driver and refuses invalid timeout values (#34166)", () => {
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      sshTimeoutMs: 240_000,
+      rsyncTimeoutMs: 120_000,
+      reattachTimeoutMs: 2_700_000,
+    },
+    ownedAppRevision,
+    ownedAppRunId,
+  )
+  const sep = command.argv.indexOf("--")
+  expect(command.argv.slice(0, sep)).toEqual([
+    "bun",
+    "scripts/owned-app-remote-run.ts",
+    "--transport",
+    "ssh:fixture@fixture.invalid",
+    "--stage",
+    "/remote/stage",
+    "--output",
+    "/private/kitty",
+    "--source-revision",
+    ownedAppRevision,
+    "--context",
+    "kitty",
+    "--run-id",
+    ownedAppRunId,
+    "--known-hosts",
+    "/home/fixture/.ssh/known_hosts",
+    "--ssh-timeout-ms",
+    "240000",
+    "--rsync-timeout-ms",
+    "120000",
+    "--reattach-timeout-ms",
+    "2700000",
+  ])
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      {
+        runner: "ssh:fixture@fixture.invalid",
+        knownHosts: "/home/fixture/.ssh/known_hosts",
+        sshTimeoutMs: 0,
+      },
+      ownedAppRevision,
+      ownedAppRunId,
+    ),
+  ).toThrow(/--owned-app-ssh-timeout-ms requires a positive whole number of milliseconds/)
+})
+
 // The collector's own argv builder, through the real driver, to the files the collector reads next:
 // one run JSON in <output>/transport and a receipt bound to the collected revision. The run JSON is
 // a current producer fixture with explicit TODOs and its trusted frozen catalogue, parsed and classified

@@ -1301,8 +1301,8 @@ const SCREEN_OUTCOME: Readonly<Record<ScreenOutcome, string>> = {
   expected: "matched the expected result.",
   changed: "changed, but not to the expected result.",
   plain: "looked the same as plain text with no attribute set.",
-  ignored: "matched the ignored-command control rather than the expected result.",
-  walked: "matched the misparsed-parameter control instead of setting an underline color.",
+  ignored: "looked the same as when the command is ignored, not like the expected result.",
+  walked: "looked the same as when the color parameters are misread, with no underline color set.",
   "single-underline": "rendered the same as a single underline.",
   "plain-underline": "kept the plain underline with no color change.",
   held: "showed the expected result.",
@@ -1361,7 +1361,7 @@ function screenDetailSentences(detail: ScreenDetail, region?: Region): string[] 
       ]
     case "ligatures":
       return [
-        "Compared the ligature cells against isolated single-character controls.",
+        "Ligature cells matched isolated single-character controls.",
         "Every cell matched its isolated glyph with no ligature substitution.",
       ]
     case "scroll-up":
@@ -1388,10 +1388,10 @@ function screenDetailSentences(detail: ScreenDetail, region?: Region): string[] 
       ]
     case "pointer":
       return [
-        "Compared pointer-cursor captures after OSC 22 with the baseline capture.",
         detail.unchanged
-          ? "The cursor image matched the baseline and did not change."
-          : "The cursor image did not match the expected crosshair and restoration sequence.",
+          ? "Pointer cursor matched the baseline after OSC 22."
+          : "Pointer cursor after OSC 22 did not match the expected crosshair and restore sequence.",
+        "Compared pointer-cursor captures after OSC 22 with the baseline capture.",
       ]
   }
 }

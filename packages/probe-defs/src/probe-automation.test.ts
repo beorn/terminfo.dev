@@ -3883,9 +3883,9 @@ describe("headless charset cell evidence", () => {
     {
       id: "charsets.utf8",
       minCols: 5,
-      before: [..."Axy?Z"],
+      before: [..."Axy Z"],
       after: ["A", "é", "世", "", "Z"],
-      ignored: ["A", "x", "y", "?", "Z"],
+      ignored: ["A", "x", "y", " ", "Z"],
       wrong: ["A", "é", "?", "", "Z"],
       trigger: "世",
       targetCol: 1,
@@ -4090,7 +4090,7 @@ describe("headless charset cell evidence", () => {
           return { x: cursorX, y: 0, visible: true, style: "block" }
         },
         getCell(row, col) {
-          return { ...base.getCell(row, col), char: "Axy?Z"[col] ?? "" }
+          return { ...base.getCell(row, col), char: "Axy Z"[col] ?? "" }
         },
       }),
     )

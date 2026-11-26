@@ -276,7 +276,7 @@ describe("one real record per evidence kind (#37341)", () => {
       "Compared row 3, columns 3–33 of the screen with the expected result. Those cells looked the same as plain text with no attribute set.",
     )
     expect(card("probes-apps", KITTY, "modes.xtpopsgr").observed).toBe(
-      "Compared row 3, column 4 of the screen with the expected result. Those cells matched the ignored-command control rather than the expected result.",
+      "Compared row 3, column 4 of the screen with the expected result. Those cells looked the same as when the command is ignored, not like the expected result.",
     )
     expect(card("probes-apps", KITTY, "modes.decsscls").observed).toMatch(
       /^Checked row \d+ of the screen during a throttled scroll\. The content was already settled after \d+ ms, inside the \d+ ms throttled window\.$/,

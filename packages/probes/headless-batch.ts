@@ -53,7 +53,7 @@ import { createCallLog, withCallLog } from "viprobe"
 import { headlessRuntimeIdentity, readAdapterSources, type HeadlessProbeRuntime } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
-import { notTestedResult, NO_SAME_PATH_CONTROL } from "../probe-defs/src/helpers.ts"
+import { localeOf, notTestedResult, NO_SAME_PATH_CONTROL } from "../probe-defs/src/helpers.ts"
 
 /** Finalize the existing attempt without breaking its source-audited host-input citations. */
 export function finalizeHeadlessAttempt(
@@ -462,6 +462,7 @@ export function createLibProbeSource(
   const encodeKey =
     declaresKeyEncoding && typeof candidateEncodeKey === "function" ? candidateEncodeKey.bind(backend) : undefined
   return {
+    locale: () => localeOf(process.env),
     backendName: backend.name,
     kind: "live",
     nativeCellKeys: typeof backend.nativeCellKeys === "function" ? backend.nativeCellKeys.bind(backend) : undefined,

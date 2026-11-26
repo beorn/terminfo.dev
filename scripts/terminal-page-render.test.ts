@@ -20,6 +20,7 @@ import { createSSRApp } from "vue"
 import { createMarkdownRenderer } from "vitepress"
 import { afterAll, describe, expect, it } from "vitest"
 import { joinContextCells, type ContextFacts } from "../docs/data/app-cells.ts"
+import { platformIcon } from "../docs/.vitepress/theme/platform-icons.ts"
 
 const root = join(import.meta.dirname, "..")
 const PAGE = join(root, "docs", "terminals", "[id].md")
@@ -151,8 +152,10 @@ async function renderTerminalPage(selected: Record<string, unknown>): Promise<st
   const { createServer } = (await import(VITE)) as { createServer(options: unknown): Promise<SsrServer> }
   const vuePlugin = ((await import(VUE_PLUGIN)) as { default(options: unknown): unknown }).default
   // The panels below the bar (evidence cells, run history) are their own page-level components and are
-  // not what this proof is about; they stand here as inert elements.
-  const isCustomElement = (tag: string) => /^[A-Z]/.test(tag)
+  // not what this proof is about; they stand here as inert elements. The platform icon is rendered for real: the
+  // Feature support line is what #38757 finding 4 proves.
+  const rendered = new Set(["PlatformIcon"])
+  const isCustomElement = (tag: string) => /^[A-Z]/.test(tag) && !rendered.has(tag)
   const server = await createServer({
     root: out,
     configFile: false,
@@ -208,5 +211,24 @@ describe("the real terminal page renders one joined disagreement", () => {
     expect(rendered).not.toContain("screen-recording")
     expect(rendered).not.toContain("<dt>Configuration</dt>")
     expect(rendered).toContain("<SupportBar")
+  }, 60_000)
+
+  it("prints the Feature support line's platform as the home list does: its icon, then the version in mono (#38757 finding 4)", async () => {
+    const supported = (featureId: string) => ({ featureId, status: "supported", reason: "measured supported" })
+    const rendered = await renderTerminalPage(
+      selectionOf({ "sgr.bold": supported("sgr.bold"), "sgr.italic": supported("sgr.italic") }),
+    )
+    const line = /<p class="selected-run[^"]*">([\s\S]*?)<\/p>/u.exec(rendered)?.[1]
+    if (line === undefined) throw new Error("the Feature support panel printed no measurement line")
+    // The same element the home list's row draws (TermRow): the shared icon markup, its words only as the hover.
+    expect(line).toMatch(/<span class="term-platform" title="macOS"[^>]*>/u)
+    expect(line).toContain(platformIcon("macos"))
+    expect(line).toMatch(/<span class="term-version"[^>]*>1\.2\.3<\/span>/u)
+    const text = line
+      .replace(/<!--[\s\S]*?-->/gu, "")
+      .replace(/<[^>]+>/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim()
+    expect(text).toBe("Ghostty 1.2.3 · measured Nov 11, 2026")
   }, 60_000)
 })

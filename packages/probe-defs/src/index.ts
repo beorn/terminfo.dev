@@ -162,6 +162,7 @@ export {
   sentinelAnswer,
   sentinelGraceMs,
   utf8DecodingRefusal,
+  localeOf,
   withReplyFailureEvidence,
   type SentinelRead,
 } from "./helpers.ts"

@@ -60,3 +60,65 @@ test("a value that keeps a path separator refuses the record rather than publish
   expect(refused.status).toBe("refused")
   expect(refused.status === "refused" && refused.reason).toMatch(/pane still carries a path separator/)
 })
+
+test("Linux pts/<digits> tty names record canonical pts/<digits> directly while refusing non-pts or nested paths (#37209, @cto 53fa361e)", () => {
+  expect(ttyName("/dev/pts/3")).toBe("pts/3")
+  expect(ttyName("  pts/3 ")).toBe("pts/3")
+  const matched = recorded(
+    ownedHistoryReceipt({
+      surface: "wezterm",
+      pane: "0",
+      listedTty: "/dev/pts/3",
+      measuredTty: "pts/3",
+      socketPresent: true,
+      executable: "/nix/store/owned-wezterm/bin/wezterm",
+    }),
+  )
+  expect(matched).toEqual({
+    surface: "wezterm",
+    pane: "0",
+    listedTty: "pts/3",
+    measuredTty: "pts/3",
+    ttyMatch: true,
+    socketPresent: true,
+    executable: "wezterm",
+  })
+  expect(
+    recorded(
+      ownedHistoryReceipt({ surface: "wezterm", pane: "0", listedTty: "/dev/pts/3", measuredTty: "/dev/pts/4" }),
+    ),
+  ).toMatchObject({ listedTty: "pts/3", measuredTty: "pts/4", ttyMatch: false })
+  expect(
+    recorded(ownedHistoryReceipt({ surface: "wezterm", pane: "0", listedTty: "/dev/pts/3", measuredTty: "3" })),
+  ).toMatchObject({ listedTty: "pts/3", measuredTty: "3", ttyMatch: false })
+  expect(
+    recorded(ownedHistoryReceipt({ surface: "wezterm", pane: "0", listedTty: "/dev/pts/3", measuredTty: "pts%2F3" })),
+  ).toMatchObject({ listedTty: "pts/3", measuredTty: "pts%2F3", ttyMatch: false })
+
+  for (const invalidTty of ["/tmp/pts/3", "pts/3/child", "../pts/3", "pts\\3", "pts/", "pts/not-digits"]) {
+    const refusedListed = ownedHistoryReceipt({
+      surface: "wezterm",
+      pane: "0",
+      listedTty: invalidTty,
+      measuredTty: "/dev/pts/3",
+    })
+    expect(refusedListed.status).toBe("refused")
+    expect(refusedListed.status === "refused" && refusedListed.reason).toMatch(
+      /listedTty still carries a path separator/,
+    )
+    const refusedMeasured = ownedHistoryReceipt({
+      surface: "wezterm",
+      pane: "0",
+      listedTty: "/dev/pts/3",
+      measuredTty: invalidTty,
+    })
+    expect(refusedMeasured.status).toBe("refused")
+    expect(refusedMeasured.status === "refused" && refusedMeasured.reason).toMatch(
+      /measuredTty still carries a path separator/,
+    )
+  }
+
+  const refusedPane = ownedHistoryReceipt({ surface: "wezterm", pane: "pts/3", socketPresent: true })
+  expect(refusedPane.status).toBe("refused")
+  expect(refusedPane.status === "refused" && refusedPane.reason).toMatch(/pane still carries a path separator/)
+})

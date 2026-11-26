@@ -221,7 +221,10 @@ function readEscapeToken(normalized: string, index: number): { token: string; le
     if (csi) {
       const [full, prefix, params, inter, final] = csi
       const head = `${prefix ?? ""}${params ?? ""}`
-      const parts = ["ESC", "[", head, inter, final].filter(Boolean)
+      // A space intermediate is spelled SP, as the standards and features.json write it (`CSI Ps SP p`), so it
+      // is never read as a gap between tokens (#38757).
+      const intermediates = inter ? [...inter].map((c) => (c === " " ? "SP" : c)).join(" ") : ""
+      const parts = ["ESC", "[", head, intermediates, final].filter(Boolean)
       return { token: parts.join(" "), length: 2 + full.length }
     }
   }

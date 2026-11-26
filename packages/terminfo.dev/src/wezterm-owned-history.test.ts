@@ -211,6 +211,34 @@ test("the recorded receipt names the pane, both ttys and the socket's presence, 
   expect(JSON.parse(unmeasured.receipt)).toMatchObject({ listedTty: "ttys004", measuredTty: null, ttyMatch: null })
 })
 
+test("Linux /dev/pts/<digits> panes compare and record canonical pts/<digits> in the receipt (#37209)", () => {
+  child.spawnSync.mockImplementation((_file: string, args: readonly string[]) =>
+    args.includes("list")
+      ? panes([{ pane_id: 17, tty_name: "/dev/pts/3" }])
+      : { status: 0, stdout: Buffer.from("old\n\n" + "row\n".repeat(24)), stderr: Buffer.alloc(0) },
+  )
+  const read = readOwnedWezTermHistory({ executable, socket, pane, tty: "/dev/pts/3", rows: 24 })
+  if (read.status !== "read") throw new Error(read.reason)
+  expect(JSON.parse(read.receipt)).toEqual({
+    surface: "wezterm",
+    pane: "17",
+    listedTty: "pts/3",
+    measuredTty: "pts/3",
+    ttyMatch: true,
+    socketPresent: true,
+    executable: "wezterm",
+  })
+
+  child.spawnSync.mockReset()
+  child.spawnSync.mockReturnValue(panes([{ pane_id: 17, tty_name: "/dev/pts/3" }]))
+  const mismatch = readOwnedWezTermHistory({ executable, socket, pane, tty: "/dev/pts/4", rows: 24 })
+  expect(mismatch.status).toBe("refused")
+  expect(mismatch.status === "refused" ? mismatch.reason : "").toMatch(
+    /lists TTY "\/dev\/pts\/3", not this run's measured "\/dev\/pts\/4"/,
+  )
+  expect(child.spawnSync).toHaveBeenCalledTimes(1)
+})
+
 test("the owned pane reads its history through --pane-id on this run's socket", () => {
   child.spawnSync.mockImplementation(
     (file: string, args: readonly string[], options: { env: Record<string, string> }) => {
