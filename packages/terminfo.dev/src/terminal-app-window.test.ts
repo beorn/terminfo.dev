@@ -851,6 +851,57 @@ describe("an owned-Mac app claim is re-proved live, never trusted", () => {
   })
 })
 
+describe("37257 Terminal.app close sheet", () => {
+  const window = { provider: "terminal-app", windowId: 1380, tty: "/dev/ttys006" } as OwnedTerminalWindow
+  const reply = (stdout: string, status = 0) => ({ status, stdout, stderr: "" }) as ReturnType<typeof spawnSync>
+
+  test("a close that leaves its own terminate sheet dismisses it and proves zero by id", () => {
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce(reply("1\n"))
+      .mockReturnValueOnce(reply(JSON.stringify({ status: "pressed", candidates: 1, sheets: 1, pressed: 1 })))
+      .mockReturnValueOnce(reply("0\n"))
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as {
+      remaining: number
+      dismissal: { status: string; pressed: number }
+    }
+    expect(result.remaining).toBe(0)
+    expect(result.dismissal).toMatchObject({ status: "pressed", pressed: 1 })
+    const scripts = vi.mocked(spawnSync).mock.calls.map((call) => String(call[1]?.[3] ?? ""))
+    expect(scripts.some((script) => script.includes("AXSheet"))).toBe(true)
+  })
+
+  test("a sheet that cannot be dismissed still refuses with the trace", () => {
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce(reply("1\n"))
+      .mockReturnValueOnce(reply(JSON.stringify({ status: "no-sheet", candidates: 1, sheets: 0, pressed: 0 })))
+    vi.mocked(spawnSync).mockReturnValue(reply("1\n"))
+    expect(() => closeOwnedTerminalWindow(window)).toThrow(
+      /close sheet was dismissed and the window id is still listed/,
+    )
+  })
+
+  test("an untrusted Accessibility process refuses the dismissal by name", () => {
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce(reply("1\n"))
+      .mockReturnValueOnce(
+        reply(JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" })),
+      )
+    expect(() => closeOwnedTerminalWindow(window)).toThrow(/not trusted for Accessibility/)
+  })
+
+  test("a zero-match on the first close needs no sheet", () => {
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockReturnValueOnce(reply("0\n"))
+    const result = JSON.parse(String(closeOwnedTerminalWindow(window))) as { remaining: number; dismissal?: unknown }
+    expect(result.remaining).toBe(0)
+    expect(result.dismissal).toBeUndefined()
+    expect(vi.mocked(spawnSync)).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("37257 Terminal.app tab title", () => {
   const composite = "runner — target-A — osascript ◂ collect.command — 120×30"
   const reply = (

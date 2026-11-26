@@ -624,6 +624,149 @@ export function assertOwnedTerminalWindow(window: OwnedTerminalWindow, daemonPid
   }
 }
 
+/**
+ * 37257 close path (@chief 2026-11-26): a Terminal window whose login shell is still alive answers `close` with its
+ * own "Do you want to terminate running processes in this window?" sheet, so the window stays and the run's
+ * zero-match obligation fails even though nothing is wrong with the measurement. The sheet is Terminal's own, on the
+ * run's own window: this pass finds that window by the recorded id, matches the accessibility window on the window's
+ * exact name, presses the sheet's Terminate button through AX (System Events is not permitted on the run host), and the
+ * caller then re-reads the id's count until it is zero. Nothing here is a title read or a window observation.
+ */
+export const TERMINAL_APP_CLOSE_SHEET_SCRIPT = `ObjC.import("AppKit"); ObjC.import("ApplicationServices");
+function run(argv) {
+  var windowId = Number(argv[0]);
+  function attribute(element, name) {
+    var ref = Ref();
+    var error = Number($.AXUIElementCopyAttributeValue(element, $(name), ref));
+    return { error: error, value: error === 0 ? ref[0] : undefined };
+  }
+  function text(value) {
+    if (value === undefined) return null;
+    var object = ObjC.castRefToObject(value);
+    if (object.isKindOfClass($.NSString)) return ObjC.unwrap(object);
+    return null;
+  }
+  try {
+    var app = Application("Terminal");
+    if (!app.running()) return JSON.stringify({ status: "no-window", reason: "Terminal is not running" });
+    var matches = [];
+    for (var w = 0; w < app.windows.length; w++) if (Number(app.windows[w].id()) === windowId) matches.push(app.windows[w]);
+    if (matches.length !== 1) return JSON.stringify({ status: "no-window", reason: "the owned window id is not present exactly once" });
+    var name = String(matches[0].name());
+    if (!Boolean($.AXIsProcessTrusted())) return JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" });
+    var running = $.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.apple.Terminal");
+    if (Number(running.count) !== 1) return JSON.stringify({ status: "refused", reason: Number(running.count) + " running Terminal processes" });
+    var list = attribute($.AXUIElementCreateApplication(Number(running.objectAtIndex(0).processIdentifier)), "AXWindows");
+    if (list.error !== 0) return JSON.stringify({ status: "refused", reason: "AXWindows AXError " + list.error });
+    var windows = ObjC.castRefToObject(list.value), candidates = 0, sheets = 0, pressed = 0;
+    for (var i = 0; i < Number(windows.count); i++) {
+      var win = windows.objectAtIndex(i);
+      if (text(attribute(win, "AXTitle").value) !== name) continue;
+      candidates += 1;
+      var children = attribute(win, "AXChildren");
+      if (children.error !== 0) continue;
+      var kids = ObjC.castRefToObject(children.value);
+      for (var c = 0; c < Number(kids.count); c++) {
+        var kid = kids.objectAtIndex(c);
+        if (text(attribute(kid, "AXRole").value) !== "AXSheet") continue;
+        sheets += 1;
+        var sheetChildren = attribute(kid, "AXChildren");
+        if (sheetChildren.error !== 0) continue;
+        var buttons = ObjC.castRefToObject(sheetChildren.value);
+        for (var b = 0; b < Number(buttons.count); b++) {
+          var button = buttons.objectAtIndex(b);
+          if (text(attribute(button, "AXRole").value) !== "AXButton") continue;
+          if (text(attribute(button, "AXTitle").value) !== "Terminate") continue;
+          if (Number($.AXUIElementPerformAction(button, $("AXPress"))) === 0) pressed += 1;
+        }
+      }
+    }
+    return JSON.stringify({ status: pressed > 0 ? "pressed" : candidates === 0 ? "no-window" : sheets === 0 ? "no-sheet" : "no-terminate", candidates: candidates, sheets: sheets, pressed: pressed });
+  } catch (error) {
+    return JSON.stringify({ status: "refused", reason: "the dismissal raised", message: String(error && error.message ? error.message : error) });
+  }
+}`
+
+/** Count the windows with one recorded id; zero is the only success, and Terminal being gone is zero. */
+export const TERMINAL_APP_WINDOW_COUNT_SCRIPT = `function run(argv) {
+  var windowId = Number(argv[0]);
+  var app = Application("Terminal");
+  if (!app.running()) return "0";
+  var count = 0;
+  for (var w = 0; w < app.windows.length; w++) if (Number(app.windows[w].id()) === windowId) count += 1;
+  return String(count);
+}`
+
+export type TerminalAppCloseSheetReply =
+  | { status: "pressed"; candidates: number; sheets: number; pressed: number }
+  | {
+      status: "no-window" | "no-sheet" | "no-terminate"
+      candidates: number
+      sheets: number
+      pressed: number
+      reason?: string
+    }
+  | { status: "refused"; reason: string; message?: string }
+
+/** One JXA osascript run of a close-path script; the default spawns /usr/bin/osascript with a 10 s kill. */
+export type TerminalAppCloseRun = (
+  script: string,
+  argv: readonly string[],
+) => { stdout: string; stderr: string; status: number | null; error?: Error }
+
+const defaultCloseRun: TerminalAppCloseRun = (script, argv) => {
+  const result = spawnSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", script, ...argv], {
+    encoding: "utf8",
+    timeout: 10_000,
+    killSignal: "SIGKILL",
+  })
+  return {
+    stdout: String(result.stdout ?? ""),
+    stderr: String(result.stderr ?? ""),
+    status: result.status,
+    ...(result.error !== undefined && { error: result.error }),
+  }
+}
+
+/** Press the owned window's own close sheet, if it has one; anything but a press is reported by name. */
+export function dismissTerminalAppCloseSheet(
+  windowId: number,
+  run: TerminalAppCloseRun = defaultCloseRun,
+): TerminalAppCloseSheetReply {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app close sheet: invalid window id")
+  const result = run(TERMINAL_APP_CLOSE_SHEET_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app close sheet: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const reply = JSON.parse(result.stdout) as Record<string, unknown>
+  const ok =
+    typeof reply === "object" &&
+    reply !== null &&
+    (reply.status === "pressed" ||
+      reply.status === "no-window" ||
+      reply.status === "no-sheet" ||
+      reply.status === "no-terminate" ||
+      reply.status === "refused")
+  if (!ok) throw new Error(`Terminal.app close sheet: the reply had no known shape: ${result.stdout}`)
+  return reply as TerminalAppCloseSheetReply
+}
+
+/** How many Terminal windows carry one recorded id; a missing or unreadable count is a thrown failure. */
+export function countTerminalAppWindows(windowId: number, run: TerminalAppCloseRun = defaultCloseRun): number {
+  if (!Number.isSafeInteger(windowId) || windowId < 1) throw new Error("Terminal.app window count: invalid window id")
+  const result = run(TERMINAL_APP_WINDOW_COUNT_SCRIPT, [String(windowId)])
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(
+      `Terminal.app window count: osascript ${result.error ? "could not start" : `exit ${String(result.status)}`}: ${result.stderr.trim() || result.error?.message || ""}`,
+    )
+  }
+  const text = result.stdout.trim()
+  if (!/^[0-9]+$/.test(text)) throw new Error(`Terminal.app window count: not a count: ${result.stdout}`)
+  return Number(text)
+}
+
 /** Recheck and close atomically in the same operation: AppleScript closes Terminal; kitty, cli-process and
  * iTerm2 signal their recorded pid, and iTerm2 then proves the window server lists none of its windows. */
 export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | void {
@@ -631,7 +774,7 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
     case "terminal-app": {
       const argv = ["-e", ownedWindowScript(window, true)]
       const result = spawnSync("osascript", argv, { encoding: "utf8", timeout: 15_000 })
-      const trace = {
+      const trace: Record<string, unknown> = {
         windowId: window.windowId,
         tty: window.tty,
         command: "osascript",
@@ -641,11 +784,37 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
         stderr: String(result.stderr ?? ""),
         ...(result.error && { error: result.error.message }),
       }
-      if (result.error || result.status !== 0 || trace.stdout.trim() !== "0") {
+      if (result.error || result.status !== 0) {
         throw Object.assign(new Error("Owned Terminal window close and zero-match absence could not be proved"), {
           name: "CaptureRestoreFailed",
           captureCommand: trace,
         })
+      }
+      if (String(trace.stdout).trim() !== "0") {
+        // 37257: the window stayed because Terminal put up its own "terminate running processes?" sheet for the
+        // still-live login shell. Press that sheet's Terminate on the run's own window, then prove zero by id.
+        const dismissal = dismissTerminalAppCloseSheet(window.windowId)
+        trace.dismissal = dismissal
+        if (dismissal.status === "refused") {
+          throw Object.assign(
+            new Error(`Owned Terminal window close and zero-match absence could not be proved: ${dismissal.reason}`),
+            { name: "CaptureRestoreFailed", captureCommand: trace },
+          )
+        }
+        let remaining = countTerminalAppWindows(window.windowId)
+        for (let attempt = 0; remaining !== 0 && attempt < 50; attempt += 1) {
+          spawnSync("sleep", ["0.1"])
+          remaining = countTerminalAppWindows(window.windowId)
+        }
+        trace.remainingAfterDismissal = remaining
+        if (remaining !== 0) {
+          throw Object.assign(
+            new Error(
+              "Owned Terminal window close and zero-match absence could not be proved: the close sheet was dismissed and the window id is still listed",
+            ),
+            { name: "CaptureRestoreFailed", captureCommand: trace },
+          )
+        }
       }
       return JSON.stringify({ ...trace, remaining: 0 })
     }
