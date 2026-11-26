@@ -85,7 +85,6 @@ function kittySource(answer: boolean, resets = true, permanent = false): TermPro
 test.each([
   ["sgr.bold", "1"],
   ["cursor.hide", "set (Ps 1) -> reset (Ps 2)"],
-  ["modes.insert-replace", "set (Ps 1) -> reset (Ps 2)"],
 ] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
   // This contract exercises query-only readback; an owned capture would decide visual SGR instead.
   const source = kittySource(true)
@@ -98,11 +97,28 @@ test.each([
   else expect(result.assertions?.[0]?.observed).toBe(observed)
 })
 
+// #38772 (@cpo/term 56269cef): IRM's DECRQM toggle is recognition, never the pass. With no cell route it reads
+// Untestable, "Recognized; effect not tested"; with one, the inserted cell decides (modes-observations.test.ts).
+test("modes.insert-replace reads a clean query-only DECRQM toggle as recognized, never supported", async () => {
+  const { capture: _capture, ...queryOnly } = kittySource(true)
+  const result = await termProbe("modes.insert-replace")(queryOnly)
+  expect(result.pass).toBe(false)
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toEqual([
+    expect.objectContaining({
+      status: "untestable",
+      reason: expect.stringContaining("DECRQM mode 4 reads set (Ps 1) after CSI 4 h and reset (Ps 2) after CSI 4 l"),
+    }),
+  ])
+})
+
 // #30557 r2: the toggle cells store the Ps, so a permanently reset mode (Ps 4) grades unsupported and reads as such.
 test.each(["cursor.hide", "modes.insert-replace"] as const)(
   "%s grades a permanently reset mode unsupported and stores the Ps",
   async (id) => {
-    const result = await termProbe(id)(kittySource(true, true, true))
+    // IRM with a capture grades its cells (#38772), so the refusal reading is the query-only path.
+    const { capture: _capture, ...queryOnly } = kittySource(true, true, true)
+    const result = await termProbe(id)(id === "modes.insert-replace" ? queryOnly : kittySource(true, true, true))
     expect(result.pass).toBe(false)
     expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(result.assertions?.[0]).toMatchObject({
