@@ -31,7 +31,6 @@ import { applyHeld, HELD_NEGATIVES, supportedSuites, type HeldMarker } from "./h
 import { applyOuterAbsent, type OuterAbsentMarker } from "./mux-outer-demotion.ts"
 import type { CurrentTraceDocument, TraceIdentityRuleCheck } from "./run-trace.ts"
 import {
-  type Interpretation,
   type ProbeResult,
   type ProbeStatus,
   type FeatureResultStatus,
@@ -87,6 +86,7 @@ export type ProjectionRun = Pick<
   | "runId"
   | "sha256"
   | "subject"
+  | "observers"
   | "measuredAt"
   | "suiteId"
   | "probeHash"
@@ -138,6 +138,7 @@ function compactRun(run: LoadedRun, readRaw: () => RunTraceFacts): ProjectionRun
     runId: run.runId,
     sha256: run.sha256,
     subject: run.subject,
+    ...(run.observers && { observers: [...run.observers] }),
     measuredAt: run.measuredAt,
     suiteId: run.suiteId,
     probeHash: run.probeHash,
@@ -193,6 +194,7 @@ export interface SelectedVersion {
   schemaVersion: 1 | 2
   runId: string
   subject: ProbeSubject
+  observers?: string[]
   measuredAt: string
   suiteId: string
   probeHash: string | null
@@ -212,7 +214,7 @@ export interface SelectedVersion {
     label: "old callback result, unverified"
     results: Record<string, UngradedDiagnostic>
   }
-  reviews: Array<Pick<Interpretation, "id" | "reviewer" | "reason" | "sources">>
+  reviews: Array<{ id: string; reviewer: string; reason: string; sources: string[] }>
   counts: {
     catalog: number
     tested: number
@@ -248,6 +250,7 @@ export interface CurrentSelectedVersion {
   source?: RunDraft["source"]
   runId: string
   subject: ProbeSubject
+  observers?: string[]
   measuredAt: string
   suiteId: string
   probeHash: string
@@ -607,6 +610,7 @@ export function projectResults(
       ...(run.schemaVersion === 4 ? { source: run.source } : {}),
       runId: run.runId,
       subject: run.subject,
+      ...(run.observers && { observers: [...run.observers] }),
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
       probeHash: run.probeHash,

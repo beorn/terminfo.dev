@@ -541,6 +541,8 @@ export interface OwnedTerminal {
   readonly captureWindowSelection?: "largest" | "unique"
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
+  /** Observer-only switches this arm turned on (#37780, @cto e81def55); outside subject identity. */
+  readonly observers?: readonly string[]
   /** The hosted app's declared self-repainting chrome strip, for capture calibration (33056). Absent: whole window. */
   readonly captureChromeBand?: CaptureChromeBand
   /** The hosted app's declared wait after launch, before the first probe (37225). Absent: no wait. */
@@ -2917,6 +2919,10 @@ export async function createOwnedTerminal(options: {
       // 34570: the hosted iTerm2 tab's own prompt marks, through the same API owner and TTY-matched
       // session as its cell read. Only the prompt rows (OSC 133, and OSC 633 since 34866) take it; every
       // other row keeps its own callback.
+      ...(darwinTextApp === "iterm2" &&
+        muxAttachmentProof === undefined && {
+          observers: ["iterm2: EnableAPIServer true"] as const,
+        }),
       ...(darwinTextApp === "iterm2" &&
         darwinTextTty !== undefined &&
         muxAttachmentProof === undefined && {

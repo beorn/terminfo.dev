@@ -52,7 +52,8 @@ export { parseObservationFrames, validateObservation, validateObservationOutcome
 import { parseJsonStrict } from "./json.ts"
 export { parseJsonStrict, canonicalJson, FEATURE_ENTRY_PROSE_DENYLIST, boundFeatureEntry } from "./json.ts"
 // The catalogue loader validates a row's declared silence rule against the recorder's own rule list (#33165).
-export { SILENCE_RULES, type SilenceDeclaration } from "@terminfo/probe-defs"
+export { SILENCE_RULES, KNOWN_OBSERVERS, type SilenceDeclaration, type KnownObserver } from "@terminfo/probe-defs"
+import { KNOWN_OBSERVERS } from "@terminfo/probe-defs"
 import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
 export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }
@@ -62,6 +63,8 @@ interface LoadedRunFields {
   sha256: string
   runId: string
   subject: ProbeSubject
+  /** Observer-only switches this run turned on (#37780, @cto e81def55); outside subject identity. */
+  observers?: string[]
   identity: Run["identity"]
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
@@ -1509,6 +1512,7 @@ export function parseRun(
         "sourceRevision",
         "intendedSubject",
         "subject",
+        "observers",
         "identity",
         "runtimeIdentity",
         "provenance",
@@ -1530,6 +1534,21 @@ export function parseRun(
     parseCurrentSource(raw.source, path)
   }
   const subject = parseSubject(raw.subject, path, schemaVersion)
+  let observers: string[] | undefined
+  if (raw.observers !== undefined) {
+    if (!Array.isArray(raw.observers) || raw.observers.length === 0 || !raw.observers.every(nonempty)) {
+      fail(path, "observers must be a non-empty list of switch names")
+    }
+    for (const entry of raw.observers) {
+      if (!(KNOWN_OBSERVERS as readonly string[]).includes(entry)) {
+        fail(path, `unknown observer switch ${JSON.stringify(entry)}; allowed: ${KNOWN_OBSERVERS.join(", ")}`)
+      }
+    }
+    if (new Set(raw.observers).size !== raw.observers.length) {
+      fail(path, "observers cannot contain duplicates")
+    }
+    observers = [...raw.observers]
+  }
   const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, subject, path, schemaVersion)
   const runId = asString(raw.runId, path, "runId")
   if (schemaVersion === 4) {
@@ -1719,6 +1738,7 @@ export function parseRun(
     intendedSubject: normalizeIntendedSubject(raw.intendedSubject, schemaVersion, path),
     runId,
     subject: subject,
+    ...(observers && { observers }),
     identity: traceFacts.identity,
     ...(runtimeIdentity && { runtimeIdentity }),
     ...(provenance && { provenance }),

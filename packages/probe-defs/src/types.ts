@@ -211,6 +211,10 @@ export interface ProbeResult {
   assertionType?: AssertionType
 }
 
+/** The short allowlist of observer-only switches a run's `observers` field may record (#37780, @cto e81def55). */
+export const KNOWN_OBSERVERS = ["iterm2: EnableAPIServer true"] as const
+export type KnownObserver = (typeof KNOWN_OBSERVERS)[number]
+
 /** A private in-flight run; intended subject is never measured identity/provenance. */
 export interface RunDraft {
   schemaVersion: 4
@@ -229,6 +233,8 @@ export interface RunDraft {
   sourceRevision: string
   intendedSubject: Partial<ProbeSubject>
   subject?: ProbeSubject
+  /** Observer-only switches this run turned on (#37780, @cto e81def55); outside subject identity. */
+  observers?: string[]
   identity?: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
@@ -1253,7 +1259,7 @@ export interface DarwinMuxAttachmentProof {
 /** One arm per platform, keyed by `platform` (#30518 D4). */
 export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentProof
 
-/** Raw run records are immutable; review decisions live in Interpretation. */
+/** Raw run records are immutable (schemaVersion 2). */
 export interface HistoricalRun {
   schemaVersion: 2
   runId: string
@@ -1304,36 +1310,6 @@ export interface RunProvenance {
   }
   fixture: { definition: string; config: string; font: string; geometry: string; display: string; gl: string }
 }
-
-export interface HistoricalInterpretation {
-  id: string
-  /** An exact sealed-run overlay names buildable instrumentation work without rewriting the capture. */
-  decision?: "tool-gap"
-  /** A review of identity or community origin must name the exact immutable run. */
-  runId?: string
-  /** SHA256 of the exact raw run bytes; a review cannot move to another capture. */
-  runSha256?: string
-  reviewer: string
-  reason: string
-  scope: {
-    subject: Pick<ProbeSubject, "kind" | "id">
-    versions: [string, string]
-    suites: [string, string]
-  }
-  sources: string[]
-  supersedes: string[]
-  featureId?: string
-  observation?: Omit<Observation, "assertionType"> & { assertionType?: AssertionType }
-  reviewed?: boolean
-  verifiesIdentity?: boolean
-  /** Controls evidence shown by the site and API; not a privacy control in this public repository. */
-  presentsEvidence?: boolean
-  /** Required on a presentation decision: the non-author acceptor, their GO message id and an ISO time with an offset. */
-  accepted?: { by: string; wire: string; at: string }
-  origin?: "documentation"
-}
-
-export type Interpretation = HistoricalInterpretation
 
 /**
  * One sequence a library reported as passed through unhandled. The binding records the number only:

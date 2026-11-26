@@ -358,6 +358,11 @@ export function loadFullProbes(): ProbeData {
   const observers: ProbeData["observers"] = Object.fromEntries(
     Object.entries(runObservers).map(([runId, row]) => [runId, [...row.observers]]),
   )
+  for (const run of Object.values(projection.history).flat()) {
+    if (run.observers?.length) {
+      observers[run.runId] = [...new Set([...(observers[run.runId] ?? []), ...run.observers])]
+    }
+  }
   const stats: ProbeData["stats"] = {}
   const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(bySubject)
   for (const [key, { selected }] of bySubject) {

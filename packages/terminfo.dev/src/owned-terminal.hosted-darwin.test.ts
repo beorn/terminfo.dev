@@ -671,6 +671,7 @@ test("retains native iTerm protocol frames with their checkpoint and unchanged r
     const retained = []
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
+    assert.deepEqual(owner.observers, ["iterm2: EnableAPIServer true"])
     const labels = ["text qualification soft-wrap target", "text qualification prior-scrollback control"]
     try {
       for (const label of [...labels, "another checkpoint"]) {
@@ -780,6 +781,7 @@ test("retains Terminal.app's refused text and history replies with their checkpo
     const retained = []
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
+    assert.equal(owner.observers, undefined)
     const labels = ["text qualification soft-wrap target", "text qualification prior-scrollback control"]
     try {
       for (const label of [...labels, "another checkpoint"]) {
@@ -1347,6 +1349,7 @@ test("a hosted cmux arm reads its own surface, and a changed ancestor refuses by
     process.stdout.write = (chunk) => { writes.push(String(chunk)); return true }
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" }, onRetained: (artifact) => retained.push(artifact) })
+    assert.equal(owner.observers, undefined)
     assert.equal(owner.hostedAppId, "cmux")
     assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.getScrollback, "function")

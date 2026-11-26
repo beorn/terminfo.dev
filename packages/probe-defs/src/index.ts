@@ -76,10 +76,12 @@ export {
   ASSERTION_TYPES,
   HOST_INPUT_NAMES,
   SILENCE_RULES,
+  KNOWN_OBSERVERS,
   REPLY_FAILURE_MATCH_STATES,
   frameDigests,
   type SilenceDeclaration,
   type SilenceRule,
+  type KnownObserver,
   type ReplyFailureMatchState,
   type ReplyFailureAttempt,
   type ReplyFailureEvidence,
@@ -120,7 +122,6 @@ export type {
   LinuxMuxAttachmentProof,
   DarwinMuxAttachmentProof,
   RunProvenance,
-  Interpretation,
 } from "./types.ts"
 export {
   SOURCE_NEGATIVE_REVIEW,
@@ -358,7 +359,6 @@ export type {
   ProbeTestInput,
   RunDraft,
   CurrentRun,
-  HistoricalInterpretation,
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult } from "./helpers.ts"
 
