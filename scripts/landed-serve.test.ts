@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync, spawn, spawnSync } from "node:child_process"
+import { createServer } from "node:http"
 import { fileURLToPath } from "node:url"
 import {
   buildLanding,
@@ -483,26 +484,55 @@ describe("landed-serve hourly-run rebuild", () => {
       return repo
     }
 
-    it("fills a landing that left content out, and a full checkout runs no git at all", () => {
+    it("fills a landing that left content out, and a full checkout runs no git at all", async () => {
       const repo = sparseCheckout()
       expect(existsSync(join(repo, "content"))).toBe(false)
-      expect(fillLandingContent(repo)).toBeNull()
+      expect(await fillLandingContent(repo)).toBeNull()
       expect(readFileSync(join(repo, "content", "terminals", "kitty.json"), "utf8")).toBe("{}\n")
       const calls: string[][] = []
-      expect(fillLandingContent(repo, (args) => void calls.push([...args]))).toBeNull()
+      expect(await fillLandingContent(repo, async (args) => void calls.push([...args]))).toBeNull()
       expect(calls).toEqual([])
     })
 
-    it("a failed fill names the landing and the rule", () => {
+    // @dev/4 d50473a3: the synchronous fill blocked the serving process 22.5 s, past hab's 15 s health probe. The
+    // real default git runs here (a slow fake on PATH), and the server in this same process must answer meanwhile.
+    it("a slow fill leaves the serving process answering requests while it runs", async () => {
+      const root = mkdtempSync(join(tmpdir(), "landed-serve-slowfill-"))
+      const bin = join(root, "bin")
+      const repo = join(root, "terminfo.dev")
+      mkdirSync(bin)
+      mkdirSync(repo)
+      writeFileSync(join(bin, "git"), `#!/bin/sh\nsleep 2\nmkdir "${repo}/content"\n`, { mode: 0o755 })
+      const server = createServer((_req, res) => res.end("served"))
+      await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready))
+      const { port } = server.address() as { port: number }
+      const path = process.env.PATH
+      process.env.PATH = `${bin}:${path ?? ""}`
+      try {
+        let settled = false
+        const fill = fillLandingContent(repo).finally(() => {
+          settled = true
+        })
+        process.env.PATH = path
+        const answered = await (await fetch(`http://127.0.0.1:${port}/`)).text()
+        expect({ answered, fillStillRunning: !settled }).toEqual({ answered: "served", fillStillRunning: true })
+        expect(await fill).toBeNull()
+      } finally {
+        process.env.PATH = path
+        await new Promise((closed) => server.close(closed))
+      }
+    })
+
+    it("a failed fill names the landing and the rule", async () => {
       const repo = sparseCheckout()
-      const failing = () => {
+      const failing = async () => {
         throw Object.assign(new Error("git exited 128"), { stderr: "fatal: unable to write index" })
       }
-      const reason = fillLandingContent(repo, failing)
+      const reason = await fillLandingContent(repo, failing)
       expect(reason).toContain(LANDING_CONTENT_RULE)
       expect(reason).toContain(repo)
       expect(reason).toContain("fatal: unable to write index")
-      expect(fillLandingContent(repo, () => undefined)).toContain("is still absent")
+      expect(await fillLandingContent(repo, async () => undefined)).toContain("is still absent")
     })
 
     it("a build whose content cannot be filled keeps the previous build serving and never runs the build", async () => {

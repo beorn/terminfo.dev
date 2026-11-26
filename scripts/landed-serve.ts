@@ -41,7 +41,7 @@
  * a pre-existing staging or retired tree of unproven origin is retained evidence, not scratch (@cto 2026-11-22,
  * #34952).
  */
-import { execFileSync, spawn } from "node:child_process"
+import { execFile, execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -346,24 +346,28 @@ const LANDING_CONTENT_FILL_TIMEOUT_MS = 10 * 60 * 1000
  * because only the landing the preview serves reads it. Fill it here, in that landing, before a build reads it:
  * turning the sparse checkout off is the fill, and on a checkout that was never sparse nothing runs. Returns null when
  * content is present, else the reason it is not, naming the landing and {@link LANDING_CONTENT_RULE}.
+ *
+ * Asynchronous on purpose: the fill writes back ~113k files (about 20 s on hab1), and it runs in the process that
+ * serves the previous build. A synchronous fill froze that server past hab's 15 s health probe, so the follow read
+ * the site as dead and rolled the pin back (landing 48f59313, 2026-11-26 05:43Z, @dev/4 d50473a3).
  */
-export function fillLandingContent(
+export async function fillLandingContent(
   root: string = repoRoot,
-  git: (args: readonly string[]) => void = (args) => {
-    execFileSync("git", [...args], {
-      cwd: root,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: LANDING_CONTENT_FILL_TIMEOUT_MS,
-    })
-  },
-): string | null {
+  git: (args: readonly string[]) => Promise<void> = (args) =>
+    new Promise((resolve, reject) => {
+      execFile("git", [...args], { cwd: root, timeout: LANDING_CONTENT_FILL_TIMEOUT_MS }, (error, _stdout, stderr) => {
+        if (error === null) resolve()
+        else reject(Object.assign(error, { stderr }))
+      })
+    }),
+): Promise<string | null> {
   const content = join(root, "content")
   if (existsSync(content)) return null
   console.log(
     `terminfo-site: ${content} is absent (${LANDING_CONTENT_RULE}); filling it with git sparse-checkout disable`,
   )
   try {
-    git(["-C", root, "sparse-checkout", "disable"])
+    await git(["-C", root, "sparse-checkout", "disable"])
   } catch (error) {
     const stderr = (error as { stderr?: Buffer | string }).stderr?.toString().trim()
     return `${LANDING_CONTENT_RULE}: the fill failed in ${root}: ${stderr || (error instanceof Error ? error.message : String(error))}`
@@ -400,7 +404,7 @@ export async function buildLanding(
   // checkout's HEAD is that pin, and `target` is it; the build has no other way to know a landing is the caller.
   // hh#37605: a landing that left content out gets it here, beside the served build; a failed fill is a failed build,
   // so the previous build keeps serving and the marker records why.
-  const unfilled = fillLandingContent(args.contentRoot ?? repoRoot)
+  const unfilled = await fillLandingContent(args.contentRoot ?? repoRoot)
   const status =
     unfilled !== null
       ? null
