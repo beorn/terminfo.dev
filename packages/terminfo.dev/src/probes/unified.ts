@@ -1327,6 +1327,15 @@ async function runProbeBatchInRun(
               return reading.status === "measured" ? { ...reading, mux } : reading
             }
           : read
+      // #38699: the OSC7577_TOKEN reading comes from the same child read and names the mux the same way.
+      const token = options.ownedTerminal?.readProgramResumeToken
+      probeSource.readProgramResumeToken =
+        token && mux
+          ? async () => {
+              const reading = await token()
+              return reading.status === "measured" ? { ...reading, mux } : reading
+            }
+          : token
     }
     const subjectMux =
       options.ownedTerminal?.muxAttachmentProof?.mux ??

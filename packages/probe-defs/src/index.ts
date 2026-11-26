@@ -39,6 +39,7 @@ export type {
   TerminalScrollbackReading,
   TerminalScrollbackReset,
   TermFeaturesReading,
+  ProgramResumeTokenReading,
   AppSemanticReading,
   RenderedWidthResult,
   TerminalQueryOutcome,

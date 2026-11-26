@@ -1324,7 +1324,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       echo "WezTerm prelaunch owner digest unavailable; report rows remain invalid" >&2
     fi
   fi
-  unset TERM_FEATURES
+  unset TERM_FEATURES OSC7577_TOKEN
   export TERMINFO_TERM_FEATURES_LAUNCH="$TERMINFO_RUN_ID"
   nice -n 10 "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
     "${collector_command[@]}" >/out/daemon.log 2>&1 &

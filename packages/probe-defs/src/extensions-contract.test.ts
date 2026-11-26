@@ -651,7 +651,8 @@ test.each(["supported", "unsupported", "missing-reader"] as const)("OSC 133;P ob
 })
 
 /**
- * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
+ * The 80 extension features (79 defined through extensions.ts + 1 catalog-only in features.json; #38699 added
+ * OSC 7577's token row, an App environment read declared Untestable for every library).
  * 42 protocol queries are decided in real terminal runs; 36 unasserted/state probes evaluate to
  * inconclusive pending external apparatus or capture; 1 catalog feature lacks a probe definition.
  */
@@ -811,6 +812,12 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     id: "extensions.osc3008-context",
     expected: "inconclusive",
     claim: "Systemd context (OSC 3008): ESC ] 3008 ; params BEL",
+  },
+  {
+    id: "extensions.osc7577-token",
+    expected: "not-tested",
+    claim:
+      "Program resume token (OSC 7577, spec rev 0.5): an App export into the pane's first process; a library spawns no child, so it is declared Untestable there",
   },
   {
     id: "extensions.osc113-reset-pointer-fg",
@@ -1292,8 +1299,8 @@ test("the extensions contract covers every extension feature and names none unkn
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(79)
-  expect(EXTENSIONS_CONTRACT).toHaveLength(79)
+  expect(extensionsProbes).toHaveLength(80)
+  expect(EXTENSIONS_CONTRACT).toHaveLength(80)
 })
 
 test("the extensions contract names its focused tests, and every named file exists", () => {

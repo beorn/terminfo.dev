@@ -15,7 +15,7 @@ import { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./e
  * itself rather than against a second hand-kept list:
  * - each of the nine is recorded manual with the "manual by design" reason;
  * - the named-unavailable viewport position is NOT one of the nine;
- * - the union of graded + environment is the recorded 273 ids, and the two sets are disjoint.
+ * - the union of graded + environment is the recorded 274 ids (273 before OSC 7577, #38699), and the two sets are disjoint.
  */
 // 37341 (d388a6841) put these status reasons in plain words for the public page; this test pins
 // the recorded text, so a reword must move both together.
@@ -46,12 +46,12 @@ describe("environment-group partition (D132 B)", () => {
     expect(isEnvironmentGroup("scrollback.viewport-hold-output")).toBe(false)
   })
 
-  it("partitions the recorded catalogue into 264 graded plus 9 environment ids", () => {
+  it("partitions the recorded catalogue into 265 graded plus 9 environment ids", () => {
     const graded = scoredFeatureIds(recordedIds)
     const environment = recordedIds.filter(isEnvironmentGroup)
-    expect(recordedIds).toHaveLength(273)
+    expect(recordedIds).toHaveLength(274)
     expect(environment).toHaveLength(9)
-    expect(graded).toHaveLength(264)
+    expect(graded).toHaveLength(265)
     expect(graded.length + environment.length).toBe(recordedIds.length)
     expect(graded.filter(isEnvironmentGroup)).toEqual([])
     expect([...graded, ...environment].sort()).toEqual([...recordedIds].sort())
@@ -59,12 +59,12 @@ describe("environment-group partition (D132 B)", () => {
 
   it("derives from the ids it is given, so a historical cohort keeps its own count", () => {
     // A cohort recorded before one of the nine existed loses an UNGRADED id, so its graded count is
-    // still 264 — the absent environment position never reduced the graded denominator.
+    // still 265 — the absent environment position never reduced the graded denominator.
     const withoutOneEnvironmentId = recordedIds.filter((id) => id !== "device.env-no-color")
-    expect(scoredFeatureIds(withoutOneEnvironmentId)).toHaveLength(264)
+    expect(scoredFeatureIds(withoutOneEnvironmentId)).toHaveLength(265)
     // A cohort missing a GRADED capability is one graded capability smaller, not silently padded.
     const withoutOneGradedId = recordedIds.filter((id) => id !== "sgr.bold")
-    expect(scoredFeatureIds(withoutOneGradedId)).toHaveLength(263)
+    expect(scoredFeatureIds(withoutOneGradedId)).toHaveLength(264)
     expect(scoredFeatureIds([])).toEqual([])
   })
 })
