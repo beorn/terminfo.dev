@@ -32,7 +32,12 @@ import type { FeatureResultStatus } from "@terminfo/probe-defs"
  * counts zero; it stays in the bucket list only while the pages and the stored-count refusal still name it.
  */
 export const DIFFERS_BY_CONTEXT = "differs-by-context" as const
-export type AppCellStatus = FeatureResultStatus | typeof DIFFERS_BY_CONTEXT
+/**
+ * A library cell for a feature only an app window can measure (#38772, @cto e777b8ab). Set by the projection from the
+ * row's `appOnly` declaration, never stored by a run, and never a position: it is outside every count's denominator.
+ */
+export const APP_ONLY = "app-only" as const
+export type AppCellStatus = FeatureResultStatus | typeof DIFFERS_BY_CONTEXT | typeof APP_ONLY
 
 /** The five decided or open states a joined cell can read, plus the retired disagreement bucket. */
 export const APP_CELL_STATUSES: readonly AppCellStatus[] = [
@@ -43,7 +48,13 @@ export const APP_CELL_STATUSES: readonly AppCellStatus[] = [
   "probe-todo",
   "probe-invalid",
   "probe-conflict",
+  APP_ONLY,
 ]
+
+/** The words an App only cell shows wherever it is displayed (#38772). */
+export function publicAppOnlyReason(marker: { readonly reason: string }): string {
+  return `App only: ${marker.reason}`
+}
 
 const COUNTED_MISSING = "Counted feature is absent from the joined catalogue: "
 
@@ -67,6 +78,25 @@ export function isPublishedStatus(status: string): boolean {
   return DECIDED.has(status) || status === DIFFERS_BY_CONTEXT
 }
 
+/**
+ * A feature page's counts over its subjects' results (#37341 Q1, #38772): "unknown" is no result yet; an App only row
+ * is neither a result nor a missing one, so it is in no count; anything else undecided is a loader bug and refuses.
+ */
+export function featurePageCounts(results: readonly { name: string; result: string }[], featureId: string) {
+  for (const { name, result } of results) {
+    if (result !== "unknown" && result !== APP_ONLY && !isPublishedStatus(result)) {
+      throw new Error(`${name}: ${featureId} reached the feature page with undecided result ${JSON.stringify(result)}`)
+    }
+  }
+  const counted = results.filter((row) => row.result !== APP_ONLY)
+  const totalCount = counted.filter((row) => isPublishedStatus(row.result)).length
+  return {
+    yesCount: counted.filter((row) => row.result === "supported").length,
+    totalCount,
+    noResultCount: counted.length - totalCount,
+  }
+}
+
 /** What one context recorded for one probe, reduced to the facts the join compares and names. */
 export interface ContextCellFacts {
   status: FeatureResultStatus
@@ -84,6 +114,8 @@ export interface ContextCellFacts {
   runId: string
   /** Set when a reopened-cells row withdrew this grade; the cell reads probe-todo until its exit is met. */
   reopened?: boolean
+  /** Set on a library cell whose row declares App only (#38772); the joined cell reads App only, graded by none. */
+  appOnly?: boolean
 }
 
 /** One context's recorded cells, keyed by feature id. */
@@ -199,6 +231,8 @@ const source = (cell: NamedCell): JoinedCellSource => ({
 })
 
 function mergedCell(joined: readonly NamedCell[]): Pick<JoinedCell, "status" | "from"> {
+  // The declaration is the row's, so every library context of one app carries it alike (#38772).
+  if (joined.some((cell) => cell.appOnly === true)) return { status: APP_ONLY, from: [] }
   if (joined.some((cell) => cell.reopened === true)) return { status: "probe-todo", from: [] }
   const decided = joined.filter((cell) => isDecided(cell.status))
   const grades = new Set(decided.map((cell) => cell.status))
