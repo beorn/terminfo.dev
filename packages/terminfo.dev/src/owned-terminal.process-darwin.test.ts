@@ -221,6 +221,7 @@ function runDarwinArm(scenario: {
   windowOwnership?: "refused"
   batch?: "process" | "terminal-app" | "disposed"
   title?: "fresh" | "revoked-before" | "revoked-during" | "disposed-before" | "disposed-during"
+  tabTitle?: boolean
   /** comm per pid for the unmeasured ancestry walk; pid 1 reads as launchd, other unnamed pids as a shell. */
   comms?: Record<string, string>
   /** The Terminal ancestor's pid the terminal-app owner must adopt. */
