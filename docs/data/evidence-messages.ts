@@ -13,7 +13,7 @@
  */
 import { createHash } from "node:crypto"
 import type { ProbeStatus, ReplyFailureEvidence, ReplyFailureMatchState } from "../../packages/probe-defs/src/types.ts"
-import { formatControlBytes } from "./evidence-reader.ts"
+import { describeOsc7501DetectionReply, formatControlBytes } from "./evidence-reader.ts"
 
 /** The closed set of evidence kinds. Each has exactly one template in `TEMPLATES`. */
 export const EVIDENCE_KINDS = [
@@ -90,6 +90,7 @@ export type EvidenceFacts =
   | { kind: "app-state"; read: "outer-log"; command: string; control: string; sent: boolean; controlArrived: boolean }
   | { kind: "app-state"; read: "state"; target: "unchanged" | "expected" | "other"; control: "worked" | "failed" }
   | { kind: "app-state"; read: "report"; code: string; listed: boolean; controlListed: boolean }
+  | { kind: "app-state"; read: "cursor"; command: string; control: string; reports: number; unchanged: number }
   | { kind: "notification"; text: CardValue; delivered: boolean; deadlineMs: number }
   | { kind: "untestable"; sent: number; answered: number; reasonCode?: string }
   | { kind: "library-state"; state: CardValue | { block: true } }
@@ -279,6 +280,11 @@ const SHAPES = {
   "kitty-notify": (reply, stored) => {
     const found = /^\x1b\]99;i=([0-9a-f-]{1,64}):p=\?;[a-z0-9=,:;?]{0,300}(?:\x07|\x1b\\)$/.exec(reply)
     return found && wroteIt(`i=${found[1]}`, stored) ? { shown: formatControlBytes(reply) } : undefined
+  },
+  /** OSC 7501 capability report: states and kinds supported, saying "all five states" / "all three kinds" when omitted. */
+  osc7501: (reply) => {
+    const summary = describeOsc7501DetectionReply(reply)
+    return summary ? { shown: `${formatControlBytes(reply)} (${summary})` } : undefined
   },
   /** A title or icon reply: shown only when it is text this probe wrote. */
   "probe-text": (reply, stored) => {
@@ -539,6 +545,8 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
       "extensions.osc112-reset-cursor",
       "extensions.osc113-reset-pointer-fg",
       "extensions.osc114-reset-pointer-bg",
+      // #38743: the silent row reads back the cursor with a position report (CPR).
+      "extensions.osc7501-silent",
     ],
   ),
   "device.xtversion": ["xtversion"],
@@ -559,6 +567,7 @@ export const REPLY_SHAPES: Readonly<Record<string, readonly ReplyShape[]>> = {
   "extensions.clipboard-paste": ["pasted-nonce", "control"],
   "modes.bracketed-paste": ["pasted-nonce", "control"],
   "extensions.osc99-kitty-notify": ["kitty-notify"],
+  "extensions.osc7501-query": ["osc7501", "control"],
   "device.xtwinops-20": ["probe-text"],
   "extensions.osc0-icon-title": ["probe-text"],
   "extensions.osc1-icon": ["probe-text"],
@@ -628,6 +637,8 @@ export type AppStateRead =
   | { read: "sequence"; surface: string; set: string; readings: string; after: string }
   | { read: "counts"; surface: string; counts: ReadonlyArray<readonly [label: string, path: string]> }
   | { read: "outer-log"; command: string; control: string }
+  /** A command that must print nothing: a printed control moves the cursor, then each report must leave it. */
+  | { read: "cursor"; command: string }
 
 const ICON_AND_TITLE: AppStateRead = {
   read: "readings",
@@ -697,6 +708,7 @@ export const APP_STATE_READS: Readonly<Record<string, readonly AppStateRead[]>> 
       ],
     },
   ],
+  "extensions.osc7501-silent": [{ read: "cursor", command: "OSC 7501 program-status report" }],
   "extensions.osc22-pointer": [
     { read: "outer-log", command: "The pointer-shape command", control: "the title change sent after it" },
   ],
@@ -981,6 +993,7 @@ function declaredRead(stored: StoredEvidence): AppStateRead | undefined {
     if (read.read === "readings") return read.readings.map(([, path]) => path)
     if (read.read === "sequence") return [read.set, read.readings, read.after]
     if (read.read === "counts") return read.counts.map(([, path]) => path).filter((path) => !optional(path))
+    if (read.read === "cursor") return ["control", "readings"]
     return ["outerCommands"]
   }
   return APP_STATE_READS[stored.featureId]?.find((read) =>
@@ -1031,6 +1044,27 @@ function declaredFacts(stored: StoredEvidence, read: AppStateRead): EvidenceFact
         if (!Number.isSafeInteger(lines)) fail(stored, "app-state", `count ${bare(path)} is not a whole number`)
         return [{ label, lines: lines as number }]
       }),
+    }
+  }
+  if (read.read === "cursor") {
+    const control = at(stored.callback, "control")
+    const readings = at(stored.callback, "readings")
+    const left = /leaves (cursor row \d+ col \d+)$/.exec(stored.assertions[0]?.expected ?? "")?.[1]
+    if (
+      typeof control !== "string" ||
+      !Array.isArray(readings) ||
+      !readings.every((reading) => typeof at(reading, "shown") === "string") ||
+      left === undefined
+    ) {
+      fail(stored, "app-state", "a cursor read without its control, its readings and the position they must leave")
+    }
+    return {
+      kind: "app-state",
+      read: "cursor",
+      command: read.command,
+      control: control.replace(/^cursor /, ""),
+      reports: readings.length,
+      unchanged: readings.filter((reading) => at(reading, "shown") === left).length,
     }
   }
   const sent = at(stored.callback, "outerCommands.targetSent")
@@ -1464,6 +1498,14 @@ const TEMPLATES: { [K in EvidenceKind]: Template<K> } = {
         `${facts.command} ${facts.sent ? "reached it" : "did not reach it"}${
           facts.controlArrived ? `${facts.sent ? ", and" : ", but"} ${facts.control} did.` : "."
         }`,
+      ]
+    }
+    if (facts.read === "cursor") {
+      return [
+        `Printed two letters, which moved the cursor to ${facts.control}; then sent each ${facts.command} form, ${plural(facts.reports, "report")} in all.`,
+        facts.unchanged === facts.reports
+          ? "None of them moved the cursor, so none was shown on screen."
+          : `Of those, ${facts.reports - facts.unchanged} moved the cursor, so the terminal showed it on screen.`,
       ]
     }
     if (facts.read === "state") {

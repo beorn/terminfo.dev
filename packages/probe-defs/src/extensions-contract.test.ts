@@ -651,8 +651,9 @@ test.each(["supported", "unsupported", "missing-reader"] as const)("OSC 133;P ob
 })
 
 /**
- * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
- * 42 protocol queries are decided in real terminal runs; 36 unasserted/state probes evaluate to
+ * The 81 extension features (80 defined in extensions.ts + 1 catalog-only in features.json; #38743 added
+ * the two OSC 7501 program-status rows).
+ * 44 rows are decided in real terminal runs; 36 unasserted/state probes evaluate to
  * inconclusive pending external apparatus or capture; 1 catalog feature lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
@@ -881,6 +882,18 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     claim:
       "Font ligatures: the headless parser shapes no glyphs; app contexts capture a spaced control and a contiguous sample for review",
   },
+  {
+    id: "extensions.osc7501-query",
+    expected: "decided",
+    claim:
+      "Program status detection query (OSC 7501, spec rev 0.4): ESC ] 7501 ; ? ST before DA1 without echoing the probe's status report nonce",
+  },
+  {
+    id: "extensions.osc7501-silent",
+    expected: "decided",
+    claim:
+      "Program status reports print nothing (OSC 7501, spec rev 0.4): ST, BEL, largest-legal (~3300 B) and over-cap (>4096 B) reports leave the screen and cursor unchanged",
+  },
 ]
 
 /** The named set 28454 reviews: Extensions rows plus the focused test files that bind them. */
@@ -1089,6 +1102,7 @@ const DIRECT_QUERY_REPLIES: Record<string, string> = {
   "extensions.osc701-locale": "\x1b]701;en_US.UTF-8\x07",
   "extensions.osc702-version": "\x1b]702;rxvt-unicode;rxvt;9;31\x07",
   "extensions.osc776-cell-size": "\x1b]776;8;16;2\x07",
+  "extensions.osc7501-query": "\x1b]7501;?\x1b\\",
   "extensions.sixel-da1": "\x1b[?1;4c",
   "extensions.sixel-geometry-report": "\x1b[?2;0;800;528S",
 }
@@ -1284,6 +1298,28 @@ function decidedSatisfactionSources(id: string) {
       }),
     }
   }
+  if (id === "extensions.osc7501-silent") {
+    const osc = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+    let text = ""
+    let col = 1
+    return {
+      headless: libProbeSource({
+        ...inertModel(),
+        feed: (bytes: string) => {
+          if (bytes.startsWith("\x1b[2J\x1b[H")) text = ""
+          text += bytes.replace("\x1b[2J\x1b[H", "").replace(osc, "")
+        },
+        getText: () => text,
+        getCursor: () => ({ x: text.length, y: 0, visible: true, style: null }),
+      }),
+      term: replayTermProbeSource(new Map(), {
+        write: (bytes: string) => {
+          col = bytes === "\x1b[1;1H\x1b[2K" ? 1 : col + bytes.replace(osc, "").length
+        },
+        queryCursorPosition: async () => ({ row: 1, col }),
+      }),
+    }
+  }
   throw new Error(`No satisfaction context configured for decided row ${id}`)
 }
 
@@ -1292,8 +1328,8 @@ test("the extensions contract covers every extension feature and names none unkn
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(79)
-  expect(EXTENSIONS_CONTRACT).toHaveLength(79)
+  expect(extensionsProbes).toHaveLength(81)
+  expect(EXTENSIONS_CONTRACT).toHaveLength(81)
 })
 
 test("the extensions contract names its focused tests, and every named file exists", () => {
@@ -1346,7 +1382,7 @@ test("the harness replays every extension feature deterministically", async () =
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(42)
+  expect(decidedRows).toHaveLength(44)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)

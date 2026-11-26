@@ -259,7 +259,6 @@ export function loadWorkingRun(
     const counts = decodedCounts.get(engine)
     const actual = rollupTerminalStatuses(
       Object.fromEntries((run.results ?? []).map((result) => [result.featureId, result.status])),
-      options.catalogIds,
     )
     if (
       !record(rollup) ||

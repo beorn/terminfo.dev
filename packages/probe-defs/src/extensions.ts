@@ -4,6 +4,7 @@ import { warpPromptMarkAppResult, type WarpMarkKind } from "./warp-prompt-marks.
 import { createHash, randomUUID } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
+import { programStatusProbes } from "./program-status.ts"
 import { MUX_OUTER_ROWS, muxTitleControlNonce, muxTitleControlWrite, withMuxOuterRows } from "./mux-outer-rows.ts"
 import type {
   ProbeDefinition,
@@ -9855,6 +9856,9 @@ const extensionDefinitions: ProbeDefinition[] = [
     ),
     libAssertionType: "query_reply",
   },
+
+  // OSC 7501 program status (#38743)
+  ...programStatusProbes,
 ]
 
 export const extensionsProbes: ProbeDefinition[] = extensionDefinitions

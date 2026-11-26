@@ -25,24 +25,24 @@ const root = join(import.meta.dirname, "..")
 const data = loadFullProjectData()
 
 describe("the full-273 preview", () => {
-  it("covers all 273 catalog rows over all 33 expected contexts", () => {
-    expect(data.catalogRows).toBe(273)
+  it("covers all 275 catalog rows over all 33 expected contexts", () => {
+    expect(data.catalogRows).toBe(275)
     expect(data.contexts).toHaveLength(33)
     expect(data.collected + data.notCollected).toBe(33)
   })
 
-  it("prints Supported over all 273 and finishes only at zero TODO/failure", () => {
+  it("prints Supported over all 275 and finishes only at zero TODO/failure", () => {
     for (const row of data.contexts) {
       if (!row.collected) continue
       const { result } = row
-      expect(result.catalogRows).toBe(273)
-      // D132 B (#30917): the run records all 273 positions, but the score is over the graded
+      expect(result.catalogRows).toBe(275)
+      // D132 B (#30917): the run records all 275 positions, but the score is over the graded
       // catalogue — the nine environment groups are visible and never in the denominator. The page
       // states the same rule (docs/release/full-273.md: "Supported / all <gradedRows> graded features").
       expect(result.denominator).toBe(data.gradedRows)
       expect(result.fraction).toBe(`${result.supported}/${data.gradedRows}`)
       expect(result.complete).toBe(result.counts["probe-todo"] === 0 && result.counts["probe-invalid"] === 0)
-      expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
+      expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(275)
     }
   })
 

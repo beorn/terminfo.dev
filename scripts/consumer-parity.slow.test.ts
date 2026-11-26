@@ -1172,11 +1172,11 @@ describe("selected-run consumer parity", () => {
       }
       expect(site.stats.kitty).toMatchObject({
         // D132 B (#30917): the nine environment positions are recorded but never graded.
-        score: { all: 264, supported: 1 },
-        counts: { supported: 1, unsupported: 1, "probe-todo": 262 },
+        score: { all: 266, supported: 1 },
+        counts: { supported: 1, unsupported: 1, "probe-todo": 264 },
         complete: false,
       })
-      expect(terminal?.params).toMatchObject({ total: "264", yes: "1", no: "1" })
+      expect(terminal?.params).toMatchObject({ total: "266", yes: "1", no: "1" })
       // Raw history names declared physical subjects without entering these reviewed counts.
       expect(JSON.parse(terminal?.params.historySubjects ?? "[]")).toEqual([
         { engine: "kitty", kind: "term" },
@@ -1204,7 +1204,7 @@ describe("selected-run consumer parity", () => {
       expect(analysis).toMatchObject({
         sources: [expect.objectContaining({ sha256: fixture.runSha256, measuredAt: fixture.measuredAt })],
         versions: [fixture.selected.subject.version],
-        score: { supported: 1, all: 264 },
+        score: { supported: 1, all: 266 },
       })
       expect(analyses["features-index"]?.analysis).toContain("recorded support")
       expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 3")
@@ -1287,17 +1287,17 @@ describe("selected-run consumer parity", () => {
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
-      score: { all: 264, supported: 0 },
-      counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 263, "probe-invalid": 0 },
+      score: { all: 266, supported: 0 },
+      counts: { supported: 0, unsupported: 1, untestable: 0, "probe-todo": 265, "probe-invalid": 0 },
       complete: false,
     })
     // #37341 D2: the bar width still reads Supported of graded; the page prints the two counts, never a percentage.
     expect(site.stats.screen?.pct).toBe(0)
-    expect(terminal?.params).toMatchObject({ readout: "0 supported · 1 of 264 tested" })
+    expect(terminal?.params).toMatchObject({ readout: "0 supported · 1 of 266 tested" })
     expect(terminal?.params).not.toHaveProperty("pct")
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      { version: fixture.screen.subject.version, total: 264, yes: 0, suiteFreshness: "tree suite current" },
-      { version: "4.9", total: 264, yes: 1, suiteFreshness: "older suite older-suite" },
+      { version: fixture.screen.subject.version, total: 266, yes: 0, suiteFreshness: "tree suite current" },
+      { version: "4.9", total: 266, yes: 1, suiteFreshness: "older suite older-suite" },
     ])
     const screen = loadProbes().selectedByBackend.screen!.selected
     const olderRunId = "screen-older-reviewed-sealed-cccccccc"
@@ -1337,7 +1337,7 @@ describe("selected-run consumer parity", () => {
       )
     // #37341 D2: the comparison card prints the same two-count readout as the terminal page.
     expect(comparison?.params[comparison.params.termAId === "screen" ? "termAReadout" : "termBReadout"]).toBe(
-      "0 supported · 1 of 264 tested",
+      "0 supported · 1 of 266 tested",
     )
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
