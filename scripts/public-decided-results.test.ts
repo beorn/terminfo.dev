@@ -204,8 +204,10 @@ describe("publicResults publishes decided results only (Q4)", () => {
         expect(["supported", "unsupported", "untestable"]).toContain(result.status)
         for (const test of result.tests) expect(["supported", "unsupported", "untestable"]).toContain(test.status)
       }
-      // D6: a run's counts keep the decided buckets (and the join's zero differs bucket) and lose the undecided keys.
+      // D6: a run's counts keep the decided buckets (and the join's zero differs bucket) and lose the undecided keys;
+      // the App only bucket is a published label, never undecided (#38772).
       expect(Object.keys(version.counts).sort()).toEqual([
+        "app-only",
         "differs-by-context",
         "supported",
         "unsupported",
@@ -214,7 +216,13 @@ describe("publicResults publishes decided results only (Q4)", () => {
     }
     // A declared cell cites its review, which its reason states.
     expect(context.featureResults["capability.4"]!.reason).toMatch(/^untestable by review 2026-11-20: /)
-    expect(Object.keys(context.counts).sort()).toEqual(["differs-by-context", "supported", "unsupported", "untestable"])
+    expect(Object.keys(context.counts).sort()).toEqual([
+      "app-only",
+      "differs-by-context",
+      "supported",
+      "unsupported",
+      "untestable",
+    ])
     expect(published.selectedByBackend.kitty!.states).toEqual({
       "capability.0": "supported",
       "capability.1": "unsupported",

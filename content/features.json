@@ -2226,6 +2226,7 @@
     "baseline": "rich"
   },
   "input.xtest-click": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: button-1 click injection",
     "slug": "xtest-click",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
@@ -2235,6 +2236,7 @@
     "probe": "Enable 1000+1006, click button 1 as the delivery control, then click again and require the SGR report (CSI &lt; btn;x;y M/m). Without the OS XTEST adapter, no attempt runs and there is no result; a failed delivery control gives no result, never Unsupported."
   },
   "input.xtest-key": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: ctrl+e key injection",
     "slug": "xtest-key",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2244,6 +2246,7 @@
     "probe": "Confirm XTEST delivery with plain <code>a</code> as the control, then inject <code>ctrl+e</code>, a modified key that is neither tmux's nor Screen's prefix, and require a ctrl+e report: the raw ctrl-E byte (0x05), CSI 27;5;101~ or CSI 101;5u. Without the OS XTEST adapter, no attempt runs and there is no result; a failed delivery control gives no result, never Unsupported."
   },
   "input.xtest-wheel": {
+    "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
     "name": "OS XTEST: wheel injection",
     "slug": "xtest-wheel",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
@@ -2724,6 +2727,7 @@
     "baseline": "modern"
   },
   "extensions.font-ligatures": {
+    "appOnly": { "reason": "Ligatures are drawn by the glyph renderer; a library draws no glyphs." },
     "name": "Font ligatures",
     "slug": "font-ligatures",
     "url": "https://practicaltypography.com/ligatures-in-programming-fonts-hell-no.html",
