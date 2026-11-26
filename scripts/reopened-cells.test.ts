@@ -239,12 +239,14 @@ describe("loadReopenedCells", () => {
   // Of the three remeasured sgr.blink rows, alacritty and ghostty exited on 2026-11-11: each cell was measured again
   // under suite 91038808c439 and its row was deleted in the placement commit that carried the deciding run (#33117).
   // iTerm2's row stays: its same-night run is open/capture-too-slow and decides nothing.
-  it("the committed file holds the 6 remaining multiplexer rows and the 1 remeasured row, all current (#34674 retired six tmux rows whose exit was met)", async () => {
+  // #38772 (@cto 31a78f3f) adds nine remeasured rows: the Unsupported grades the pre-455b028f1 DECRQSS decider gave an
+  // attribute its reply left out, on Ghostty 1.3.1 (eight features) and iTerm2 3.6.11 on macOS 26.6.2 (sgr.bg.bright).
+  it("the committed file holds the 6 remaining multiplexer rows and 10 remeasured rows, all current (#34674 retired six tmux rows whose exit was met)", async () => {
     const content = join(import.meta.dirname, "..", "content")
     const { loadFeatures } = await import("@terminfo/catalog")
     const rows = loadReopenedCells(content, loadFeatures(content))
-    expect(rows).toHaveLength(7)
-    // The set, not only the count: a wrong swap keeps 7 rows, one kind, one os and one reason, so the count
+    expect(rows).toHaveLength(16)
+    // The set, not only the count: a wrong swap keeps the row count, one kind, one os and one reason, so the count
     // alone would stay green while the file names different cells (@dev/11 carve-out on the 34674 GO).
     expect(rows.map((row) => `${row.kind}/${row.id}/${row.os}/${row.featureId}`)).toEqual([
       "mux/screen/linux/editing.decrqcra",
@@ -254,6 +256,15 @@ describe("loadReopenedCells", () => {
       "mux/screen/linux/extensions.osc776-cell-size",
       "mux/screen/linux/extensions.osc7770-font-size",
       "term/iterm2/macos/sgr.blink",
+      "term/ghostty/linux/sgr.overline",
+      "term/ghostty/linux/sgr.underline-color-indexed",
+      "term/ghostty/linux/sgr.underline-color-rgb",
+      "term/ghostty/linux/sgr.underline.color",
+      "term/ghostty/linux/sgr.underline.curly",
+      "term/ghostty/linux/sgr.underline.dashed",
+      "term/ghostty/linux/sgr.underline.dotted",
+      "term/ghostty/linux/sgr.underline.double",
+      "term/iterm2/macos/sgr.bg.bright",
     ])
     const criterion = rows.filter((row) => row.exit.kind === "criterion-text")
     expect(criterion).toHaveLength(6)
@@ -263,6 +274,15 @@ describe("loadReopenedCells", () => {
     )
     expect(rows.filter((row) => row.exit.kind === "remeasured").map((row) => `${row.id}/${row.featureId}`)).toEqual([
       "iterm2/sgr.blink",
+      "ghostty/sgr.overline",
+      "ghostty/sgr.underline-color-indexed",
+      "ghostty/sgr.underline-color-rgb",
+      "ghostty/sgr.underline.color",
+      "ghostty/sgr.underline.curly",
+      "ghostty/sgr.underline.dashed",
+      "ghostty/sgr.underline.dotted",
+      "ghostty/sgr.underline.double",
+      "iterm2/sgr.bg.bright",
     ])
     for (const row of rows) {
       expect(publicReopenedReason(row), cellLabel(row)).not.toMatch(/@|\b[0-9a-f]{7,}\b|#\d|\b\d{5}\b/)
