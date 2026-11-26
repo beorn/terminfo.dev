@@ -711,6 +711,9 @@ function seedColorReadbackAndReset(capture: (write: string) => string, slot: str
 }
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
+/** The card for OSC 4 on the Alacritty library: it answers once set, and its embedder owns the starting palette. */
+const ALACRITTY_PALETTE_NOTE = "Answers once a colour is set; the embedding app supplies the starting palette"
+
 function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeDefinition {
   const slot = `${oscCode}${index === undefined ? "" : `;${index}`}`
   const querySeq = `\x1b]${slot};?\x07`
@@ -758,6 +761,15 @@ function oscColorQueryProbe(id: string, oscCode: number, index?: number): ProbeD
           const restoredRaw = capture(querySeq)
           const state = { query: querySeq, initialRaw: raw, controls }
           if (control.verified && resetRaw === "" && restoredRaw === "") {
+            if (ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx) && oscCode === 4) {
+              // #38772 (@cpo/term f281df2f): a library row grades what the library does. The seeded set-then-query
+              // answers the exact colour, and the starting palette is the embedding app's, so OSC 4 is Supported here.
+              return answer({
+                ...oscReplyResult(control.seededRaw, control.seededRaw, expected),
+                response: JSON.stringify(state),
+                observation: { outcome: "supported", assertionType: "query_reply", note: ALACRITTY_PALETTE_NOTE },
+              })
+            }
             if (ctx.backendName === "alacritty" && hasAuditedOscInterfaceAbsence(ctx)) {
               return answer(
                 declaredUntestableResult(

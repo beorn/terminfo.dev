@@ -792,7 +792,7 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
     // are the same.
     vi.useFakeTimers()
     try {
-      for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b"] as const) {
+      for (const mode of ["applies-b", "absent", "unchanged", "mirrors-title", "title-becomes-b", "title-only"] as const) {
         let title = "original title"
         let icon: string | null = "original icon"
         const writes: string[] = []
@@ -820,6 +820,11 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
               if (mode === "absent") icon = null
               return
             }
+            if (mode === "title-only") {
+              title = payload
+              icon = null
+              return
+            }
             if (mode === "title-becomes-b") {
               title = payload
               icon = payload
@@ -843,8 +848,13 @@ test.each(["extensions.osc0-icon-title", "extensions.osc1-icon"])(
         if (reading.status !== "measured" || reading.reader !== "state") throw Error("icon reading")
         const { gradeIconNameReading } = await import("../../probe-defs/src/app-semantic-state.ts")
         const result = gradeIconNameReading(featureId, reading)
-        const supported =
-          mode === "applies-b" || (mode === "mirrors-title" && !osc1) || (mode === "title-becomes-b" && !osc1)
+        // #38772: OSC 0 must set the title too (its probe text), so an icon-only OSC 0 is Unsupported, and a set title
+        // over a terminal that keeps no icon label is Untestable by name.
+        if (!osc1 && mode === "title-only") {
+          expect(result.tests).toEqual([expect.objectContaining({ status: "untestable" })])
+          continue
+        }
+        const supported = osc1 ? mode === "applies-b" : mode === "mirrors-title" || mode === "title-becomes-b"
         expect(result.observation).toMatchObject({ outcome: supported ? "supported" : "unsupported" })
         expect(writes.some((line) => line.startsWith("\x1b]2;icon-title-a-"))).toBe(true)
         expect(writes.some((line) => line.startsWith(osc1 ? "\x1b]1;icon-name-b-" : "\x1b]0;icon-name-b-"))).toBe(true)
