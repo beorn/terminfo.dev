@@ -11,7 +11,10 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { prepareCliLaunch, launchPreparedCli } from "../admin/src/app.ts"
-import { readTermFeaturesEnvironment } from "../terminfo.dev/src/terminal-child-environment.ts"
+import { readTerminalChildEnvironment } from "../terminfo.dev/src/terminal-child-environment.ts"
+
+const readTermFeaturesEnvironment = (...args: Parameters<typeof readTerminalChildEnvironment>) =>
+  readTerminalChildEnvironment(...args).termFeatures
 import { deviceProbes } from "../probe-defs/src/device.ts"
 import { replayTermProbeSource } from "../probe-defs/src/testing/group-harness.ts"
 import { shellQuote as quote } from "../terminfo.dev/src/daemon-client.ts"
@@ -112,13 +115,13 @@ test
     writeFileSync(hook, "export TERM_FEATURES=hostile-startup-hook\nexport TERMINFO_RUN_ID=wrong-hook-run\n")
     const modulePath = new URL("../terminfo.dev/src/terminal-child-environment.ts", import.meta.url).href
     const collector =
-      "import{readTermFeaturesEnvironment}from " +
+      "import{readTerminalChildEnvironment}from " +
       JSON.stringify(modulePath) +
       ";import{execFileSync}from'node:child_process';import{writeFileSync}from'node:fs';const tty=execFileSync('tty',{encoding:'utf8',stdio:['inherit','pipe','pipe']}).trim();writeFileSync(" +
       JSON.stringify(output) +
-      ",JSON.stringify(readTermFeaturesEnvironment(process.env," +
+      ",JSON.stringify(readTerminalChildEnvironment(process.env," +
       JSON.stringify(run.id) +
-      ",process.pid,tty)));"
+      ",process.pid,tty).termFeatures));"
     const command =
       "unset TERM_FEATURES; " +
       (exported ? "export TERM_FEATURES=" + quote(value) + "; " : "") +

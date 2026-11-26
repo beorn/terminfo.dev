@@ -31,16 +31,10 @@ export function readTerminalChildEnvironment(
     }
   }
   const binding = { runId: runControl, launchMarker, pid, tty }
-  return { termFeatures: termFeatures(env.TERM_FEATURES, binding), programResumeToken: token(env.OSC7577_TOKEN, binding) }
-}
-
-export function readTermFeaturesEnvironment(
-  env: NodeJS.ProcessEnv,
-  runId: string,
-  pid: number,
-  tty: string,
-): TermFeaturesReading {
-  return readTerminalChildEnvironment(env, runId, pid, tty).termFeatures
+  return {
+    termFeatures: termFeatures(env.TERM_FEATURES, binding),
+    programResumeToken: token(env.OSC7577_TOKEN, binding),
+  }
 }
 
 interface Binding {

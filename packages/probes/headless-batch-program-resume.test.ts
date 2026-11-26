@@ -6,10 +6,7 @@
  */
 import { afterEach, expect, test, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import {
-  readTermFeaturesEnvironment,
-  readTerminalChildEnvironment,
-} from "../terminfo.dev/src/terminal-child-environment.ts"
+import { readTerminalChildEnvironment } from "../terminfo.dev/src/terminal-child-environment.ts"
 import { extensionsProbes } from "../probe-defs/src/extensions.ts"
 import { recordExecutedProbe } from "../probe-defs/src/helpers.ts"
 import type { LibProbeSource, ProgramResumeTokenReading, TermProbeSource } from "@terminfo/probe-defs"
@@ -46,7 +43,14 @@ function status(result: Awaited<ReturnType<typeof grade>>) {
 test("one reader binds both variables to the same run; TERM_FEATURES readings are unchanged", () => {
   const env = { ...bound, TERM_FEATURES: "T3", OSC7577_TOKEN: WELL_FORMED }
   const both = readTerminalChildEnvironment(env, RUN, 42, TTY)
-  expect(both.termFeatures).toEqual(readTermFeaturesEnvironment(env, RUN, 42, TTY))
+  expect(both.termFeatures).toMatchObject({
+    status: "measured",
+    present: true,
+    value: "T3",
+    runId: RUN,
+    pid: 42,
+    tty: TTY,
+  })
   expect(both.programResumeToken).toEqual({
     status: "measured",
     present: true,
@@ -126,7 +130,9 @@ function headlessScreen(mode: Mode): LibProbeSource {
     kind: "lib",
     feed(bytes: string) {
       if (bytes.startsWith("\x1b[2J\x1b[H")) text = ""
-      const shown = bytes.replace("\x1b[2J\x1b[H", "").replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : ""))
+      const shown = bytes
+        .replace("\x1b[2J\x1b[H", "")
+        .replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : ""))
       if (mode !== "dead") text += shown
     },
     getText: () => text,
@@ -139,7 +145,9 @@ function appScreen(mode: Mode): TermProbeSource {
   return {
     write(bytes: string) {
       if (bytes === "\x1b[1;1H\x1b[2K") col = 1
-      else if (mode !== "dead") col += bytes.replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : "")).length
+      else if (mode !== "dead") {
+        col += bytes.replace(OSC, (_, code, body) => (mode === "leak" ? `${code};${body}` : "")).length
+      }
     },
     queryCursorPosition: async () => (mode === "dead" ? null : { row: 1, col }),
   } as unknown as TermProbeSource
@@ -172,5 +180,7 @@ test.each(["extensions.osc7577-silent", "extensions.osc88-silent"])(
 )
 
 function definitionText(id: string) {
-  return (JSON.parse(readFileSync(new URL("../../content/features.json", import.meta.url), "utf8")) as Record<string, unknown>)[id]
+  return (
+    JSON.parse(readFileSync(new URL("../../content/features.json", import.meta.url), "utf8")) as Record<string, unknown>
+  )[id]
 }

@@ -420,13 +420,13 @@ await import(${JSON.stringify(join(root, "packages/terminfo.dev/src/index.tsx"))
         : `import { writeFileSync } from "node:fs";
 import { getPriority } from "node:os";
 import { execFileSync } from "node:child_process";
-import { readTermFeaturesEnvironment } from ${JSON.stringify(join(root, "packages/terminfo.dev/src/terminal-child-environment.ts"))};
+import { readTerminalChildEnvironment } from ${JSON.stringify(join(root, "packages/terminfo.dev/src/terminal-child-environment.ts"))};
 writeFileSync(${JSON.stringify(priority)}, String(getPriority()));
 writeFileSync(${JSON.stringify(invocation)}, [...process.argv.slice(2), process.env.TERMINFO_PROBE_IDS ?? "unset", process.env.TERMINFO_CAPTURE_RUN_ID, process.env.TERMINFO_RUN_ID].join("\\0") + "\\0");
 ${
   editor
     ? `const tty = execFileSync("tty", { encoding: "utf8", stdio: ["inherit", "pipe", "pipe"] }).trim();
-writeFileSync(${JSON.stringify(join(out, "child.json"))}, JSON.stringify({ reading: readTermFeaturesEnvironment(process.env, ${JSON.stringify(launchId)}, process.pid, tty), marker: process.env.TERMINFO_TERM_FEATURES_LAUNCH, control: process.env.TERMINFO_RUN_ID, capture: process.env.TERMINFO_CAPTURE_RUN_ID }));`
+writeFileSync(${JSON.stringify(join(out, "child.json"))}, JSON.stringify({ reading: readTerminalChildEnvironment(process.env, ${JSON.stringify(launchId)}, process.pid, tty).termFeatures, marker: process.env.TERMINFO_TERM_FEATURES_LAUNCH, control: process.env.TERMINFO_RUN_ID, capture: process.env.TERMINFO_CAPTURE_RUN_ID }));`
     : ""
 }
 process.stdout.write("probe-stdout\\n");

@@ -2809,7 +2809,8 @@ export async function createOwnedTerminal(options: {
             return readTerminalChildEnvironment(process.env, expectedLaunchRunId, process.pid, tty)[key]
           }
           return {
-            readTermFeatures: () => read("termFeatures", "TERM_FEATURES") as Promise<TerminalChildEnvironment["termFeatures"]>,
+            readTermFeatures: () =>
+              read("termFeatures", "TERM_FEATURES") as Promise<TerminalChildEnvironment["termFeatures"]>,
             readProgramResumeToken: () =>
               read("programResumeToken", "OSC7577_TOKEN") as Promise<TerminalChildEnvironment["programResumeToken"]>,
           }

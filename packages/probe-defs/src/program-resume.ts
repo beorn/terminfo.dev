@@ -82,7 +82,10 @@ const OSC7577_REPORTS: readonly Report[] = [
     bytes:
       "\x1b]7577;pid=74877:time=1795543200:argv=bGF6eWdpdA==:cwd=L2hvbWUvdXNlci9zcmMvcHJvamVjdA==:mac=35cb909805c380336efd3689a125acc774a9dec8422a1d21492ebec06ca758e1\x1b\\",
   },
-  { label: "report with no mac (spec invalid row 2, BEL)", bytes: "\x1b]7577;pid=74877:time=1795543200:argv=bnZpbQ==\x07" },
+  {
+    label: "report with no mac (spec invalid row 2, BEL)",
+    bytes: "\x1b]7577;pid=74877:time=1795543200:argv=bnZpbQ==\x07",
+  },
 ]
 
 /** OSC 88, the earlier Terminal Resume Protocol (github.com/otty-sh/osc-88): unauthenticated, no reply to arm or clear. */
@@ -171,7 +174,12 @@ export const programResumeProbes: ProbeDefinition[] = [
     libAssertionType: "buffer_state",
   },
   {
-    ...probe("extensions.osc88-silent", silentLib("OSC 88", OSC88_REPORTS), silentApp("OSC 88", OSC88_REPORTS), "buffer_state"),
+    ...probe(
+      "extensions.osc88-silent",
+      silentLib("OSC 88", OSC88_REPORTS),
+      silentApp("OSC 88", OSC88_REPORTS),
+      "buffer_state",
+    ),
     libAssertionType: "buffer_state",
   },
 ]
