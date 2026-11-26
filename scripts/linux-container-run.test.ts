@@ -2813,8 +2813,9 @@ exit 2
     const source = readFileSync(launcher, "utf8")
     const createStart = source.indexOf("\ncontainer_id=$(docker create ")
     const createEnd = source.indexOf('\necho "$container_id" > "$prep/container-id.txt"', createStart)
-    if (createStart < 0 || createEnd < 0)
+    if (createStart < 0 || createEnd < 0) {
       throw new Error("docker create block not found in scripts/linux-container-run.sh")
+    }
     const createBlock = source.slice(createStart, createEnd)
 
     const uid = String(process.getuid!())
@@ -2901,4 +2902,52 @@ exit 2
     expect(result.status).toBe(2)
     expect(result.stderr).toContain("Refusing root container user")
   })
+})
+
+// @failure A finished Linux run keeps its ~1.15 GB probe image pinned in the Nix store for as long as its run dir
+//          lives, because the nix build out-link is a GC root and the Nix cleanup collects only dead paths (#38732,
+//          disk P0 #37605: 267 run dirs pinned 304 GB); or a refused, stalled or impossible release fails the run.
+it("a run drops its probe image root after docker load and deletes the image unless another root holds it", () => {
+  const stubs = {
+    deleted: "exit 0",
+    alive: `echo "error: cannot delete path '$2' since it is still alive" >&2; exit 1`,
+    "lock-wait": "exit 124",
+    "no-link": "exit 0",
+  } as const
+  for (const [outcome, stub] of Object.entries(stubs)) {
+    const prep = join(dir, `prep-${outcome}`)
+    const bin = join(dir, `bin-${outcome}`)
+    mkdirSync(prep)
+    mkdirSync(bin)
+    const image = join(dir, `nix-${outcome}-terminfo-xterm-probe.tar.gz`)
+    writeFileSync(image, "image bytes")
+    if (outcome !== "no-link") symlinkSync(image, join(prep, "image.tar"))
+    const calls = join(dir, `nix-store-${outcome}.calls`)
+    writeFileSync(join(bin, "nix-store"), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >>"${calls}"\n${stub}\n`, {
+      mode: 0o755,
+    })
+    const result = spawnSync(
+      "bash",
+      ["-c", 'set -euo pipefail; source "$1"; release_image_root "$2"; echo measured-on', "_", launcher, prep],
+      { encoding: "utf8", env: { ...process.env, HOME: dir, PATH: `${bin}:${process.env.PATH ?? ""}` } },
+    )
+    // Every outcome leaves the measurement running.
+    expect(result.status, `${outcome}: ${result.stderr}`).toBe(0)
+    expect(result.stdout).toBe("measured-on\n")
+    if (outcome === "no-link") {
+      expect(existsSync(calls)).toBe(false)
+      expect(result.stderr).toContain("so this run still pins its image")
+      continue
+    }
+    expect(readdirSync(prep)).not.toContain("image.tar")
+    expect(readFileSync(join(prep, "image.store-path"), "utf8")).toBe(`${image}\n`)
+    expect(readFileSync(calls, "utf8")).toBe(`--delete ${image}\n`)
+    if (outcome === "deleted") expect(result.stderr).toBe("")
+    if (outcome === "alive") {
+      expect(result.stderr).toContain(
+        `kept ${image} in the Nix store, no longer pinned by this run: error: cannot delete path '${image}' since it is still alive`,
+      )
+    }
+    if (outcome === "lock-wait") expect(result.stderr).toContain("nix-store --delete waited 120 s for the GC lock")
+  }
 })

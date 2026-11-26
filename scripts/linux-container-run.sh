@@ -576,6 +576,29 @@ record_teardown_witness() {
   return 1
 }
 
+# Only `docker load` reads the probe image's store copy; after it, docker holds the image and the ~1.15 GB tarball is
+# bulk. The `nix build --out-link` that made it is a GC root living as long as the run dir, and the Nix cleanup
+# collects only dead paths, so every kept run pinned its image for good (#38732, disk P0 #37605: 267 run dirs pinned
+# 304 GB). Drop this run's root, keep the path in the run, and delete the store copy unless another root (a concurrent
+# run of the same image, an older run dir) still holds it. Neither outcome fails the measurement: a copy that stays is
+# said on stderr with nix-store's own reason, and the image rebuilds from the flake at the recorded revision.
+release_image_root() { # $1 the prep dir holding the image.tar out-link
+  local link="$1/image.tar" path status=0
+  if ! path=$(readlink -- "$link"); then
+    echo "kept the probe image root: $link is not the nix build out-link, so this run still pins its image" >&2
+    return 0
+  fi
+  printf '%s\n' "$path" >"$1/image.store-path"
+  rm -f -- "$link"
+  # A running Nix GC holds the store's GC lock; a bounded wait keeps the measurement moving.
+  timeout 120 nix-store --delete "$path" >"$1/image-release.log" 2>&1 || status=$?
+  if ((status == 124)); then
+    echo "kept $path in the Nix store, no longer pinned by this run: nix-store --delete waited 120 s for the GC lock" >&2
+  elif ((status != 0)); then
+    echo "kept $path in the Nix store, no longer pinned by this run: $(tail -n 1 "$1/image-release.log")" >&2
+  fi
+}
+
 # #38538 (@cto d32ebff7): resolve container user identity from the daemon's declared
 # security options and verified rootless socket ownership.
 # - Rootful daemon: unchanged --user $run_uid:$run_gid, container_name=runner, rootless_host_uid="".
@@ -1776,6 +1799,7 @@ image_reference=$(
       --apply '(image: image.imageName + ":" + image.imageTag)'
 )
 docker load --input "$prep/image.tar" >"$prep/docker-load.txt"
+release_image_root "$prep"
 image_id=$(docker image inspect "$image_reference" --format '{{.Id}}')
 docker image inspect "$image_id" > "$prep/image-inspect.json"
 image_arch=$(docker image inspect "$image_id" --format '{{.Architecture}}')
