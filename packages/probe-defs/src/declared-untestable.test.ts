@@ -9,7 +9,9 @@
 import { describe, expect, test } from "vitest"
 import {
   DECLARED_UNTESTABLE_TEST,
+  ADAPTER_SOURCE_AUDITS,
   HEADLESS_OBSERVABLE_REVIEW,
+  auditedLibvtermR1Sources,
   declaredUntestableResult,
   isDeclaredUntestable,
   recordExecutedProbe,
@@ -1763,4 +1765,26 @@ test.each([
       )
     }
   }
+})
+
+// @failure Rebuilding libvterm for the OSC 52 write witness (#38825) drops its R1 readings: pixel mouse and the native
+//   OSC report route stop applying, or an adapter in neither cohort is let through.
+// @level l1
+// @consumer input.ts pixel mouse and extensions.ts libvterm R1 report route.
+describe("libvterm R1 adapter, before and after the write witness (#38825)", () => {
+  const identity = (cohort: keyof typeof ADAPTER_SOURCE_AUDITS) =>
+    ({
+      kind: "js",
+      runtimeFormat: "wasm",
+      engineVersion: "0.3.3",
+      loadedBinary: { path: "libvterm.wasm", sha256: "0".repeat(64) },
+      adapterSources: Object.entries(ADAPTER_SOURCE_AUDITS[cohort]).map(([path, blobOid]) => ({ path, blobOid })),
+    }) as unknown as LibProbeSource["runtimeIdentity"]
+
+  test("accepts R1 and its witness rebuild, and nothing else", () => {
+    expect(auditedLibvtermR1Sources(identity("libvtermR1"))).toBe(true)
+    expect(auditedLibvtermR1Sources(identity("libvtermClipboardWrites"))).toBe(true)
+    expect(auditedLibvtermR1Sources(identity("libvterm712298af"))).toBe(false)
+    expect(auditedLibvtermR1Sources(undefined)).toBe(false)
+  })
 })

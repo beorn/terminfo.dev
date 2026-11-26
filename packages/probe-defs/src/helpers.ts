@@ -164,6 +164,11 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
     "packages/vterm/src/backend.ts": "57f73e60c2a52c16147a6000b7c823be66afbd95",
   },
+  // #38825: the adapter records vterm.js's onClipboardWrite as the OSC 52 write witness; nothing else changed.
+  vtermClipboardWrites: {
+    "packages/vterm/src/index.ts": "cb5719799dcdd5ae24e6fcf0dcad9965035ce54c",
+    "packages/vterm/src/backend.ts": "b22cb3efdb99aaa2a2af390c163b0eefe9752988",
+  },
   ghostty: {
     "packages/ghostty/src/index.ts": "f4b9d9f3e13cc515b23abc739cab21bf971e8585",
     // Historical cohort retained for existing API/reply and source-review consumers.
@@ -198,6 +203,14 @@ export const ADAPTER_SOURCE_AUDITS = {
     "packages/libvterm/src/backend.ts": "336a217c3d806caf47c34b355e0c081e45bdeb4b",
     "packages/libvterm/src/wasm-bindings.ts": "a983fb2cd6fc9a97c0d035a3a4bccb967f0bcfd4",
     "packages/libvterm/wasm/libvterm.js": "35ae07fbdb0fc67ee1a73477fe53ea6cff89a985",
+    "src/terminal/key-mapping.ts": "a687ff18768ae42b315f689122bcef07244b036e",
+  },
+  // #38825: R1 plus a clipboard write log in the selection host, drained after each feed as the OSC 52 write witness.
+  libvtermClipboardWrites: {
+    "packages/libvterm/src/index.ts": "2b4708b1081e701b99893ca055ded781dc46cf25",
+    "packages/libvterm/src/backend.ts": "bb82c5f62b1165f59bf65162d60c7e60145bdc88",
+    "packages/libvterm/src/wasm-bindings.ts": "3b978073c42aed6d43cd8005ed3a924fc48deeb6",
+    "packages/libvterm/wasm/libvterm.js": "5307346de664255376bc9565a0ac134a54777fac",
     "src/terminal/key-mapping.ts": "a687ff18768ae42b315f689122bcef07244b036e",
   },
   // Conceal forwarding changes the backend blob; exact native receipt and artifact audits bind the rebuilt Zig.
@@ -298,6 +311,14 @@ export function auditedAdapterSources(
     sources?.length === expected.length &&
     expected.every(([path, blobOid]) => sources.some((source) => source.path === path && source.blobOid === blobOid))
   )
+}
+
+/**
+ * libvterm R1's audited adapter, before or after the OSC 52 write witness (#38825). The witness adds only a clipboard
+ * write log, so every R1 reading (pixel mouse, the native OSC report route) holds for both.
+ */
+export function auditedLibvtermR1Sources(identity: LibProbeSource["runtimeIdentity"]): boolean {
+  return auditedAdapterSources(identity, "libvtermR1") || auditedAdapterSources(identity, "libvtermClipboardWrites")
 }
 
 /**
