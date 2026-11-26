@@ -3,6 +3,7 @@ import type { InputFixture } from "@terminfo/probe-defs"
 import {
   DEFAULT_POINTER,
   DRAG_TARGET,
+  SINGLE_CLICK_SPACING_MS,
   type InputButton,
   type InputMechanism,
   type OwnedFrame,
@@ -135,6 +136,39 @@ export function describeInputContract(
         { op: "focus", args: [] },
         { op: "moveTo", args: [12, 34, { verifyPointer: false, dragged: false }] },
       ])
+    })
+
+    it("spaces consecutive primary-button clicks and drags past tmux's 300 ms double-click window (#33990)", async () => {
+      const buttonTimestamps: Array<{ op: "click" | "press" | "release"; button: InputButton; atMs: number }> = []
+      const fake = fakeInputMechanism()
+      const mechanism: InputMechanism = {
+        ...fake.mechanism,
+        async click(button) {
+          buttonTimestamps.push({ op: "click", button, atMs: Date.now() })
+          await fake.mechanism.click(button)
+        },
+        async press(button) {
+          buttonTimestamps.push({ op: "press", button, atMs: Date.now() })
+          await fake.mechanism.press(button)
+        },
+        async release(button) {
+          buttonTimestamps.push({ op: "release", button, atMs: Date.now() })
+          await fake.mechanism.release(button)
+        },
+      }
+      const input = await build(mechanism)
+      await input.injectClick(1)
+      await input.injectClick(1)
+      await input.injectDrag?.(1)
+      expect(buttonTimestamps.map((entry) => `${entry.op}:${String(entry.button)}`)).toEqual([
+        "click:1",
+        "click:1",
+        "press:1",
+        "release:1",
+      ])
+      expect(SINGLE_CLICK_SPACING_MS).toBeGreaterThan(300)
+      expect(buttonTimestamps[1]!.atMs - buttonTimestamps[0]!.atMs).toBeGreaterThanOrEqual(SINGLE_CLICK_SPACING_MS - 15)
+      expect(buttonTimestamps[2]!.atMs - buttonTimestamps[1]!.atMs).toBeGreaterThanOrEqual(SINGLE_CLICK_SPACING_MS - 15)
     })
   })
 }

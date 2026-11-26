@@ -12,10 +12,13 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   clearActivePopover,
+  DETAIL_PANE_MAX_HEIGHT,
+  detailPanePlacement,
   detailPaneSide,
   featureAnchorId,
   HOVER_CLOSE_GRACE_MS,
   HOVER_OPEN_DELAY_MS,
+  popoverVerticalPlacement,
   registerActivePopover,
   segmentPopoverShift,
   termAnchorId,
@@ -98,6 +101,92 @@ describe("detailPaneSide & stable anchors (#37631 fixes 7-8)", () => {
     registerActivePopover(closeA)
     expect(closedB).toBe(0)
     clearActivePopover(closeA)
+  })
+})
+
+describe("the cascading result pane stays inside its frame and the viewport (#38757 finding 1)", () => {
+  // The operator's card: DECCRA on Ghostty 1.4.0 (Linux) from the home page at 1440x900. The hover card sat at
+  // top 374 (420 tall), the DECCRA row at 626, and the pane, opened beside the row, ran to 1177 with the card's
+  // received screenshot, verdict and "Details ›" painted below even that.
+  const deccra = { popTop: 374, popHeight: 420, rowTop: 626, rowHeight: 24, viewportHeight: 900 }
+
+  it("moves a tall pane up so its whole frame fits the viewport, with the seam still on the hovered row", () => {
+    const placed = detailPanePlacement({ ...deccra, paneHeight: 1000 })
+    expect(placed.maxHeight).toBe(DETAIL_PANE_MAX_HEIGHT)
+    expect(deccra.popTop + placed.top).toBeGreaterThanOrEqual(12)
+    expect(deccra.popTop + placed.top + placed.maxHeight).toBeLessThanOrEqual(deccra.viewportHeight - 12)
+    expect(placed.notchTop).toBe(deccra.rowTop - deccra.popTop + deccra.rowHeight / 2 - placed.top)
+  })
+
+  it("leaves a pane that already fits beside its row", () => {
+    expect(detailPanePlacement({ ...deccra, paneHeight: 200 })).toEqual({ top: 242, notchTop: 22, maxHeight: 560 })
+  })
+
+  it("caps the pane at what a short viewport holds, so taller content scrolls inside it", () => {
+    const placed = detailPanePlacement({ ...deccra, popTop: 40, rowTop: 300, paneHeight: 1000, viewportHeight: 500 })
+    expect(placed.maxHeight).toBe(370)
+    expect(40 + placed.top + placed.maxHeight).toBeLessThanOrEqual(488)
+  })
+
+  it("keeps the hover card itself inside the viewport at phone width: its list scrolls instead", () => {
+    // Ghostty (macOS) at 390x844: the bar sat at 410-434 and the 420 px card opened below it, ending at 860.
+    const placed = popoverVerticalPlacement({ barTop: 410, barBottom: 434, popHeight: 420, viewportHeight: 844 })
+    expect(placed).toMatchObject({ top: 440, flipped: false })
+    expect(placed.top + placed.maxHeight).toBeLessThanOrEqual(844 - 12)
+    // A bar low on the screen still flips the card above it, sized to the room there.
+    const above = popoverVerticalPlacement({ barTop: 700, barBottom: 724, popHeight: 420, viewportHeight: 844 })
+    expect(above.flipped).toBe(true)
+    expect(above.top).toBeGreaterThanOrEqual(12)
+    expect(above.top + Math.min(420, above.maxHeight)).toBeLessThanOrEqual(700 - 6)
+  })
+
+  it("makes the card the pane actually renders the pane's scroll box (the old selector named a class no card has)", () => {
+    const barCss = readFileSync(join(root, "docs/.vitepress/theme/bar-rows.css"), "utf8")
+    const resultCardVue = readFileSync(join(root, "docs/.vitepress/theme/ResultEvidenceCell.vue"), "utf8")
+    const supportBarVue = readFileSync(join(root, "docs/.vitepress/theme/SupportBar.vue"), "utf8")
+    const inlineRootClasses = /v-if="inline"\s+class="([^"]+)"/u.exec(resultCardVue)?.[1]?.split(/\s+/u) ?? []
+    expect(inlineRootClasses).toContain("rc-card--inline")
+    const childRules = [...barCss.matchAll(/\.support-pop-detail\s*>\s*\.([\w-]+)\s*\{([^}]*)\}/gu)]
+    expect(childRules.map((rule) => rule[1])).toEqual(["rc-card--inline"])
+    expect(childRules[0]?.[2]).toMatch(/overflow:\s*auto/u)
+    expect(childRules[0]?.[2]).toMatch(/min-height:\s*0/u)
+    const pane = /\.support-pop-detail\s*\{([^}]*)\}/u.exec(barCss)?.[1] ?? ""
+    expect(pane).toMatch(/display:\s*flex/u)
+    expect(pane).toMatch(/max-height:\s*var\(--detail-max-height/u)
+    expect(supportBarVue).toContain("detailPanePlacement(")
+    expect(supportBarVue).toContain("'--detail-max-height'")
+    expect(supportBarVue).toContain("popoverVerticalPlacement(")
+    expect(/\.support-pop\s*\{([^}]*)\}/u.exec(barCss)?.[1]).toMatch(/max-height:\s*min\([^;]*var\(--pop-max-height/u)
+  })
+})
+
+describe("one platform icon for the list, the Feature support panel and the result card (#38757 finding 4)", () => {
+  const theme = (name: string) => readFileSync(join(root, "docs/.vitepress/theme", name), "utf8")
+
+  it("draws the platform through one component everywhere a terminal is named with its platform", () => {
+    expect(theme("PlatformIcon.vue")).toContain("platformIcon(")
+    for (const [name, source] of [
+      ["TermRow.vue", theme("TermRow.vue")],
+      ["ResultEvidenceCell.vue", theme("ResultEvidenceCell.vue")],
+      ["terminals/[id].md", readFileSync(join(root, "docs/terminals/[id].md"), "utf8")],
+    ] as const) {
+      expect(source, name).toContain("<PlatformIcon")
+      expect(source, name).not.toContain('class="term-platform"')
+    }
+  })
+
+  it("puts the icon and the mono version in the card header instead of the platform in words", () => {
+    const card = theme("ResultEvidenceCell.vue")
+    const headers = [...card.matchAll(/<div class="rc-who">([\s\S]*?)<\/div>/gu)].map((match) => match[1] ?? "")
+    expect(headers).toHaveLength(2)
+    for (const header of headers) {
+      expect(header).toMatch(/<PlatformIcon :os="who\.os" :platform="who\.osName"/u)
+      expect(header).toContain('class="term-version"')
+    }
+    // The list's version style reaches the card and the panel at phone width too; only the bar row hides it.
+    expect(theme("bar-rows.css")).toMatch(
+      /@media \(max-width: 600px\)[\s\S]*\.term-row \.term-version\s*\{\s*display: none;/u,
+    )
   })
 })
 

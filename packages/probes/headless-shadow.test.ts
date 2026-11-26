@@ -242,6 +242,25 @@ it.runIf(OWNED_LAYOUT)(
     })
     expect(row(diverged, agreed)?.outcome).toBe("incomplete")
 
+    // AC1 (#30932): a native host-recipe record is evidence, not an exclusion. An empty record - the shape 181 of
+    // alacritty's 239 excluded rows carried - says the callback asked the host nothing, so the row replays and
+    // agrees; a query that failed live is still refused by name rather than replayed as an empty answer.
+    const hostEmpty = await shadowTampered(run, "hostrecipe-empty", (draft) => {
+      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({ runId: stored.runId, captures: [], causes: [] })
+    })
+    expect(row(hostEmpty, agreed), JSON.stringify(row(hostEmpty, agreed))).toMatchObject({ outcome: "agree" })
+    const hostFailed = await shadowTampered(run, "hostrecipe-error", (draft) => {
+      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({
+        runId: stored.runId,
+        captures: [{ query: "\u001b[c", response: "", error: "ENOENT" }],
+        causes: [],
+      })
+    })
+    expect(row(hostFailed, agreed)).toMatchObject({
+      outcome: "not-comparable",
+      input: expect.stringContaining("native host-recipe query error"),
+    })
+
     // #30932 S4: the shipped command reasserts the same saved run offline, through its real arguments, and agrees
     // with the collector's own shadow; the tampered copies above decide its exit, worst first (2 > 1 > 0).
     const statusCopy = join(dirname(run), `status-${basename(run)}`)

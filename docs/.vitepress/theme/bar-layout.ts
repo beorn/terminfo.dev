@@ -45,6 +45,33 @@ export function segmentPopoverShift(input: {
   return Math.max(minShift, Math.min(anchorOffset, maxShift))
 }
 
+/**
+ * Vertical placement of SupportBar's hover card in viewport px (#37631, #38757): below the bar, or flipped above it
+ * when the room below is short and the room above is larger. `maxHeight` is the room on the chosen side, so the
+ * card's list scrolls inside the viewport instead of the card running past its bottom edge.
+ */
+export function popoverVerticalPlacement(input: {
+  readonly barTop: number
+  readonly barBottom: number
+  readonly popHeight: number
+  readonly viewportHeight: number
+}): { top: number; flipped: boolean; maxHeight: number } {
+  const viewH = input.viewportHeight
+  const belowTop = Math.round(input.barBottom + 6)
+  const roomBelow = viewH - belowTop - 12
+  const roomAbove = input.barTop - 18
+  const flipped = roomBelow < Math.min(input.popHeight, 260) && roomAbove > roomBelow
+  if (flipped) {
+    return {
+      top: Math.max(12, Math.round(input.barTop - 6 - Math.min(input.popHeight, roomAbove))),
+      flipped,
+      maxHeight: roomAbove,
+    }
+  }
+  const top = Math.max(12, Math.min(belowTop, Math.max(12, viewH - 120)))
+  return { top, flipped, maxHeight: viewH - 12 - top }
+}
+
 export type DetailPaneSide = "right" | "left" | "below"
 
 /**
@@ -64,6 +91,40 @@ export function detailPaneSide(input: {
   if (input.popLeft + input.popWidth + input.detailWidth <= input.pageWidth - margin) return "right"
   if (input.popLeft - input.detailWidth >= margin) return "left"
   return "right"
+}
+
+/** The cascading result pane's tallest frame; a shorter viewport lowers it (#38757). */
+export const DETAIL_PANE_MAX_HEIGHT = 560
+
+/**
+ * Vertical placement of the cascading result pane, in px from the hover card's top (#37631, #38757). The pane opens
+ * beside the hovered row and moves up only as far as its whole frame needs to fit the viewport; it is never taller
+ * than the viewport allows, so a longer card scrolls inside it instead of painting past its frame. The seam arrow
+ * keeps pointing at the row's centre. `paneHeight` is the pane's rendered height (0 before it renders).
+ */
+export function detailPanePlacement(input: {
+  readonly popTop: number
+  readonly popHeight: number
+  readonly rowTop: number
+  readonly rowHeight: number
+  readonly paneHeight: number
+  readonly viewportHeight: number
+  readonly margin?: number
+}): { top: number; notchTop: number; maxHeight: number } {
+  const margin = input.margin ?? 12
+  const maxHeight = Math.min(
+    DETAIL_PANE_MAX_HEIGHT,
+    Math.round(input.viewportHeight * 0.74),
+    input.viewportHeight - 2 * margin,
+  )
+  const height = Math.min(input.paneHeight || maxHeight, maxHeight)
+  const rowOffset = input.rowTop - input.popTop
+  const besideRow = Math.max(0, Math.min(rowOffset - 10, Math.max(0, input.popHeight - 160)))
+  const top = Math.round(
+    Math.max(margin - input.popTop, Math.min(besideRow, input.viewportHeight - margin - height - input.popTop)),
+  )
+  const notchTop = Math.round(Math.max(16, Math.min(rowOffset + input.rowHeight / 2 - top, height - 16)))
+  return { top, notchTop, maxHeight }
 }
 
 function slugifyAnchor(raw: string): string {

@@ -6,6 +6,13 @@ export const DEFAULT_POINTER = { x: 400, y: 300 } as const
 /** Where a drag releases, in owned-window pixels. */
 export const DRAG_TARGET = { x: 450, y: 300 } as const
 
+/**
+ * Minimum gap in milliseconds between consecutive primary-button pointer gestures (`injectClick(1)`
+ * and `injectDrag(1)`), so a control click and a target click on the same cell never fall inside
+ * tmux's 300 ms `DOUBLE_CLICK_TIME` window and read as `DoubleClick1Pane`/`TripleClick1Pane` (#33990, @cto e387bb82).
+ */
+export const SINGLE_CLICK_SPACING_MS = 350
+
 /** The only buttons an adapter may click: 1 primary, 4 wheel up, 5 wheel down. */
 export type InputButton = 1 | 4 | 5
 
@@ -45,6 +52,18 @@ export interface InputMechanism {
  * act. `label` names the mechanism in refusals ("XTEST", "CGEvent").
  */
 export function createInjectedInput(mechanism: InputMechanism, label: string): InputFixture {
+  let lastPrimaryButtonAt: number | undefined
+
+  async function waitForSingleClickWindow(): Promise<void> {
+    if (lastPrimaryButtonAt === undefined) return
+    const remaining = lastPrimaryButtonAt + SINGLE_CLICK_SPACING_MS - Date.now()
+    if (remaining > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, remaining)
+      })
+    }
+  }
+
   async function preparePointer(position: { x: number; y: number }): Promise<void> {
     await mechanism.focus()
     const frame = await mechanism.geometry()
@@ -65,7 +84,12 @@ export function createInjectedInput(mechanism: InputMechanism, label: string): I
     },
     async injectClick(button: InputButton, position?: { x: number; y: number }) {
       await preparePointer(position ?? DEFAULT_POINTER)
-      await mechanism.click(button)
+      if (button === 1) await waitForSingleClickWindow()
+      try {
+        await mechanism.click(button)
+      } finally {
+        if (button === 1) lastPrimaryButtonAt = Date.now()
+      }
     },
     async injectMove(x: number, y: number) {
       await mechanism.focus()
@@ -73,9 +97,14 @@ export function createInjectedInput(mechanism: InputMechanism, label: string): I
     },
     async injectDrag(button: 1 = 1) {
       await preparePointer(DEFAULT_POINTER)
-      await mechanism.press(button)
-      await mechanism.moveTo(DRAG_TARGET.x, DRAG_TARGET.y, { verifyPointer: false, dragged: true })
-      await mechanism.release(button)
+      await waitForSingleClickWindow()
+      try {
+        await mechanism.press(button)
+        await mechanism.moveTo(DRAG_TARGET.x, DRAG_TARGET.y, { verifyPointer: false, dragged: true })
+        await mechanism.release(button)
+      } finally {
+        lastPrimaryButtonAt = Date.now()
+      }
     },
   }
 }
