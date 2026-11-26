@@ -619,7 +619,7 @@ export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
       case "mux": {
         const target = r.target
         if (
-          !["tmux", "screen"].includes(target.mux) ||
+          !["tmux", "screen", "herdr"].includes(target.mux) ||
           !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(target.bootId ?? "") ||
           typeof target.socketPath !== "string" ||
           !target.socketPath.startsWith("/") ||
@@ -819,6 +819,76 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       if (!ownsSocket) throw new Error("Owned mux Screen server does not own the declared socket")
       if (displays.length !== 1 || displays[0] !== shell.ttyRdev) {
         throw new Error("Owned mux Screen requires exactly one attached display on the outer tty")
+      }
+      break
+    }
+    case "herdr": {
+      // herdr 0.9.5 (#38759) lists no clients (status and api snapshot name none), so attachment is read from the
+      // kernel, as Screen's is. The server is the collector's only mux ancestor and the outer shell's child; the one
+      // client is the outer shell's child running `herdr --session <session>` on the outer tty; and one of the
+      // client's unix sockets is connected (ss -xn peer inode) to a socket the server holds that is bound to the
+      // declared path.
+      const [server] = intermediates
+      if (intermediates.length !== 1 || !server || server.ppid !== shell.pid) {
+        throw new Error("Owned mux herdr server/collector ancestry differs")
+      }
+      const childrenPath = `/proc/${shell.pid}/task/${shell.pid}/children`
+      let children: number[]
+      try {
+        children = readFileSync(childrenPath, "utf8").trim().split(/\s+/).filter(Boolean).map(Number)
+      } catch (cause) {
+        throw new Error(`Owned mux herdr outer shell children ${childrenPath} cannot be read`, { cause })
+      }
+      const clients = children.filter((pid) => {
+        if (pid === server.pid) return false
+        let argv: string[]
+        try {
+          argv = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean)
+        } catch {
+          return false
+        }
+        return argv.length === 3 && argv[1] === "--session" && argv[2] === target.session
+      })
+      const clientPid = clients[0]
+      if (clients.length !== 1 || clientPid === undefined) {
+        throw new Error(`Owned mux herdr requires exactly one attached client; found ${clients.length}`)
+      }
+      client = processIdentity(clientPid)
+      const socketInodes = (pid: number): Set<string> => {
+        const directory = `/proc/${pid}/fd`
+        const inodes = new Set<string>()
+        let descriptors: string[]
+        try {
+          descriptors = readdirSync(directory)
+        } catch (cause) {
+          throw new Error(`Owned mux herdr fd directory ${directory} cannot be read`, { cause })
+        }
+        for (const fd of descriptors) {
+          let link: string
+          try {
+            link = readlinkSync(`${directory}/${fd}`)
+          } catch (cause) {
+            throw new Error(`Owned mux herdr fd link ${directory}/${fd} cannot be read`, { cause })
+          }
+          const match = /^socket:\[(\d+)\]$/.exec(link)
+          if (match?.[1]) inodes.add(match[1])
+        }
+        return inodes
+      }
+      const clientSockets = socketInodes(client.pid)
+      const serverSockets = socketInodes(server.pid)
+      // ss -xnH: Netid State Recv-Q Send-Q Local-Address Local-Port(inode) Peer-Address Peer-Port(inode).
+      const rows = (await command("ss", ["-xnH"]))
+        .trim()
+        .split("\n")
+        .map((row) => row.trim().split(/\s+/))
+        .filter((row) => row.length >= 8)
+      const boundServerSide = new Set(
+        rows.filter((row) => row[4] === target.socketPath && serverSockets.has(row[5] ?? "")).map((row) => row[5]),
+      )
+      const connected = rows.some((row) => clientSockets.has(row[5] ?? "") && boundServerSide.has(row[7]))
+      if (!connected) {
+        throw new Error("Owned mux herdr client holds no socket connected to the server's declared socket")
       }
       break
     }

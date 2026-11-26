@@ -782,6 +782,66 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       mkdir -m 700 "$SCREENDIR"
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
       ;;
+    herdr)
+      # herdr 0.9.5 (#38759): a headless server owns the session socket; this shell's foreground client is the one
+      # attached display. HERDR_CONFIG_PATH points at the receipt's empty config, so no user config is read.
+      unset TERM_PROGRAM TERM_PROGRAM_VERSION
+      export XDG_CONFIG_HOME="$HOME/.config" HERDR_CONFIG_PATH="$mux_config"
+      # herdr.sock is the API socket the CLI verbs use; an attached client connects to herdr-client.sock, so that is
+      # the socket the receipt names and the attachment proof pairs with the client (measured on herdr 0.9.5).
+      mux_api_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr.sock"
+      mux_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr-client.sock"
+      printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
+      setsid herdr --session "$mux_session" server </dev/null >"$mux_output/mux-server.log" 2>&1 &
+      mux_server=$!
+      for _ in $(seq 1 100); do
+        [[ -S "$mux_api_socket" && -S "$mux_socket" ]] && break
+        kill -0 "$mux_server" || { echo "Owned herdr server exited" >&2; exit 2; }
+        sleep 0.05
+      done
+      [[ -S "$mux_api_socket" && -S "$mux_socket" ]] || { echo "Owned herdr sockets were not created" >&2; exit 2; }
+      herdr --session "$mux_session" workspace create --cwd "$mux_output" --label "$mux_session" --no-focus \
+        >"$mux_output/mux-workspace.json" 2>>"$mux_output/mux-server.log" || {
+        echo "Owned herdr workspace was not created" >&2; exit 2;
+      }
+      mux_pane=$(jq -er 'first(.. | .pane_id? // empty)' "$mux_output/mux-workspace.json") || {
+        echo "Owned herdr workspace reply names no pane: $mux_output/mux-workspace.json" >&2; exit 2;
+      }
+      printf -v herdr_collector 'exec bun %q test --serve' "$TERMINFO_RUNNER"
+      mux_shell=$
+      (
+        # Start the collector only once THIS shell's client is attached; exec makes the server its direct parent,
+        # which the attachment proof reads (collector -> server -> outer shell). herdr keeps a client attached after
+        # its last pane exits, so the server is stopped here once the collector is gone.
+        client=
+        for _ in $(seq 1 200); do
+          for child in $(cat "/proc/$mux_shell/task/$mux_shell/children" 2>/dev/null); do
+            [[ "$(tr '\0' ' ' < "/proc/$child/cmdline" 2>/dev/null)" == "herdr --session $mux_session " ]] && client=$child
+          done
+          [[ -n "$client" ]] && break
+          sleep 0.05
+        done
+        [[ -n "$client" ]] || { echo "Owned herdr client did not attach" >&2; herdr --session "$mux_session" server stop; exit 2; }
+        herdr --session "$mux_session" pane run "$mux_pane" "$herdr_collector" >>"$mux_output/mux-server.log" 2>&1 || {
+          echo "Owned herdr pane run failed" >&2; herdr --session "$mux_session" server stop; exit 2;
+        }
+        collector=
+        for _ in $(seq 1 200); do
+          for child in $(cat "/proc/$mux_server/task/$mux_server/children" 2>/dev/null); do
+            [[ "$(readlink "/proc/$child/exe" 2>/dev/null)" == */bun ]] && collector=$child
+          done
+          [[ -n "$collector" ]] && break
+          sleep 0.05
+        done
+        [[ -n "$collector" ]] || { echo "Owned herdr collector did not start under the server" >&2; herdr --session "$mux_session" server stop; exit 2; }
+        while [[ -d "/proc/$collector" ]]; do sleep 0.1; done
+        herdr --session "$mux_session" server stop >>"$mux_output/mux-server.log" 2>&1
+      ) &
+      mux_watcher=$!
+      herdr --session "$mux_session"
+      wait "$mux_watcher" || { echo "Owned herdr collector watcher failed" >&2; exit 2; }
+      wait "$mux_server"
+      ;;
     *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;;
   esac
   exit 0
@@ -1279,7 +1339,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   collector_command=(bun --no-env-file "$TERMINFO_RUNNER" test --serve)
   if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
     [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
-    case "$TERMINFO_MUX_KIND" in tmux|screen) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
+    case "$TERMINFO_MUX_KIND" in tmux|screen|herdr) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
     export TERMINFO_OUTER_COLOUR_RECORD=/out/outer-colour-record.json
     collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
   fi
@@ -1430,6 +1490,11 @@ if [[ "${1:-}" == "--inside" ]]; then
         mux_socket=${mux_sockets[0]}
         "$mux_executable" --version > /out/mux-version.txt
         mux_version=$(sed -nE 's/^Screen version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' /out/mux-version.txt)
+        ;;
+      herdr)
+        read -r mux_socket < /out/mux-socket.txt
+        "$mux_executable" --version > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^herdr ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' /out/mux-version.txt)
         ;;
     esac
     [[ -n "$mux_version" ]] || { echo "Owned mux executable did not report its version" >&2; exit 2; }
@@ -1620,7 +1685,7 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen|herdr] [--mux-profile default|truecolor|set-titles] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   echo "A source-tree collector also needs TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION" >&2
   echo "  from sourceSuiteEnvironment() in packages/admin/versions.ts, or serve.ts refuses the run." >&2
   echo "Retains raw/v3-capture.json, then finalizes a private sibling." >&2
@@ -1640,7 +1705,7 @@ while [[ "$#" -gt 0 ]]; do
     --mux)
       [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
       mux_kind=$2
-      case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      case "$mux_kind" in tmux|screen|herdr) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
       shift 2
       ;;
     --mux-profile)
