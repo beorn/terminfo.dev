@@ -116,6 +116,16 @@
     "platforms": ["macos", "linux"],
     "intermediary": true
   },
+  "herdr": {
+    "label": "herdr",
+    "slug": "herdr",
+    "kind": "mux",
+    "url": "https://herdr.dev",
+    "description": "Terminal workspace manager for AI coding agents, with persistent sessions, workspaces, tabs and panes.",
+    "body": "<p><strong>herdr</strong> is a terminal workspace manager built for running AI coding agents. A headless server keeps named sessions alive, and a client attaches to one in the terminal, where it shows workspaces, tabs and panes.</p>\n<p>Its panes are emulated by <strong>libghostty</strong>: a program inside a herdr pane talks to that emulator, not to the outer terminal, so herdr's own answers decide what the program sees.</p>",
+    "platforms": ["linux"],
+    "intermediary": true
+  },
   "vt52-historical": {
     "label": "DEC VT52",
     "slug": "vt52-historical",
