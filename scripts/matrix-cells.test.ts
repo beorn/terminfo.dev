@@ -41,6 +41,20 @@ const sampleRun = {
 } as unknown as PublicRunMetadata
 
 describe("matrix-cells — pure delegated cell rendering (#38451)", () => {
+  it("wears 'Unsupported, derived' only for a refused parent, never for a cell graded from parts (#38772)", () => {
+    const describe_ = (derived: object) =>
+      describeMatrixCell({
+        featureId: "extensions.osc52-clipboard",
+        featureName: "OSC 52 clipboard",
+        subjectName: "WezTerm",
+        version: sampleRun,
+        cell: { featureId: "extensions.osc52-clipboard", status: "unsupported", derived } as never,
+      }).accessibleName
+    expect(describe_({ parent: "extensions.osc52-write", parentRunId: "run-1" })).toContain(": Unsupported, derived.")
+    const parts = { parts: [{ feature: "extensions.osc52-write", name: "OSC 52 write", runId: "run-1" }], words: "w" }
+    expect(describe_(parts)).toContain(": Unsupported. Opens")
+  })
+
   it("escapes HTML metacharacters cleanly", () => {
     expect(escapeHtml(`<script>"&'</script>`)).toBe("&lt;script&gt;&quot;&amp;&#39;&lt;/script&gt;")
   })
