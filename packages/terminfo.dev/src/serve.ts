@@ -1871,6 +1871,13 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       }
       clipboard = ownedTerminal?.clipboard
       attachment = ownedTerminal?.muxAttachmentProof
+      const observers =
+        ownedTerminal?.observers?.length
+          ? [...ownedTerminal.observers]
+          : ownedTerminal?.hostedAppId === "iterm2" && !muxSubject
+            ? ["iterm2: EnableAPIServer true"]
+            : undefined
+      if (observers) draft.observers = observers
       if (kind === "process" && !muxSubject) {
         if (!ownedTerminal) throw new Error("Darwin outer collector has no verified owner")
         const ownership = parseJsonStrict("Darwin outer collector ownership", ownedTerminal.summary)

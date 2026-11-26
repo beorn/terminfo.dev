@@ -193,6 +193,10 @@ export interface ProbeResult {
   assertionType?: AssertionType
 }
 
+/** The short allowlist of observer-only switches a run's `observers` field may record (#37780, @cto e81def55). */
+export const KNOWN_OBSERVERS = ["iterm2: EnableAPIServer true"] as const
+export type KnownObserver = (typeof KNOWN_OBSERVERS)[number]
+
 /** A private in-flight run; intended subject is never measured identity/provenance. */
 export interface RunDraft {
   schemaVersion: 4
@@ -211,6 +215,8 @@ export interface RunDraft {
   sourceRevision: string
   intendedSubject: Partial<ProbeSubject>
   subject?: ProbeSubject
+  /** Observer-only switches this run turned on (#37780, @cto e81def55); outside subject identity. */
+  observers?: string[]
   identity?: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
