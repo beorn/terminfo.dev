@@ -825,18 +825,35 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
         herdr --session "$mux_session" pane run "$mux_pane" "$herdr_collector" >>"$mux_output/mux-server.log" 2>&1 || {
           echo "Owned herdr pane run failed" >&2; herdr --session "$mux_session" server stop; exit 2;
         }
+        # The collector is a bun process somewhere under the server (the pane shell execs it). Search every
+        # descendant: a loaded host can take well over 10 s to start bun, and the attachment proof, not this
+        # watcher, decides whether the ancestry is the one the receipt allows.
         collector=
-        for _ in $(seq 1 200); do
-          for child in $(cat "/proc/$mux_server/task/$mux_server/children" 2>/dev/null); do
-            [[ "$(readlink "/proc/$child/exe" 2>/dev/null)" == */bun ]] && collector=$child
+        for _ in $(seq 1 600); do
+          frontier=("$mux_server")
+          while [[ "${#frontier[@]}" -gt 0 && -z "$collector" ]]; do
+            next=()
+            for parent in "${frontier[@]}"; do
+              for child in $(cat "/proc/$parent/task/$parent/children" 2>/dev/null); do
+                [[ "$(readlink "/proc/$child/exe" 2>/dev/null)" == */bun ]] && collector=$child
+                next+=("$child")
+              done
+            done
+            frontier=("${next[@]}")
           done
           [[ -n "$collector" ]] && break
-          sleep 0.05
+          sleep 0.1
         done
-        [[ -n "$collector" ]] || { echo "Owned herdr collector did not start under the server" >&2; herdr --session "$mux_session" server stop; exit 2; }
+        [[ -n "$collector" ]] || {
+          echo "Owned herdr collector did not start under the server within 60 s; process tree:" >&2
+          for stat in /proc/[0-9]*/stat; do read -r -a f < "$stat" 2>/dev/null && printf "%s %s %s\n" "${f[0]}" "${f[3]}" "${f[1]}" >&2; done
+          herdr --session "$mux_session" server stop; exit 2;
+        }
+        printf 'herdr collector pid %s, parent %s\n' "$collector" "$(awk '{print $4}' "/proc/$collector/stat")" \
+          >>"$mux_output/mux-server.log"
         while [[ -d "/proc/$collector" ]]; do sleep 0.1; done
         herdr --session "$mux_session" server stop >>"$mux_output/mux-server.log" 2>&1
-      ) &
+      ) 2>>"$mux_output/mux-server.log" &
       mux_watcher=$!
       herdr --session "$mux_session"
       wait "$mux_watcher" || { echo "Owned herdr collector watcher failed" >&2; exit 2; }
