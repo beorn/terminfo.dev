@@ -116,7 +116,6 @@ export type {
   LinuxMuxAttachmentProof,
   DarwinMuxAttachmentProof,
   RunProvenance,
-  Interpretation,
 } from "./types.ts"
 export {
   SOURCE_NEGATIVE_REVIEW,
@@ -354,7 +353,6 @@ export type {
   ProbeTestInput,
   RunDraft,
   CurrentRun,
-  HistoricalInterpretation,
 } from "./types.ts"
 export { initializeRunDraft, finalizeProbeResult } from "./helpers.ts"
 
