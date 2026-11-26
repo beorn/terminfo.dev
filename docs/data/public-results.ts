@@ -17,7 +17,14 @@ import { isPublishedStatus, standInGrade, type AppCellStatus, type JoinedApp } f
 import type { FeatureResult, RollupCounts } from "./release-scope.ts"
 import { publicReopenedReason } from "./reopened-cells.ts"
 import { publicDeclaredReason } from "./declared-untestable.ts"
-import { publicDerivedReason, type DerivedMarker } from "./derived-cells.ts"
+import {
+  publicDerivedReason,
+  type DerivedMarker,
+  type DerivedParentMarker,
+  type DerivedPart,
+  type DerivedPartsMarker,
+  type PartReading,
+} from "./derived-cells.ts"
 import { publicHeldReason } from "./held-negatives.ts"
 import {
   type SelectedCell,
@@ -338,12 +345,16 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
-/** A derived marker as published: without the cell's own stored reading (#37341 Q4). Distributes over both kinds. */
-export type PublishedDerived = DerivedMarker extends infer M
-  ? M extends DerivedMarker
-    ? Omit<M, "ownStatus" | "ownReason">
-    : never
-  : never
+/**
+ * A derived marker as published: without the cell's own stored reading (#37341 Q4). A part graded from parts publishes
+ * its reading only when it is decided; an undecided part publishes its name alone, since its status and reason are
+ * words we haven't decided (#38772).
+ */
+export type PublishedDerived =
+  | Omit<DerivedParentMarker, "ownStatus" | "ownReason">
+  | (Omit<DerivedPartsMarker, "ownStatus" | "ownReason" | "parts"> & {
+      readonly parts: readonly (PartReading | DerivedPart)[]
+    })
 
 /**
  * #37341 D5: the entry a derived cell cites is its parent's, which is what the derivation read: the parent cell of the
@@ -384,7 +395,13 @@ function derivedOrigin(
 /** #37341 Q4: a derived marker as published: the child's own undecided reading stays in the stored run. */
 function publishedDerived(derived: DerivedMarker): PublishedDerived {
   const { ownStatus: _ownStatus, ownReason: _ownReason, ...published } = derived
-  return published
+  if (!("parts" in published)) return published
+  return {
+    ...published,
+    parts: published.parts.map((part) =>
+      isPublishedStatus(part.status) ? part : { feature: part.feature, name: part.name },
+    ),
+  }
 }
 
 /**

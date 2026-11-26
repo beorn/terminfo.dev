@@ -483,7 +483,11 @@ describe("qualified clipboard roundtrip", () => {
     expect(answered.pass).toBe(false)
     expect(answered.observation).toBeUndefined()
     expect(answered.tests).toEqual([
-      { id: "criterion", status: "probe-todo", reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./) },
+      {
+        id: "criterion",
+        status: "probe-todo",
+        reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+      },
     ])
     expect(answered.response).toMatch(/^\x1b\]52;c;/)
   })
@@ -565,8 +569,15 @@ describe("qualified clipboard roundtrip", () => {
       }),
     )
     // #38772: with no clipboard-state witness, a read-back answer is the read's evidence; the write stays open.
-    if (id === "extensions.osc52-write") expect(positive.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./) }])
-    else expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    if (id === "extensions.osc52-write") {
+      expect(positive.tests).toEqual([
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+        },
+      ])
+    } else expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     const inert = callback(
       context({
         runtimeIdentity,
@@ -707,8 +718,15 @@ describe("qualified clipboard roundtrip", () => {
     )
     expect(writes).toBe(1)
     expect(atob(encoded)).toMatch(/^terminfo-osc52-/)
-    if (id === "extensions.osc52-write") expect(result.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./) }])
-    else expect(result.observation?.outcome).toBe("supported")
+    if (id === "extensions.osc52-write") {
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: "probe-todo",
+          reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+        },
+      ])
+    } else expect(result.observation?.outcome).toBe("supported")
     expect(result.hostRecipeCauses).toBeUndefined()
     expect(result.response).toBe(raw)
   })
@@ -2823,8 +2841,15 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      if (id === "extensions.osc52-write") expect(headless.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./) }])
-      else expect(headless.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      if (id === "extensions.osc52-write") {
+        expect(headless.tests).toEqual([
+          {
+            id: "criterion",
+            status: "probe-todo",
+            reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./),
+          },
+        ])
+      } else expect(headless.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 
       for (const reply of [
         "\x1b[1;1R", // Unrelated CPR cannot prove a clipboard write.
@@ -2886,9 +2911,7 @@ describe("Kitty protocol detection", () => {
             },
           }),
         )
-        // #38772: with no clipboard-state witness, a read-back answer is the read's evidence; the write stays open.
-        if (id === "extensions.osc52-write") expect(positive.tests).toEqual([{ id: "criterion", status: "probe-todo", reason: expect.stringMatching(/^Open: no clipboard state to read the write from\./) }])
-        else expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 
         for (const [raw, reason, facts] of [
           [da1, "timeout", sentinel], // A DA1-shaped capture alone is not a measured sentinel.

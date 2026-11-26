@@ -441,13 +441,30 @@ describe("graded from parts: the OSC 52 umbrella reads its write and read rows (
     }).ctx.cells[C]!
     expect(refusedWrite.featureResult!.status).toBe("unsupported")
     expect(refusedWrite.derived).toMatchObject({ cites: W, words: "copy does not work (OSC 52 write)" })
+    const { projection } = osc52({
+      [W]: { status: "unsupported" },
+      [R]: { status: "probe-todo", reason: "Not run" },
+      [C]: { status: "supported" },
+    })
+    const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!.featureResults[C]!
+    // The open half publishes its name alone: its status and reason are words we haven't decided (#37341 Q4).
+    expect(published.derived).toMatchObject({
+      parts: [
+        { feature: W, name: "OSC 52 write", runId: "r1", status: "unsupported" },
+        { feature: R, name: "OSC 52 read" },
+      ],
+    })
+    expect(JSON.stringify(published)).not.toMatch(/probe-todo|Not run/)
     const refusedRead = osc52({
       [W]: { status: "probe-todo", reason: "Not run" },
       [R]: { status: "unsupported" },
       [C]: { status: "supported" },
     }).ctx.cells[C]!
     expect(refusedRead.featureResult!.status).toBe("unsupported")
-    expect(refusedRead.derived).toMatchObject({ cites: R, words: "reading does not answer at default settings (OSC 52 read)" })
+    expect(refusedRead.derived).toMatchObject({
+      cites: R,
+      words: "reading does not answer at default settings (OSC 52 read)",
+    })
   })
 
   it("a half that is itself Untestable makes it Untestable", () => {
