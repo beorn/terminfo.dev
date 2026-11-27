@@ -45,11 +45,11 @@ interface DeviceReply {
   expected: string
   refusal?: RegExp
   /**
-   * A refusal of the single setting or name this probe's contract asks is the measured answer,
-   * not a partial one. Set only where the contract names exactly one subject (27914: XTGETXRES
-   * saveLines); the default leaves a refusal inconclusive.
+   * #39012 (@cpo/term 2026-11-27): a complete status-0 answer is not a refusal of the resource — it shows the
+   * terminal speaks this query and leaves "resource not set" unproven, so it grades PROBE TODO with this reason
+   * instead of a capability negative. Unset leaves a refusal inconclusive.
    */
-  refusalDecisive?: boolean
+  notSetReason?: string
   /** A complete, well-formed answer to this query whose payload is not the expected one. */
   contradicts?: RegExp
   note?: (frame: string) => string | undefined
@@ -99,20 +99,7 @@ function deviceReplyResult(
   }
   const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
   if (refusal?.[0]) {
-    if (spec.refusalDecisive) {
-      const decisiveNote = ["Requested name refused; the contract asks exactly one name", ordered.note]
-        .filter((part): part is string => part !== undefined)
-        .join("; ")
-      return {
-        pass: false,
-        response: raw,
-        note: decisiveNote,
-        observation: { outcome: "unsupported", assertionType: "query_reply", note: decisiveNote },
-        assertions: [
-          { assertionType: "query_reply" as const, kind: "negative", expected: spec.expected, observed: refusal[0] },
-        ],
-      }
-    }
+    if (spec.notSetReason) return notTestedResult(spec.notSetReason, { query: spec.query, raw: refusal[0] })
     const refusalNote = ["Requested setting or name refused; other settings or names unmeasured", ordered.note]
       .filter((part): part is string => part !== undefined)
       .join("; ")
@@ -944,8 +931,12 @@ export const deviceProbes: ProbeDefinition[] = [
     query: "\x1bP+Q736176654c696e6573\x1b\\",
     valid: /\x1bP1\+R736176654c696e6573=(?:3[0-9])+\x1b\\/i,
     refusal: /\x1bP0\+R736176654c696e6573\x1b\\/i,
-    // The contract asks exactly one name, so a status-0 refusal is this probe's measured answer.
-    refusalDecisive: true,
+    // #39012 (@cpo/term 2026-11-27): a well-formed status-0 reply shows the terminal speaks XTGETXRES; "resource
+    // not set" is then unproven, not a refusal, so it reads To do with that reason.
+    notSetReason: "Answered; resource not set",
+    // A status-1 reply carrying a complete value that is not the decimal saveLines count is the measured negative:
+    // the resource answered, and its payload contradicts the contract.
+    contradicts: /\x1bP1\+R736176654c696e6573=(?:[0-9a-f]{2})+\x1b\\/i,
     // The name is hex-encoded, so a terminal may echo it in either case; valid and
     // refusal are already case-insensitive, and a case-sensitive malformed pattern
     // graded the same frame no-response instead of invalid-reply.
