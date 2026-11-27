@@ -1855,36 +1855,18 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       const note = control.changed
         ? "The jump control moved between two frames of the same screen: this arm's region digest is not stable across an unchanged screen, so no target pair can be read"
         : "The marker band was not at its settled row in both jump-control frames: this arm's band capture is not stable across an unchanged screen, so no target pair can be read"
-      return {
-        pass: false,
-        response,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          assertionType: "screenshot",
-          screenshotRef: target.screenshotRef,
-          frames,
-          note,
-        },
-      }
+      // An unstable capture is no verdict on the terminal (@cpo/term 2026-11-27): the row stays PROBE TODO with
+      // this cause, never PROBE INVALID, and never a capability negative.
+      return reviewResult("decsscls-control-unstable", note, note, observed)
     }
     if (!bandInsideWindow) {
       const note = `The target's marker band was first captured after ${Math.round(target.firstBandElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so its arrival cannot be placed inside the window and the pair cannot grade it`
-      return {
-        pass: false,
-        response,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          assertionType: "screenshot",
-          screenshotRef: target.screenshotRef,
-          frames,
-          note,
-        },
-      }
+      // The capture landed outside the window: the pair cannot place the arrival, so the row stays PROBE TODO with
+      // this cause rather than a PROBE INVALID (@cpo/term 2026-11-27).
+      return reviewResult("decsscls-window-unplaced", note, note, observed)
     }
     if (target.band[0]) {
-      const note = `The marker band was already at its settled row in the target's first band capture, ${Math.round(target.firstBandElapsedMs)} ms in and inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal put the content there without honouring the rate`
+      const note = `The marker band was already at its settled row in the target's first band capture, ${Math.round(target.firstBandElapsedMs)} ms in and inside the ${throttledDurationMs} ms throttled window a throttled scroll would still be running in: the scroll rate was not applied`
       return {
         pass: false,
         response,

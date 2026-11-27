@@ -3872,7 +3872,7 @@ test("modes.decsscls decides when the target band arrives at the slowest measure
   )
 })
 
-test("modes.decsscls stays inconclusive when only the target band capture lands outside the throttled window", async () => {
+test("modes.decsscls stays To do when only the target band capture lands outside the throttled window", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   await withDecssclsClock(
@@ -3885,12 +3885,12 @@ test("modes.decsscls stays inconclusive when only the target band capture lands 
           band: ["present", "present", "present", "present"],
         }),
       )
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        assertionType: "screenshot",
-      })
-      expect(result.observation?.note).toContain("outside the 3889 ms throttled window")
+      // An unplaced arrival is no verdict on the terminal (@cpo/term 2026-11-27): the row stays PROBE TODO
+      // with its cause and records no observation.
+      expect(result.criterionBranch).toBe("decsscls-window-unplaced")
+      expect(result.observation).toBeUndefined()
+      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(result.notTested?.noObservable).toContain("outside the 3889 ms throttled window")
       // The witness frame landed early; only the band capture is late, so a band present there
       // cannot be placed inside the window and must not grade unsupported on the earlier time.
       expect(result.response).toContain('"targetFirstElapsedMs":40')
@@ -3945,7 +3945,7 @@ test("modes.decsscls refuses a screen too short to place the marker band", async
   expect(frames).toEqual([])
 })
 
-test("modes.decsscls stays inconclusive when the jump control is still painting", async () => {
+test("modes.decsscls stays To do when the jump control is still painting", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await decsscls().term!(
@@ -3953,12 +3953,10 @@ test("modes.decsscls stays inconclusive when the jump control is still painting"
       cells: ["jump-t0", "jump-t1", "slow-t0", "slow-t1"],
     }),
   )
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "screenshot",
-  })
-  expect(result.observation?.note).toContain("jump control moved between two frames")
+  // Unstable capture is no verdict on the terminal (@cpo/term 2026-11-27): PROBE TODO with its cause.
+  expect(result.criterionBranch).toBe("decsscls-control-unstable")
+  expect(result.observation).toBeUndefined()
+  expect(result.notTested?.noObservable).toContain("jump control moved between two frames")
   expect(result.assertions).toBeUndefined()
 })
 
