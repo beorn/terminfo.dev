@@ -789,17 +789,38 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
       ;;
     herdr)
-      # herdr 0.9.5 (#38759): a headless server owns the session socket; this shell's foreground client is the one
-      # attached display. HERDR_CONFIG_PATH points at the receipt's config, so no user config is read. A missing
-      # onboarding key opens herdr's first-run dialog over the pane, which hid the calibration grid and took the
-      # collector's input (run 9d2d7bf5), so the config turns it off, with the background herdr.dev checks.
-      printf 'onboarding = false\n[update]\nversion_check = false\nmanifest_check = false\n' > "$mux_config"
+      # herdr 0.9.5 (#38759, #38850): a headless server owns the session socket; this shell's foreground client is the
+      # one attached display. HERDR_CONFIG_PATH points at the receipt's config, so no user config is read. Turn off the
+      # first-run onboarding dialog, background herdr.dev checks, mobile single-column chrome (the Kitty container is
+      # 61 columns wide, below herdr's default mobile_width_threshold = 64), sidebar, tab bar, borders, scrollbars (which
+      # otherwise repaint column 61 across alternate-screen transitions and prevent restoreGrid from settling), and toasts.
+      cat <<'EOF' > "$mux_config"
+onboarding = false
+[update]
+version_check = false
+manifest_check = false
+[ui]
+mobile_width_threshold = 0
+sidebar_start_collapsed = true
+sidebar_collapsed_mode = "hidden"
+hide_tab_bar_when_single_tab = true
+pane_borders = "off"
+pane_outer_borders = false
+pane_scrollbars = false
+[ui.toast]
+delivery = "off"
+[ui.toast.clipboard]
+enabled = false
+[ui.sound]
+enabled = false
+EOF
       unset TERM_PROGRAM TERM_PROGRAM_VERSION
       export XDG_CONFIG_HOME="$HOME/.config" HERDR_CONFIG_PATH="$mux_config"
       # herdr.sock is the API socket the CLI verbs use; an attached client connects to herdr-client.sock, so that is
       # the socket the receipt names and the attachment proof pairs with the client (measured on herdr 0.9.5).
       mux_api_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr.sock"
       mux_socket="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr-client.sock"
+      mux_internal_log="$XDG_CONFIG_HOME/herdr/sessions/$mux_session/herdr-server.log"
       printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
       setsid herdr --session "$mux_session" server </dev/null >"$mux_output/mux-server.log" 2>&1 &
       mux_server=$!
@@ -809,7 +830,7 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
         sleep 0.05
       done
       [[ -S "$mux_api_socket" && -S "$mux_socket" ]] || { echo "Owned herdr sockets were not created" >&2; exit 2; }
-      herdr --session "$mux_session" workspace create --cwd "$mux_output" --label "$mux_session" --no-focus \
+      herdr --session "$mux_session" workspace create --cwd "$mux_output" --label "$mux_session" --focus \
         >"$mux_output/mux-workspace.json" 2>>"$mux_output/mux-server.log" || {
         echo "Owned herdr workspace was not created" >&2; exit 2;
       }
@@ -819,18 +840,22 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
       printf -v herdr_collector 'exec bun %q test --serve' "$TERMINFO_RUNNER"
       mux_shell=$$
       (
-        # Start the collector only once THIS shell's client is attached; exec makes the server its direct parent,
-        # which the attachment proof reads (collector -> server -> outer shell). herdr keeps a client attached after
-        # its last pane exits, so the server is stopped here once the collector is gone.
+        # Start the collector only once THIS shell's client is attached and its surface is active at the outer
+        # terminal's dimensions; exec makes the server its direct parent, which the attachment proof reads
+        # (collector -> server -> outer shell). herdr keeps a client attached after its last pane exits, so the
+        # server is stopped here once the collector is gone.
         client=
         for _ in $(seq 1 200); do
           for child in $(cat "/proc/$mux_shell/task/$mux_shell/children" 2>/dev/null); do
             [[ "$(tr '\0' ' ' < "/proc/$child/cmdline" 2>/dev/null)" == "herdr --session $mux_session " ]] && client=$child
           done
-          [[ -n "$client" ]] && break
+          if [[ -n "$client" ]] && grep -q "surface_active=true" "$mux_internal_log" 2>/dev/null; then
+            break
+          fi
           sleep 0.05
         done
         [[ -n "$client" ]] || { echo "Owned herdr client did not attach" >&2; herdr --session "$mux_session" server stop; exit 2; }
+        herdr --session "$mux_session" workspace focus w1 >>"$mux_output/mux-server.log" 2>&1 || true
         herdr --session "$mux_session" pane run "$mux_pane" "$herdr_collector" >>"$mux_output/mux-server.log" 2>&1 || {
           echo "Owned herdr pane run failed" >&2; herdr --session "$mux_session" server stop; exit 2;
         }
@@ -858,7 +883,9 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
           for stat in /proc/[0-9]*/stat; do read -r -a f < "$stat" 2>/dev/null && printf "%s %s %s\n" "${f[0]}" "${f[3]}" "${f[1]}" >&2; done
           herdr --session "$mux_session" server stop; exit 2;
         }
-        printf 'herdr collector pid %s, parent %s\n' "$collector" "$(awk '{print $4}' "/proc/$collector/stat")" \
+        collector_stat=()
+        read -r -a collector_stat < "/proc/$collector/stat" 2>/dev/null || true
+        printf 'herdr collector pid %s, parent %s\n' "$collector" "${collector_stat[3]:-}" \
           >>"$mux_output/mux-server.log"
         while [[ -d "/proc/$collector" ]]; do sleep 0.1; done
         herdr --session "$mux_session" server stop >>"$mux_output/mux-server.log" 2>&1

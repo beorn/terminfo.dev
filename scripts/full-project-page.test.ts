@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import * as currentResults from "../docs/data/current-results.ts"
+import { isPublishedStatus } from "../docs/data/app-cells.ts"
 import * as publicResults from "../docs/data/public-results.ts"
 import * as fullProject from "../docs/data/full-project.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
@@ -83,9 +84,13 @@ describe("the full-273 preview", () => {
       )
       for (const observation of row.observations) {
         const cell = context?.featureResults[observation.id]
-        expect(cell, `${row.context} ${observation.id}`).toBeDefined()
-        expect(cell?.origin).toEqual(observation.origin)
-        expect(cell?.status).toBe(observation.state)
+        if (isPublishedStatus(observation.state)) {
+          expect(cell, `${row.context} ${observation.id}`).toBeDefined()
+          expect(cell?.origin).toEqual(observation.origin)
+          expect(cell?.status).toBe(observation.state)
+        } else {
+          expect(cell, `${row.context} ${observation.id}`).toBeUndefined()
+        }
         const source = context?.sources[observation.origin.runId]
         expect(source?.sha256).toMatch(/^[0-9a-f]{64}$/)
         expect(source?.suiteId).toBe(observation.suiteId)
