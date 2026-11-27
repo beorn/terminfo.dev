@@ -2089,6 +2089,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const initial = await size()
   if (initial) {
     let delivered: ProbeCallbackResult | undefined
+    let confirmedAtInitial = false
     try {
       ctx.write("\x1b[?40h\x1b[?3l")
       const reset = await size()
@@ -2096,6 +2097,7 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       const set = await size()
       ctx.write("\x1b[?3l")
       const resetAgain = await size()
+      confirmedAtInitial = resetAgain !== null && resetAgain.rows === initial.rows && resetAgain.cols === initial.cols
       const response = JSON.stringify({ decrpm, initial, reset, set, resetAgain })
       if (
         !reset ||
@@ -2134,15 +2136,17 @@ async function deccolmApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       }
       return delivered
     } finally {
-      // DECCOLM can only set 80 or 132. Put back the size this probe found.
-      // An App run on a shared window does not own an 80-column setup.
-      ctx.write(`\x1b[8;${initial.rows};${initial.cols}t`)
-      const after = await size()
-      if (delivered && (!after || after.rows !== initial.rows || after.cols !== initial.cols)) {
-        const read = after ? `${after.rows}x${after.cols}` : "unread"
-        const extra = `restore left CSI 18t at ${read}; started at ${initial.rows}x${initial.cols}`
-        delivered.note = delivered.note ? `${delivered.note}; ${extra}` : extra
-        if (delivered.observation) delivered.observation.note = delivered.note
+      // DECCOLM can only set 80 or 132. Put back the size this probe found when it left it;
+      // skip a redundant CSI 8 resize if resetAgain already confirmed the initial size (#39042).
+      if (!confirmedAtInitial) {
+        ctx.write(`\x1b[8;${initial.rows};${initial.cols}t`)
+        const after = await size()
+        if (delivered && (!after || after.rows !== initial.rows || after.cols !== initial.cols)) {
+          const read = after ? `${after.rows}x${after.cols}` : "unread"
+          const extra = `restore left CSI 18t at ${read}; started at ${initial.rows}x${initial.cols}`
+          delivered.note = delivered.note ? `${delivered.note}; ${extra}` : extra
+          if (delivered.observation) delivered.observation.note = delivered.note
+        }
       }
     }
   }
