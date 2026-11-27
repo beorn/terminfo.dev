@@ -46,10 +46,14 @@ function required<T>(catalog: Readonly<Record<string, T>>, key: string): T {
   return entry
 }
 
-test("reads the live feature catalog: 278 entries, each with the five required fields", () => {
+test("reads the live feature catalog: every entry has the five required fields", () => {
+  const rawKeys = Object.keys(
+    JSON.parse(readFileSync(join(repoContent, "features.json"), "utf8")) as Record<string, unknown>,
+  ).filter((k) => !k.startsWith("$"))
   const features = loadFeatures(repoContent)
   const ids = Object.keys(features)
-  expect(ids.length).toBe(278)
+  expect(ids.length).toBe(rawKeys.length)
+  expect(ids.length).toBeGreaterThanOrEqual(278)
   for (const id of ids) {
     const entry = required(features, id)
     expect(typeof entry.name).toBe("string")
@@ -62,7 +66,7 @@ test("reads the live feature catalog: 278 entries, each with the five required f
   expect(required(features, "sgr.bold").name).toBe("Bold (SGR 1)")
 })
 
-test("reads the live terminal catalog: 28 entries, each with the five required fields", () => {
+test("reads the live terminal catalog: every entry has the five required fields", () => {
   const declarations = JSON.parse(readFileSync(join(repoContent, "terminals.json"), "utf8")) as Record<
     string,
     { kind?: string }
@@ -70,7 +74,7 @@ test("reads the live terminal catalog: 28 entries, each with the five required f
   expect(required(declarations, "ghostty").kind).toBe("term")
   expect(required(declarations, "ghostty-native").kind).toBe("lib")
   const terminals = loadTerminals(repoContent)
-  expect(Object.keys(terminals).length).toBe(28)
+  expect(Object.keys(terminals).length).toBe(Object.keys(declarations).filter((k) => !k.startsWith("$")).length)
   expect(required(terminals, "ghostty").label).toBe("Ghostty")
   expect(required(terminals, "ghostty").platforms).toEqual(["macos", "linux"])
   expect(required(terminals, "xterm").manifestBackend).toBeUndefined()

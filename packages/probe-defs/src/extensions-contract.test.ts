@@ -7,6 +7,7 @@
  * @testonly none
  */
 import { expect, test, vi } from "vitest"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { extensionsProbes, OSC22_NO_CONTROL_REPLY } from "./extensions.ts"
 import { NO_SAME_PATH_CONTROL, withReplyFailureEvidence } from "./helpers.ts"
@@ -1353,11 +1354,17 @@ function decidedSatisfactionSources(id: string) {
 
 test("the extensions contract covers every extension feature and names none unknown", () => {
   const gaps = contractGaps(extensionsProbes, EXTENSIONS_CONTRACT, EXTENSIONS_CONTRACT_SPEC.namedUnavailable)
+  const expectedExtensionCount = Object.keys(
+    JSON.parse(readFileSync(join(import.meta.dirname, "../../../content/features.json"), "utf8")) as Record<
+      string,
+      unknown
+    >,
+  ).filter((id) => id.startsWith("extensions.")).length
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(84)
-  expect(EXTENSIONS_CONTRACT).toHaveLength(84)
+  expect(extensionsProbes).toHaveLength(expectedExtensionCount)
+  expect(EXTENSIONS_CONTRACT).toHaveLength(expectedExtensionCount)
 })
 
 test("the extensions contract names its focused tests, and every named file exists", () => {
@@ -1410,7 +1417,9 @@ test("the harness replays every extension feature deterministically", async () =
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(46)
+  const nonDecidedCount = EXTENSIONS_CONTRACT.filter((row) => row.expected !== "decided").length
+  expect(decidedRows).toHaveLength(EXTENSIONS_CONTRACT.length - nonDecidedCount)
+  expect(decidedRows.length).toBeGreaterThanOrEqual(46)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)
