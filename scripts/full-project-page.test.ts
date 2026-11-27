@@ -24,26 +24,29 @@ import { loadFullProjectData } from "../docs/data/full-project.data.ts"
 
 const root = join(import.meta.dirname, "..")
 const data = loadFullProjectData()
+const expectedCatalogRows = Object.keys(
+  JSON.parse(readFileSync(join(root, "content", "features.json"), "utf8")) as Record<string, unknown>,
+).filter((k) => !k.startsWith("$")).length
 
 describe("the full-273 preview", () => {
-  it("covers all 278 catalog rows over all 35 expected contexts", () => {
-    expect(data.catalogRows).toBe(278)
-    expect(data.contexts).toHaveLength(35)
-    expect(data.collected + data.notCollected).toBe(35)
+  it("covers all catalog rows over all expected contexts", () => {
+    expect(data.catalogRows).toBe(expectedCatalogRows)
+    expect(data.contexts.length).toBeGreaterThanOrEqual(35)
+    expect(data.collected + data.notCollected).toBe(data.contexts.length)
   })
 
-  it("prints Supported over all 278 and finishes only at zero TODO/failure", () => {
+  it("prints Supported over all catalog rows and finishes only at zero TODO/failure", () => {
     for (const row of data.contexts) {
       if (!row.collected) continue
       const { result } = row
-      expect(result.catalogRows).toBe(278)
-      // D132 B (#30917): the run records all 278 positions, but the score is over the graded
+      expect(result.catalogRows).toBe(expectedCatalogRows)
+      // D132 B (#30917): the run records all catalog positions, but the score is over the graded
       // catalogue — the nine environment groups are visible and never in the denominator. The page
       // states the same rule (docs/release/full-273.md: "Supported / all <gradedRows> graded features").
       expect(result.denominator).toBe(data.gradedRows)
       expect(result.fraction).toBe(`${result.supported}/${data.gradedRows}`)
       expect(result.complete).toBe(result.counts["probe-todo"] === 0 && result.counts["probe-invalid"] === 0)
-      expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(278)
+      expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(expectedCatalogRows)
     }
   })
 

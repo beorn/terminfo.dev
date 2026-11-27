@@ -204,20 +204,21 @@ it.runIf(OWNED_LAYOUT)(
     ])
     expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: ["sgr.bold"] })
     expect(readCollectorAttempt(draft.rawReplies)?.result).toBe("completed")
-    expect(draft.results).toHaveLength(278)
+    expect(draft.results).toHaveLength(probeSuiteSnapshot().catalogIds.length)
   },
   30_000,
 )
 // Batch callback tests do not exercise worker creation/timeouts: these invoke the real coordinator
 // with only its process actuator replaced, so no engine or terminal is launched.
-it("initializes all 278 before worker launch and retains explicit missing prerequisites as TODO", async () => {
+it("initializes all catalogue rows before worker launch and retains explicit missing prerequisites as TODO", async () => {
+  const catalogCount = probeSuiteSnapshot().catalogIds.length
   const dir = directory()
   let captureRunId: string | undefined
   vi.spyOn(Bun, "spawn").mockImplementation(((_argv: unknown, options: { env: Record<string, string> }) => {
     captureRunId = options.env.TERMINFO_CAPTURE_RUN_ID
     const draft = retainedDraft(dir)
     expect(draft.runId).toBe(captureRunId)
-    expect(draft.results).toHaveLength(278)
+    expect(draft.results).toHaveLength(catalogCount)
     expect(draft.results.every((result) => result.status === "probe-todo")).toBe(true)
     draft.rawReplies["collector.prerequisite"] = "Pinned engine package is not installed"
     writeFileSync(options.env.TERMINFO_DRAFT_PATH!, JSON.stringify(draft))
@@ -291,7 +292,7 @@ it.each([false, true])(
     const draft = retainedDraft(dir)
     expect(collection.failures[0]?.error).toContain("exceeded")
     expect(draft.runId).toBe(captureRunId)
-    expect(draft.results).toHaveLength(278)
+    expect(draft.results).toHaveLength(probeSuiteSnapshot().catalogIds.length)
     expect(draft.results.filter((row) => row.featureId !== "device.primary-da")).toEqual(unselectedRows)
     const delegated = new Set(ids)
     expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids })
@@ -424,7 +425,7 @@ it("retains explicit empty probe selection without starting a worker or inventin
   const draft = retainedDraft(dir)
   expect(JSON.parse(draft.rawReplies["collector.selection"]!)).toEqual({ ids: [] })
   expect(JSON.parse(draft.rawReplies["collector.collectionAttempt"]!)).toEqual({ ids: [], result: "empty" })
-  expect(draft.results).toHaveLength(278)
+  expect(draft.results).toHaveLength(probeSuiteSnapshot().catalogIds.length)
   expect(draft.results.every((row) => row.status === "probe-todo" && row.attempt.scope === "none")).toBe(true)
   expect(draft.probeHash).toBe(probeSuiteSnapshot().probeHash)
 })

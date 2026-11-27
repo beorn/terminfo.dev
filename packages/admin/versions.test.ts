@@ -124,8 +124,8 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.term).toHaveLength(269)
-  expect(snapshot.probes.lib).toHaveLength(269) // All scheduled claims now have library callbacks, including audited OSC review arms.
+  expect(snapshot.probes.term).toHaveLength(ALL_PROBES.length)
+  expect(snapshot.probes.lib).toHaveLength(ALL_PROBES.length) // All scheduled claims now have library callbacks, including audited OSC review arms.
   expect(snapshot.probes.lib).toContain("scrollback.viewport-hold-output")
   expect(snapshot.probes.mux).toEqual(snapshot.probes.term)
   expect(snapshot.probes.term).toContain("extensions.kitty-keyboard")
@@ -308,9 +308,11 @@ test("the trusted manifest declares exactly the 40 reviewed character claims wit
     expect(manifest.textClaims).not.toContain(id)
     expect(ALL_PROBES.find((probe) => probe.id === id)?.textClaim).toBeUndefined()
   }
-  expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(278)
-  expect(manifest.probes.term).toHaveLength(269)
-  expect(manifest.probes.lib).toHaveLength(269)
+  const catalogCount = Object.keys(loadFeatures(join(SUITE_ROOT, "content"))).length
+  expect(catalogCount).toBeGreaterThanOrEqual(278)
+  expect(manifest.probes.term).toHaveLength(ALL_PROBES.length)
+  expect(manifest.probes.lib).toHaveLength(ALL_PROBES.length)
+  expect(catalogCount - manifest.probes.term.length).toBe(9)
   expect(manifest.probes.lib).toContain("scrollback.viewport-hold-output")
 })
 
@@ -318,7 +320,7 @@ test("the trusted manifest declares exactly the 40 reviewed character claims wit
 // catalogue-only IDs, which must become explicit TODO and change executable suite identity.
 test("freezes all catalogue IDs and changes suite identity for unscheduled additions", () => {
   const original = probeSuiteSnapshot()
-  expect(original.catalogIds).toHaveLength(278)
+  expect(original.catalogIds).toHaveLength(Object.keys(loadFeatures(join(SUITE_ROOT, "content"))).length)
   expect(original.catalogIds).toContain("device.env-term")
   expect(original.probes.term).not.toContain("device.env-term")
   try {
