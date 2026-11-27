@@ -21,6 +21,7 @@ import {
   readServedStamp,
   rebuildForRun,
   rebuildReason,
+  RUN_REBUILD_GAP_MS,
   resolveServedPath,
   siteBuildArgs,
 } from "./landed-serve.ts"
@@ -415,10 +416,52 @@ describe("landed-serve hourly-run rebuild", () => {
   }
 
   it("asks for a run rebuild only when the code matches and the newest complete run differs", () => {
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBe("run")
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_B }, RUN_B)).toBeNull()
-    expect(rebuildReason(CODE, { sourceCommit: "b".repeat(40), workingRunId: RUN_B }, RUN_B)).toBe("code")
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, null)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B, 0)).toBe("run")
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_B }, RUN_B, 0)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: "b".repeat(40), workingRunId: RUN_B }, RUN_B, 0)).toBe("code")
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, null, 0)).toBeNull()
+  })
+
+  // Requirement (#38962, @cpo/term 2e3f479b interim): a newer hourly run rebuilds only once it started at least 4h after
+  // the run the served output shows, while a code change still rebuilds at once. Existing cases pass a 0 gap, so none
+  // of them would catch the hourly cadence coming back.
+  it("by default rebuilds for a run only 4 hours after the served one, and for code at once", () => {
+    const RUN_3H = "2026-11-02T23-34-04-000Z-aaaaaaaaaaaa"
+    const RUN_4H = "2026-11-03T00-34-05-309Z-bbbbbbbbbbbb"
+    expect(RUN_REBUILD_GAP_MS).toBe(4 * 60 * 60 * 1000)
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_3H)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_4H)).toBe("run")
+    expect(rebuildReason("b".repeat(40), { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBe("code")
+    // No served run, or a name with no start time, rebuilds as before.
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, RUN_B)).toBe("run")
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: "hand-made" }, RUN_B)).toBe("run")
+  })
+
+  it("the rebuilder holds a run rebuild until a run 4 hours newer completes", async () => {
+    const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
+    const runs = mkdtempSync(join(tmpdir(), "landed-serve-runs-"))
+    const RUN_4H = "2026-11-03T00-34-05-309Z-bbbbbbbbbbbb"
+    stamp(join(out, "dist"), RUN_A)
+    completeRun(runs, RUN_A)
+    const builds: string[] = []
+    const rebuilder = createSiteRebuilder({
+      runsDir: runs,
+      outRoot: out,
+      target: CODE,
+      runBuild: async (env) => {
+        builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
+        stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_4H)
+        return 0
+      },
+    })
+    completeRun(runs, RUN_B)
+    await rebuilder.check()
+    expect(builds).toHaveLength(0)
+    completeRun(runs, RUN_4H)
+    await rebuilder.check()
+    expect(builds).toHaveLength(1)
+    expect(readServedStamp(join(out, "dist")).workingRunId).toBe(RUN_4H)
   })
 
   it("a failed run rebuild keeps serving the previous build and reports loudly", async () => {
@@ -682,6 +725,7 @@ describe("landed-serve hourly-run rebuild", () => {
         runsDir: runs,
         outRoot: out,
         target: CODE,
+        runGapMs: 0,
         runBuild: async (env) => {
           builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
           if (fail) return 1
