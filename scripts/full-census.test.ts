@@ -15,9 +15,9 @@ import { fullContextCensus } from "../docs/data/full-census.ts"
 const contentDir = join(import.meta.dirname, "..", "content")
 
 describe("the expected context register", () => {
-  it("derives all 33 agreed contexts from the catalog", () => {
+  it("derives all 35 agreed contexts from the catalog", () => {
     const census = fullContextCensus(contentDir)
-    expect(census.contexts).toHaveLength(33)
+    expect(census.contexts).toHaveLength(35)
     expect(census.engines).toHaveLength(11)
     expect(census.contexts.map((entry) => entry.context)).toEqual([
       "ghostty/linux",
@@ -34,6 +34,8 @@ describe("the expected context register", () => {
       "tmux/macos",
       "screen/linux",
       "screen/macos",
+      "herdr/linux",
+      "zellij/linux",
       "alacritty/linux",
       "alacritty/macos",
       "alacritty/windows",
@@ -60,7 +62,7 @@ describe("the expected context register", () => {
     const { contexts } = fullContextCensus(contentDir)
     const count = (kind: string) => contexts.filter((entry) => entry.kind === kind).length
     expect(count("term")).toBe(18)
-    expect(count("mux")).toBe(4)
+    expect(count("mux")).toBe(6)
     expect(count("lib")).toBe(11)
   })
 })
