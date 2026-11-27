@@ -16,7 +16,7 @@ A multiplexer creates a **virtual terminal** inside your real terminal. When you
 
 This indirection gives you powerful features:
 
-- **Session persistence** — detach from a session, close your laptop, SSH back in, reattach. Your processes never noticed you left.
+- **Session persistence** — detach from a session, close your laptop, SSH back in, reattach. Your processes never noticed you left. Persistence ends when the multiplexer itself ends, for example at a reboot ([OSC 7577 motivation](https://www.superlogical.com/rex/docs/build/program-resume#motivation)). Tools such as `tmux-resurrect` and kitty sessions try to survive restarts by re-running the process command read from the OS, which is often not how to resume the program ([relationship to other approaches](https://www.superlogical.com/rex/docs/build/program-resume#relationship-to-other-approaches)). [Program Resume (OSC 7577)](/extensions/osc-7577-program-resume-token) lets a program declare its own signed resume command instead.
 - **Window management** — multiple shells in one terminal, split panes, tabs, all managed by the multiplexer.
 - **Remote pairing** — multiple users can attach to the same tmux session simultaneously.
 

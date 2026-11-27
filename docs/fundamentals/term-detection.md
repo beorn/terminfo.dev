@@ -102,15 +102,16 @@ SSH can carry terminal input and output, but it does not guarantee that environm
 
 Beyond `$TERM` and `$COLORTERM`, some terminals set additional environment variables that hint at which application launched the shell. They are not standardized and may be inherited by later processes.
 
-| Variable                    | Set By                     | Value                                                                |
-| --------------------------- | -------------------------- | -------------------------------------------------------------------- |
-| **`TERM_PROGRAM`**          | Some terminal applications | Reported application name; may be inherited or overwritten           |
-| **`TERM_PROGRAM_VERSION`**  | Some terminal applications | Reported version; a feature table based on it remains a prediction   |
-| **`VTE_VERSION`**           | VTE-based terminals        | Encoded VTE version; suggests the launching terminal family          |
-| **`KITTY_WINDOW_ID`**       | Kitty                      | Window identifier; suggests a Kitty-launched environment             |
-| **`WT_SESSION`**            | Windows Terminal           | Session identifier; suggests a Windows Terminal-launched environment |
-| **`GHOSTTY_RESOURCES_DIR`** | Ghostty                    | Resource path; suggests a Ghostty-launched environment               |
-| **`ITERM_SESSION_ID`**      | iTerm2                     | Session identifier; suggests an iTerm2-launched environment          |
+| Variable                    | Set By                            | Value                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`TERM_PROGRAM`**          | Some terminal applications        | Reported application name; may be inherited or overwritten                                                                                                                                                                                                                                                                                                                     |
+| **`TERM_PROGRAM_VERSION`**  | Some terminal applications        | Reported version; a feature table based on it remains a prediction                                                                                                                                                                                                                                                                                                             |
+| **`VTE_VERSION`**           | VTE-based terminals               | Encoded VTE version; suggests the launching terminal family                                                                                                                                                                                                                                                                                                                    |
+| **`KITTY_WINDOW_ID`**       | Kitty                             | Window identifier; suggests a Kitty-launched environment                                                                                                                                                                                                                                                                                                                       |
+| **`WT_SESSION`**            | Windows Terminal                  | Session identifier; suggests a Windows Terminal-launched environment                                                                                                                                                                                                                                                                                                           |
+| **`GHOSTTY_RESOURCES_DIR`** | Ghostty                           | Resource path; suggests a Ghostty-launched environment                                                                                                                                                                                                                                                                                                                         |
+| **`ITERM_SESSION_ID`**      | iTerm2                            | Session identifier; suggests an iTerm2-launched environment                                                                                                                                                                                                                                                                                                                    |
+| **`OSC7577_TOKEN`**         | OSC 7577 terminals / multiplexers | Per-pane secret; presence means the nearest terminal or multiplexer supports [OSC 7577](/extensions/osc-7577-program-resume-token) ([feature detection](https://www.superlogical.com/rex/docs/build/program-resume#feature-detection)), since a non-reporting shell [passes it on](https://www.superlogical.com/rex/docs/build/program-resume#security). Never print its value |
 
 These variables are fast to check, but their presence is not a current-path feature test. A query such as XTVERSION or DECRQM asks the responding layer a narrower question; its reply must still be interpreted within that protocol.
 
@@ -125,6 +126,8 @@ Terminal detection gets significantly harder when multiplexers (tmux, screen, Ze
 **tmux sets `$TERM` for its panes.** The value names the description tmux exposes to applications, rather than the outer terminal's description. That is the relevant interface for an application running in the pane. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
 **SSH forwards selected environment variables.** `SendEnv` and `AcceptEnv` control additional variables; with a requested PTY, `$TERM` is sent as part of the protocol. Do not assume variables such as `COLORTERM` or `TERM_PROGRAM` arrive unchanged. [OpenSSH ssh_config(5)](https://man.openbsd.org/ssh_config); [OpenSSH sshd_config(5)](https://man.openbsd.org/sshd_config)
+
+**`OSC7577_TOKEN` stays on the same machine.** [OSC 7577](/extensions/osc-7577-program-resume-token) is for resuming programs on the same machine where the terminal runs and shares its system clock ([`time` key](https://www.superlogical.com/rex/docs/build/program-resume#time-key)). Never forward `OSC7577_TOKEN` with SSH `SendEnv` or into a container: forwarding it lets remote or containerized processes register commands that run locally on the host ([OSC 7577 security](https://www.superlogical.com/rex/docs/build/program-resume#security)).
 
 **Nested sessions compound the problem.** An application running in tmux on a remote host sees the environment and terminal behavior exposed through both SSH and tmux. Neither the presence nor the absence of a particular environment variable establishes the outer terminal's identity.
 
@@ -184,6 +187,22 @@ def query_da1(timeout=0.5):
     return None
 ```
 
+### Detect OSC 7501 with a DA1 sentinel
+
+To check whether the terminal supports [OSC 7501 Program Status](https://www.superlogical.com/rex/docs/build/program-status#feature-detection) without waiting on a timeout, send the query immediately followed by `CSI c` (DA1). Because every terminal answers DA1, a `?` reply arriving before the DA1 reply proves support; if the DA1 reply arrives first, OSC 7501 is unsupported.
+
+```bash
+# Write both sequences in one burst on a raw TTY:
+# 1. OSC 7501 feature query (ESC ] 7501 ; ? ST)
+# 2. Primary Device Attributes sentinel (CSI c)
+printf '\e]7501;?\e\\\e[c'
+
+# Read replies until the DA1 response (CSI ? ... c) arrives:
+# - An OSC 7501 reply starting with ESC ] 7501 ; ? before DA1 => supported
+#   (optional :states=... and :kinds=... pairs list accepted values)
+# - DA1 arrives first with no OSC 7501 reply => unsupported (no timeout wait)
+```
+
 ### JavaScript (Node.js): collect environment hints
 
 ```js
@@ -208,7 +227,7 @@ The Bash and JavaScript examples inspect hints, not terminal behavior; the Pytho
 
 For maximum compatibility, use a layered detection strategy. Start with `$TERM` to select a terminal description and `$COLORTERM` as a color hint. Read the entry rather than inferring all of its features from its name. If accurate color behavior matters, test it on the actual terminal path.
 
-For specific features, ask a specific question. DECRQM can report whether the responding layer recognizes a private mode and its current state. XTVERSION can report that layer's name and version; a version table is a prediction, not a behavioral measurement. DA1 can help delimit unanswered queries, but a complete correlated reply establishes its scoped result even if DA1 never arrives.
+For specific features, ask a specific question. DECRQM can report whether the responding layer recognizes a private mode and its current state. XTVERSION can report that layer's name and version; a version table is a prediction, not a behavioral measurement. DA1 can help delimit unanswered queries, but a complete correlated reply establishes its scoped result even if DA1 never arrives. Protocols such as [OSC 7501](https://www.superlogical.com/rex/docs/build/program-status#feature-detection) prescribe this pattern explicitly: send `ESC ] 7501 ; ? ST` immediately followed by `CSI c`, and treat a `?` reply before DA1 as support so the program never waits on a timeout.
 
 Most importantly, **degrade gracefully**. Do not treat `xterm-256color` as full xterm compatibility or a missing DECRPM reply as proof of non-support. Keep fallbacks for color, underlines, and keyboard input when a feature is unknown or unavailable. Match each conclusion to what was actually declared or observed.
 

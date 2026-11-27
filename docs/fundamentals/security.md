@@ -115,6 +115,8 @@ Possible effects:
 - **Change the title bar**: use OSC 0 to display a fake path or hostname, confusing the admin
 - **Alter terminal state**: change colors, enable alternate screen, move the cursor to arbitrary positions
 - **Clipboard writes**: inject OSC 52 sequences that overwrite the clipboard
+- **Status spoofing**: printed text can set or clear an [OSC 7501 program status](https://www.superlogical.com/rex/docs/build/program-status#security) record, because that protocol has no authentication token
+- **Program resume (blocked by token)**: printed text cannot register an [OSC 7577 program resume](https://www.superlogical.com/rex/docs/build/program-resume#token-environment-variable) command, because a terminal ignores any report that is not signed with the pane's `OSC7577_TOKEN` ([threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model))
 
 ```bash
 # A log entry that hides itself when cat'd
@@ -154,9 +156,28 @@ Some older terminals also supported _reading_ the title back via a query sequenc
 - Sanitize data before passing it to title-setting sequences in your application. Strip control characters and limit the length.
 :::
 
+## Program resume and status (OSC 7577, OSC 7501)
+
+[OSC 7577 (Program Resume)](/extensions/osc-7577-program-resume-token) lets a program tell the terminal what command to rerun after a restart, and [OSC 7501 (Program Status)](https://www.superlogical.com/rex/docs/build/program-status) lets a program report whether it is idle, working, blocked, done, or failed. Because resume executes a command later as the user and status renders text outside the grid, the two protocols carry distinct security boundaries.
+
+**What the token protects against:** `OSC7577_TOKEN` protects against untrusted text printed to the terminal (such as log files or `cat`) and remote output written over SSH ([token environment variable](https://www.superlogical.com/rex/docs/build/program-resume#token-environment-variable), [threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model)). It does not protect against another program running as the same user reading `/proc/<pid>/environ` ([security](https://www.superlogical.com/rex/docs/build/program-resume#security)).
+
+**Who is trusted:** Programs running as the same user or as root are treated as trusted because the user already ran them ([threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model)). A child process that holds the token with fewer rights than the user — such as a sandboxed tool, a `chroot`, or another user — is the open risk: it could register a command that the terminal later runs with the user's full rights. The defense is that whatever starts such a child removes `OSC7577_TOKEN` from its environment, and the terminal lets the user control and review resume behavior ([threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model)).
+
+**The `pid` key is not a defense:** Any program that holds the token can report any `pid`. The field helps catch mistakes, not untrusted senders ([`pid` key](https://www.superlogical.com/rex/docs/build/program-resume#pid-key), [threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model)).
+
+**Terminal recordings hold the signature, never the token:** A report carries only a SHA-256 `mac` computed with `OSC7577_TOKEN`, never the token itself, so raw session recordings do not capture the secret ([threat model](https://www.superlogical.com/rex/docs/build/program-resume#threat-model)). Anyone reading a recording can replay a report only unchanged and only while its `time` remains inside the terminal's acceptance window.
+
+**Token hygiene for programs:** A program must never print or transmit `OSC7577_TOKEN` ([security](https://www.superlogical.com/rex/docs/build/program-resume#security)). A program that reports its own resume command should remove `OSC7577_TOKEN` from every program it starts so child processes cannot register a command in its place. Even a program that does not report should strip `OSC7577_TOKEN` from sandboxes, `chroot`s, and other-user children ([security](https://www.superlogical.com/rex/docs/build/program-resume#security)).
+
+**A resume command is an argument list, never shell text:** Each `argv` element reaches the resumed program as one argument, and a terminal must never build shell source text from it ([command execution](https://www.superlogical.com/rex/docs/build/program-resume#command-execution)). A terminal that displays a resume command to the user must escape it first, because allowed characters such as right-to-left overrides can mislead the reader about what will run ([keys](https://www.superlogical.com/rex/docs/build/program-resume#keys)).
+
+**OSC 7501 display text and side effects:** `msg` and `title` are untrusted display text from a program that already controls the screen; terminals may shorten `msg` and must not read meaning into it ([keys](https://www.superlogical.com/rex/docs/build/program-status#keys)). A terminal must refuse any report whose decoded `msg` or `title` contains a control character, must never treat either as markup, and should disarm text-direction overrides and other invisible formatting characters when showing them outside the grid ([security](https://www.superlogical.com/rex/docs/build/program-status#security)). Anything a terminal shows from a status record should say which terminal it came from, and terminals should rate-limit side effects such as desktop notifications or sounds ([security](https://www.superlogical.com/rex/docs/build/program-status#security)).
+
 ## Further Reading
 
 - [OSC Sequences](/osc) — the full set of Operating System Command features tested across terminals
+- [Program Resume Token (OSC 7577)](/extensions/osc-7577-program-resume-token) — per-terminal support matrix for OSC 7577
 - [Terminal Detection](/fundamentals/term-detection) — how applications query terminal features
 - [TTY Architecture](/fundamentals/tty-architecture) — the layers between your shell and your terminal
 
