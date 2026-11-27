@@ -341,6 +341,14 @@ export {
 } from "./mux-outer-rows.ts"
 
 export { OSC22_CURRENT_QUERY, OSC22_SHAPE_REPLY, settledTitle } from "./extensions.ts"
+export {
+  OSC7577_2048_BYTE_64_ARGV_REPORT,
+  OSC7577_CUT_SHORT_REPORT,
+  OSC7577_MUX_SENTINEL_TOKEN,
+  OSC7577_OVER_8KIB_REPORT,
+  OSC7577_REPORTS,
+  OSC7577_RESERVED_QUERY_REPORT,
+} from "./program-resume.ts"
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
 export { ENVIRONMENT_GROUP_IDS, scoredFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
