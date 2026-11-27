@@ -3429,7 +3429,9 @@ const modeDefinitions: ProbeDefinition[] = [
           (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
           (ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
             ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
-            ctx.runtimeIdentity?.engineVersion === "0.14.0")
+            ctx.runtimeIdentity?.engineVersion === "0.14.0" ||
+            // #38966: vt100 and vt220 0.15.0 src is identical to 0.14.0.
+            ctx.runtimeIdentity?.engineVersion === "0.15.0")
         ) {
           return declaredUntestableResult(
             `${ctx.backendName === "vt100" ? "VT100.js" : "VT220.js"} exposes no scroll-speed state or presentation-speed observer through its public Screen API.`,

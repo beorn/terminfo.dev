@@ -1743,7 +1743,9 @@ export function sgrProbe(
               (ctx.backendName === "vt100" || ctx.backendName === "vt220") &&
               (ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
                 ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
-                ctx.runtimeIdentity?.engineVersion === "0.14.0") &&
+                ctx.runtimeIdentity?.engineVersion === "0.14.0" ||
+                // #38966: vt100 and vt220 0.15.0 src is identical to 0.14.0.
+                ctx.runtimeIdentity?.engineVersion === "0.15.0") &&
               cell.underline === false &&
               styleControl.char === "D" &&
               styleControl.underline === false
