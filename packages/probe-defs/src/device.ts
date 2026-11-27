@@ -247,6 +247,49 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
   }
 }
 
+/**
+ * XTGETXRES's positive control (#39012, @cpo/term 2026-11-27): the probe asks a short fixed list of names, each
+ * with a known value shape, and any name answering status 1 with a well-formed value satisfies the contract.
+ * XTGETXRES has no setter, so a status-0 answer to some name cannot prove a resource is absent; only every name
+ * answering status 0 is reported, as To do with "Answered; resource not set". The second name is asked only when
+ * the first did not decide, so a terminal that answers saveLines keeps its one-query evidence.
+ */
+function xtgetxresProbe(saveLines: DeviceReply): ProbeDefinition {
+  const termName = deviceQuery({
+    id: saveLines.id,
+    // termName is a string resource: any complete status-1 value is well formed, whatever the terminal names itself.
+    query: "\x1bP+Q7465726d4e616d65\x1b\\",
+    valid: /\x1bP1\+R7465726d4e616d65=(?:[0-9a-f]{2})+\x1b\\/i,
+    refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
+    notSetReason: "Answered; resource not set",
+    malformed: /\x1bP[01]\+R/i,
+    expected: "XTGETXRES returns a complete status-1 termName resource value",
+  })
+  const base = deviceQuery(saveLines)
+  const decided = (result: ProbeCallbackResult): boolean =>
+    result.observation?.outcome === "supported" || result.observation?.outcome === "unsupported"
+  const combined = (first: ProbeCallbackResult, second: ProbeCallbackResult): ProbeCallbackResult =>
+    decided(second) ? { ...second, response: JSON.stringify([first.response, second.response]) } : first
+  if (!base.lib || !base.term || !termName.lib || !termName.term) {
+    throw new Error("XTGETXRES needs both its library and live callbacks")
+  }
+  const saveLinesLib = base.lib
+  const saveLinesTerm = base.term
+  const termNameLib = termName.lib
+  const termNameTerm = termName.term
+  return {
+    ...base,
+    lib: (ctx) => {
+      const first = saveLinesLib(ctx)
+      return decided(first) ? first : combined(first, termNameLib(ctx))
+    },
+    term: async (ctx) => {
+      const first = await saveLinesTerm(ctx)
+      return decided(first) ? first : combined(first, await termNameTerm(ctx))
+    },
+  }
+}
+
 const DECRQSS_SGR: DeviceReply = {
   id: "device.decrqss",
   query: "\x1bP$qm\x1b\\",
@@ -923,7 +966,7 @@ export const deviceProbes: ProbeDefinition[] = [
 
   // XTGETXRES — query xterm resource value: DCS + Q Pt ST → DCS response
   // Added in xterm; documented in patches 401/402 (2025).
-  deviceQuery({
+  xtgetxresProbe({
     id: "device.xtgetxres",
     // "saveLines" is encoded as two hex digits per character, per XTGETXRES. It is an integer resource, and xterm
     // answers every integer resource with its %d value; a string resource such as termName is unset by default and

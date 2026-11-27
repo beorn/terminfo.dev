@@ -1367,6 +1367,61 @@ describe("device contracts without prior coverage", () => {
     }
   })
 
+  // #39012 (@cpo/term 2026-11-27 08:29): the control is universal. The probe asks saveLines and then termName,
+  // each with a known value shape, and any name answering status 1 with a well-formed value satisfies the
+  // contract. vterm 0.15.0 answers status 0 for saveLines and status 1 "vterm" for termName, so it reads
+  // Supported; a terminal answering status 0 to both reads To do with "Answered; resource not set".
+  test("XTGETXRES asks its control name after an undecided saveLines and reads Supported when only termName answers", async () => {
+    const probe = callback("device.xtgetxres")
+    const saveLinesQuery = "\x1bP+Q736176654c696e6573\x1b\\"
+    const termNameQuery = "\x1bP+Q7465726d4e616d65\x1b\\"
+    const asking = (map: ReadonlyMap<string, string>) => {
+      const asked: string[] = []
+      const source = {
+        feedCapture: (query: string) => map.get(query) ?? "",
+        queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => {
+          asked.push(sequence)
+          const raw = map.get(sequence) ?? ""
+          return Promise.resolve({
+            match: pattern.exec(raw),
+            reason: raw ? ("reply" as const) : ("timeout" as const),
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          })
+        },
+      } as unknown as TermProbeSource
+      return { asked, source }
+    }
+    const vterm = asking(
+      new Map([
+        [saveLinesQuery, "\x1bP0+R736176654c696e6573\x1b\\"],
+        [termNameQuery, "\x1bP1+R7465726d4e616d65=767465726d\x1b\\"],
+      ]),
+    )
+    const result = await probe.terminal(vterm.source)
+    expect(vterm.asked).toEqual([saveLinesQuery, termNameQuery])
+    expect(result.observation).toMatchObject({ outcome: "supported" })
+    expect(result.assertions).toMatchObject([
+      { kind: "positive", observed: "\x1bP1+R7465726d4e616d65=767465726d\x1b\\" },
+    ])
+    const silent = asking(
+      new Map([
+        [saveLinesQuery, "\x1bP0+R736176654c696e6573\x1b\\"],
+        [termNameQuery, "\x1bP0+R7465726d4e616d65\x1b\\"],
+      ]),
+    )
+    const notSet = await probe.terminal(silent.source)
+    expect(silent.asked).toEqual([saveLinesQuery, termNameQuery])
+    expect(notSet.observation).toBeUndefined()
+    expect(notSet.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "Answered; resource not set" })
+    // The headless arm reads the same way, through its capture boundary.
+    const headlessVterm = {
+      feedCapture: (query: string) =>
+        query === saveLinesQuery ? "\x1bP0+R736176654c696e6573\x1b\\" : "\x1bP1+R7465726d4e616d65=767465726d\x1b\\",
+    } as unknown as LibProbeSource
+    expect(probe.headless(headlessVterm).observation).toMatchObject({ outcome: "supported" })
+  })
+
   test("XTWINOPS 21 sets its own title and binds the reported title to that exact frame", async () => {
     const probe = callback("device.xtwinops-21")
     const frame = "\x1b]ltest-title\x07"
