@@ -146,7 +146,15 @@ async function renderTerminalPage(selected: Record<string, unknown>): Promise<st
   const dataStub = join(out, "probes-stub.ts")
   writeFileSync(
     dataStub,
-    `export const data = { selectedByBackend: { ghostty: { selected: ${JSON.stringify(selected)} } }, featureDescriptions: {}, features: [], observers: {} }\n`,
+    // #38806: the page reads the default run's bar from data.releaseBars and counts it over data.releaseCatalogIds.
+    // The stub folds them with the page's own release-scope functions over the fixture's catalogue, the same fold
+    // probes.data.ts makes for a live catalogue equal to the run's.
+    [
+      `import { aggregateCurrentResults, rollupInputs } from "./docs/data/release-scope.ts"`,
+      `const selected = ${JSON.stringify(selected)}`,
+      `const releaseCatalogIds = selected.catalogIds`,
+      `export const data = { selectedByBackend: { ghostty: { selected } }, releaseCatalogIds, releaseBars: { ghostty: aggregateCurrentResults(rollupInputs("ghostty", selected), releaseCatalogIds) }, featureDescriptions: {}, features: [], observers: {} }`,
+    ].join("\n") + "\n",
   )
 
   const { createServer } = (await import(VITE)) as { createServer(options: unknown): Promise<SsrServer> }

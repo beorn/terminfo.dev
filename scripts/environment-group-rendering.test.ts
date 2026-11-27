@@ -394,7 +394,8 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
     expect(source("docs/.vitepress/theme/row-facts.ts")).toContain("categoryIds(bar)")
     expect(source("docs/data/result-categories.ts")).toContain("const ids = bar.idsByState")
     expect(source("docs/data/release-scope.ts")).toContain("for (const id of scoredFeatureIds(catalogIds)) {")
-    expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
+    // #38806: every terminal readout counts over the live public catalogue, not a run's own catalogue.
+    expect(home).toContain("currentCoverageSentence(bar, data.releaseCatalogIds)")
     // #37341 Q2: the public catalogue holds no environment position, so no public page names one.
     expect(home).not.toMatch(/manual[ -]by[ -]design/i)
   })
@@ -413,9 +414,13 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
     expect(readouts).toContain("`${currentSupportedShare(stats)} · ${currentCoverageSentence(stats)}`")
   })
 
-  it("wires the terminal page's coverage sentence to the run's own catalogue", () => {
+  it("wires the terminal page's coverage sentence to the live catalogue for the default run (#38806)", () => {
     const terminal = source("docs/terminals/[id].md")
-    expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
+    // #38806: the default run counts over the live public catalogue; a recorded older run keeps its own catalogue.
+    expect(terminal).toContain(
+      "const measuredCatalogIds = computed(() => selectedRun.value === defaultRun ? data.releaseCatalogIds : selectedRun.value?.catalogIds)",
+    )
+    expect(terminal).toContain("currentCoverageSentence(measuredBar, measuredCatalogIds)")
     expect(terminal).not.toMatch(/manual[ -]by[ -]design/i)
     // #37341 Q4: the published cells fold over the run's own catalogue, so an unpublished cell counts as no result.
     expect(terminal).toContain("aggregateCurrentResults(rollupInputs(p.backendId, selection), selection.catalogIds)")
@@ -461,6 +466,7 @@ describe("#30917 environment groups are never graded, and never PROBE TODO", () 
 
   it("names the nine on the OS page tooltip too (D2)", () => {
     const os = source("docs/os/[id].paths.ts")
-    expect(os).toContain("currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)")
+    // #38806: the OS page readout counts over the live public catalogue too.
+    expect(os).toContain("currentCoverageSentence(stats, data.releaseCatalogIds)")
   })
 })
