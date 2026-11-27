@@ -383,7 +383,7 @@ describe("release status and verdicts", () => {
     const home = readFileSync(join(root, "docs", "index.md"), "utf8")
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
-    expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
+    expect(home).toContain("currentCoverageSentence(bar, data.releaseCatalogIds)")
     expect(home).toContain("data.releaseShares[backendName]")
     // The composed-context migration removes whole-run results from this page. The
     // projection/consumer parity suites exercise its aggregate inputs; avoid pinning call syntax.
