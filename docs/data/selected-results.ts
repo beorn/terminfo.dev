@@ -1164,6 +1164,7 @@ function composeContextSummaries(
     const derivedIds = applyDerived(contextKey, cells, derivedPairs)
     // Last: App only labels a library cell; it decides no other cell and stays out of the counts (#38772).
     const appOnlyIds = applyAppOnly(cells, candidates[0]?.subject, appOnlyRows, viewIds)
+    const appOnlySet = new Set(appOnlyIds)
     const contributing = new Set(
       [...currentMethods.values()].flatMap(({ probes }) => [...probes.values()].map(({ run }) => run.runId)),
     )
@@ -1178,7 +1179,7 @@ function composeContextSummaries(
       // Environment groups have retained run metadata but no computed feature result.
       viewIds.map((featureId) => ({
         featureId,
-        status: cells[featureId]?.appOnly
+        status: appOnlySet.has(featureId)
           ? APP_ONLY
           : (cells[featureId]?.featureResult?.status ?? cells[featureId]?.result.status ?? "probe-todo"),
         ...(cells[featureId]?.derived && { derived: cells[featureId]?.derived }),

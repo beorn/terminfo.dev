@@ -24,7 +24,7 @@ import { runTermlessProbes } from "../admin/src/termless.ts"
 import { shadowReportPath } from "../admin/src/collected-run.ts"
 import { headlessCollectorSuite } from "./collect-headless.ts"
 import { collectBatch, declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
-import { headlessFamily, shadowStoredRun, type ShadowReport } from "./stored-run-shadow.ts"
+import { APP_ONLY_EXCLUSION, headlessFamily, shadowStoredRun, type ShadowReport } from "./stored-run-shadow.ts"
 import { OWNED_LAYOUT } from "./fixtures/owned-layout.fixture.ts"
 import type { ReassertDocument } from "../admin/src/report.ts"
 
@@ -52,6 +52,9 @@ const IDS = [
   "extensions.osc52-read",
 ]
 
+/** #38801: an App only row the library collector records without sending its probe. */
+const APP_ONLY_ID = "input.xtest-key"
+
 const directories: string[] = []
 afterAll(() => {
   for (const directory of directories) rmSync(directory, { recursive: true, force: true })
@@ -65,7 +68,7 @@ async function termless(): Promise<{ run: string; before: string; report: Shadow
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const log = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => void lines.push(args.join(" ")))
   try {
-    await runTermlessProbes(["xtermjs"], { probeIds: IDS })
+    await runTermlessProbes(["xtermjs"], { probeIds: [...IDS, APP_ONLY_ID] })
   } finally {
     log.mockRestore()
   }
@@ -115,7 +118,20 @@ it.runIf(OWNED_LAYOUT)(
       // The shadow wrote its report beside the run and never touched the run.
       expect(sha256(run)).toBe(before)
       expect(report.runIncomplete).toBeUndefined()
-      const executed = stored.results!.filter((result) => result.attempt?.scope !== "none")
+      // #38801: the App only row is decided at collection scope with no reply, no log and no grade.
+      const appOnly = stored.results!.find((result) => result.featureId === APP_ONLY_ID)!
+      expect(appOnly).toMatchObject({
+        status: "untestable",
+        attempt: { scope: "collection" },
+        reason: "OS input reaches only an app window; a library gets no OS keys or clicks.",
+        tests: [{ id: "declared-untestable", status: "untestable" }],
+      })
+      expect(Object.keys(stored.rawReplies).filter((key) => key.startsWith(APP_ONLY_ID))).toEqual([])
+      expect(stored.assertions!.filter((assertion) => assertion.featureId === APP_ONLY_ID)).toEqual([])
+      expect(report.excluded).toContainEqual({ reason: APP_ONLY_EXCLUSION, rows: 1, featureIds: [APP_ONLY_ID] })
+      const executed = stored.results!.filter(
+        (result) => result.attempt?.scope !== "none" && result.featureId !== APP_ONLY_ID,
+      )
       expect(executed.map((result) => result.featureId).sort()).toEqual([...IDS].sort())
       // Every executed lib row carries its own first-pass log.
       for (const { featureId } of executed) expect(typeof stored.rawReplies[featureId + ".callLog"]).toBe("string")
@@ -246,7 +262,11 @@ it.runIf(OWNED_LAYOUT)(
     // alacritty's 239 excluded rows carried - says the callback asked the host nothing, so the row replays and
     // agrees; a query that failed live is still refused by name rather than replayed as an empty answer.
     const hostEmpty = await shadowTampered(run, "hostrecipe-empty", (draft) => {
-      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({ runId: stored.runId, captures: [], causes: [] })
+      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({
+        runId: stored.runId,
+        captures: [],
+        causes: [],
+      })
     })
     expect(row(hostEmpty, agreed), JSON.stringify(row(hostEmpty, agreed))).toMatchObject({ outcome: "agree" })
     const hostFailed = await shadowTampered(run, "hostrecipe-error", (draft) => {

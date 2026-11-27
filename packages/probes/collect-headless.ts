@@ -35,6 +35,7 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { retainSuiteManifest } from "../admin/suite-retention.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { unauditedAdapterSourceDiagnostic } from "../probe-defs/src/helpers.ts"
+import { loadFeatures } from "../catalog/src/index.ts"
 import { collectBatch, errorMessage, finalizeHeadlessAttempt } from "./headless-batch.ts"
 import { HEADLESS_TERMINAL, declaredHostInputs } from "./headless-terminal.ts"
 import { owningCheckout } from "./termless-root.ts"
@@ -91,6 +92,13 @@ export interface HeadlessCollection {
   requested: string[]
   runs: string[]
   failures: Array<{ backend: string; package: string; error: string }>
+}
+
+/** #38801: every row the catalogue declares App only, with its reason; a library collection never sends these probes. */
+export function catalogAppOnlyReasons(contentDir: string = join(ROOT, "content")): ReadonlyMap<string, string> {
+  const reasons = new Map<string, string>()
+  for (const [id, row] of Object.entries(loadFeatures(contentDir))) if (row.appOnly) reasons.set(id, row.appOnly.reason)
+  return reasons
 }
 
 /**
@@ -254,6 +262,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
         checkpoint()
       },
       { identity: runtimeIdentity, adapterPath, adapterPackage: entry.package, adapterType: entry.type },
+      catalogAppOnlyReasons(),
     )
     const startedAttempt = readCollectorAttempt(draft.rawReplies)
     const completedAttempt = {

@@ -15,9 +15,10 @@ import { APP_ONLY, featurePageCounts, joinContextCells, type ContextCellFacts } 
 import { aggregateCurrentResults, currentCoverageSentence } from "../docs/data/release-scope.ts"
 import { categoryIds } from "../docs/data/result-categories.ts"
 import { evidenceStatus, evidenceStatusWords } from "../docs/.vitepress/theme/evidence-status.ts"
-import { catalogAppOnly } from "../docs/data/app-only-cells.ts"
+import { applyAppOnly, catalogAppOnly } from "../docs/data/app-only-cells.ts"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { UNANSWERED_QUERY } from "./stored-exchange.fixture.ts"
+import { appOnlyResult } from "../packages/probes/headless-batch.ts"
 
 const CLICK = "input.xtest-click"
 const BOLD = "sgr.bold"
@@ -48,7 +49,7 @@ const LIB_RUNTIME = {
 }
 
 /** One schema-4 Linux run of a terminal or a library in which both features read Supported by a query reply. */
-function run(kind: "term" | "lib", runId: string) {
+function run(kind: "term" | "lib", runId: string, appOnlyRow = false) {
   const measuredAt = "2026-11-10T05:00:00.000Z"
   const attempt = { scope: "probe" as const, startedAt: measuredAt }
   const id = kind === "term" ? "xterm" : "xtermjs"
@@ -73,22 +74,36 @@ function run(kind: "term" | "lib", runId: string) {
   draft.identity = "verified"
   draft.measuredAt = measuredAt
   draft.origin = { kind: "collector" }
-  draft.rawReplies = Object.fromEntries(ids.map((featureId) => [featureId, UNANSWERED_QUERY]))
-  draft.results = ids.map((featureId, index): ProbeResult => ({
-    featureId,
-    status: "supported",
-    assertionType: "query_reply",
-    rawReplyRef: featureId,
-    attempt,
-    tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [index], rawReplyRef: featureId }],
-  }))
+  // #38801: the row a library collection writes for an App only feature it never sends (appOnlyResult).
+  const measured = appOnlyRow ? ids.filter((featureId) => featureId !== CLICK) : ids
+  draft.rawReplies = Object.fromEntries(measured.map((featureId) => [featureId, UNANSWERED_QUERY]))
+  draft.results = ids.map((featureId): ProbeResult =>
+    measured.includes(featureId)
+      ? {
+          featureId,
+          status: "supported",
+          assertionType: "query_reply",
+          rawReplyRef: featureId,
+          attempt,
+          tests: [
+            {
+              id: "criterion",
+              status: "supported",
+              attempt,
+              assertionRefs: [measured.indexOf(featureId)],
+              rawReplyRef: featureId,
+            },
+          ],
+        }
+      : appOnlyResult(featureId, OS_INPUT, measuredAt),
+  )
   const value = finalizeCollectedDraft(draft as Parameters<typeof finalizeCollectedDraft>[0])
   return parseRun(
     `${runId}.json`,
     JSON.stringify({
       ...value,
       ...(kind === "lib" && { runtimeIdentity: LIB_RUNTIME }),
-      assertions: ids.map((featureId) => ({
+      assertions: measured.map((featureId) => ({
         featureId,
         kind: "positive",
         assertionType: "query_reply",
@@ -118,6 +133,26 @@ describe("App only on library rows (#38772)", () => {
     // The site's coverage sentence names the catalogue it prints for; an App only cell is in that catalogue but out of
     // the counts, so the check must allow for it (the queue's site build refused 260 vs 264 without this).
     expect(currentCoverageSentence({ counts: ctx.counts }, ids)).toBe("1 of 1 tested")
+  })
+
+  // #38801 (@dev/review2 87da1a99): once the runner records the row as not run, or a library never measured it, the
+  // cell still reads App only and is no open position, since no library run can close it.
+  it("reads the collector's never-sent App only row as App only, never as an open position", () => {
+    const ctx = project([run("lib", "l2", true)]).contexts["lib:xtermjs"]!
+    expect(ctx.cells[CLICK]!.result).toMatchObject({
+      status: "untestable",
+      reason: OS_INPUT,
+      attempt: { scope: "collection" },
+    })
+    expect(ctx.cells[CLICK]!.appOnly).toEqual({ reason: OS_INPUT })
+    expect(ctx.counts).toMatchObject({ supported: 1, [APP_ONLY]: 1, untestable: 0 })
+    expect(ctx.complete).toBe(true)
+  })
+
+  it("lists a declared App only feature with no cell on a library context, and none on a terminal", () => {
+    // A view id with no selected cell would otherwise count as an open position (the aggregate reads it probe-todo).
+    expect(applyAppOnly({}, { kind: "lib" }, APP_ONLY_ROWS, ids)).toEqual([CLICK])
+    expect(applyAppOnly({}, { kind: "term" }, APP_ONLY_ROWS, ids)).toEqual([])
   })
 
   it("leaves a terminal row graded as measured", () => {

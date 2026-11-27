@@ -21,9 +21,10 @@ export function catalogAppOnly(dir: string = contentDir): ReadonlyMap<string, Ap
 }
 
 /**
- * Mark the App only cells of one library context in place; returns the ids it marked, in catalogue order. A terminal or
- * multiplexer context, or a context with no subject, is left as it reads. A declared feature the context never
- * measured has no cell to mark and stays missing, as any unmeasured feature does.
+ * Mark the App only cells of one library context in place; returns every declared id, in catalogue order. A terminal or
+ * multiplexer context, or a context with no subject, is left as it reads. A declared feature the library never measured
+ * has no cell to mark, but its id is still returned, so the row reads it as App only rather than an open position no
+ * library run can close (#38801, @dev/review2 87da1a99).
  */
 export function applyAppOnly(
   cells: Record<string, SelectedContextCell>,
@@ -36,8 +37,8 @@ export function applyAppOnly(
   for (const id of catalogIds) {
     const declaration = declared.get(id)
     const cell = cells[id]
-    if (!declaration || !cell) continue
-    cells[id] = { ...cell, appOnly: { reason: declaration.reason } }
+    if (!declaration) continue
+    if (cell) cells[id] = { ...cell, appOnly: { reason: declaration.reason } }
     marked.push(id)
   }
   return marked

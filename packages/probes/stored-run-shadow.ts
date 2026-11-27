@@ -30,6 +30,7 @@ import {
 } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { IncompleteReplay, readCallLog, withCallLog } from "viprobe"
+import { isDeclaredUntestable } from "../probe-defs/src/helpers.ts"
 import { hasOuterCommandMatcher } from "../terminfo.dev/src/app-semantic-state.ts"
 import { readProbeCapture } from "./erase-capture.ts"
 import { declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
@@ -247,7 +248,11 @@ const SCOPE =
   "one grader, then compared with the stored status. On a headless (lib) subject every executed row with a lib " +
   "callback is in its headless:<feature prefix> family: replayed from its own call log through the bound reader, " +
   "its declaration predicate and lib callback and the headless collector's grader; a row without a log is " +
-  "incomplete there, never excluded. Every other row is excluded with its reason."
+  "incomplete there, never excluded. A row the library collector never sent (App only, #38801) is excluded, as is " +
+  "every other row, with its reason."
+
+/** #38801: the exclusion reason for a row the library collector never sent. */
+export const APP_ONLY_EXCLUSION = "App only: never sent by the library collector"
 
 /** A headless row's family: its feature id's prefix. One rule for every lib probe, so no row falls outside it. */
 export function headlessFamily(featureId: string): `headless:${string}` {
@@ -372,7 +377,10 @@ const LIB_EXTERNAL_READS: Readonly<Record<string, string>> = {
  * The query pairs a native host-recipe row recorded, in the order the callback asked. `error` is kept so a row whose
  * live query failed is refused by name rather than replayed as an empty answer.
  */
-function hostRecipeCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string; error: unknown }[] {
+function hostRecipeCaptures(
+  validated: ValidatedRun,
+  featureId: string,
+): { query: string; response: string; error: unknown }[] {
   const raw = validated.rawReplies["collector.hostRecipes." + featureId]
   if (typeof raw !== "string") throw new IncompleteReplay("Missing native host-recipe record: " + featureId)
   const parsed = parseJsonStrict(featureId + " host recipes", raw)
@@ -470,6 +478,12 @@ export async function shadowStoredRun(
     const featureId = result.featureId
     if (result.attempt?.scope === "none") {
       excluded.set("not executed in this run", [...(excluded.get("not executed in this run") ?? []), featureId])
+      continue
+    }
+    // #38801: the library collector decides an App only row at collection scope and never sends its probe, so there
+    // is no call log to replay. A callback's own declared Untestable is recorded at probe scope and still replays.
+    if (stored.subject?.kind === "lib" && result.attempt?.scope === "collection" && isDeclaredUntestable(result)) {
+      excluded.set(APP_ONLY_EXCLUSION, [...(excluded.get(APP_ONLY_EXCLUSION) ?? []), featureId])
       continue
     }
     const family = familyOf(featureId, stored.subject)

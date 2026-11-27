@@ -43,6 +43,8 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture } from "./headless-batch.ts"
+import { catalogAppOnlyReasons } from "./collect-headless.ts"
+import { selectAppProbes } from "../terminfo.dev/src/probes/unified.ts"
 import * as headlessIdentity from "./headless-identity.ts"
 import { finalizeCollectedDraft } from "../terminfo.dev/src/capture-writer.ts"
 import { cellWidthTransition } from "../probe-defs/src/helpers.ts"
@@ -2892,6 +2894,87 @@ test.each([
     })
   }
 })
+
+// @failure A library run sends an App only probe (OS input, glyph drawing) and records a grade it cannot have measured,
+//   or the row it records instead fails the run parser, or the skip also drops the probe from a terminal app run.
+// @level l2 @consumer collectBatch plus capture parser; the projection label alone left the library grade stored (#38801).
+test("a library collection never sends an App only probe and records the declared Untestable row the parser admits", async () => {
+  const id = "input.xtest-key"
+  const control = "sgr.bold"
+  const reasons = catalogAppOnlyReasons()
+  const reason = reasons.get(id)
+  expect(reason).toBe("OS input reaches only an app window; a library gets no OS keys or clicks.")
+  expect(reasons.has(control)).toBe(false)
+  const definitions = registryDefinitions([id, control]).map((probe) => ({ ...probe, lib: vi.fn(probe.lib!) }))
+  const manifest = {
+    schemaVersion: 4 as const,
+    probeHash: "app-only-fixture",
+    adapterVersion: "fixture",
+    catalogIds: [id, control],
+    probes: { term: [], mux: [], lib: [id, control] },
+  }
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
+    runId: "app-only-fixture",
+    sourceRevision: "9e319ac6e815688fc4b56eade0d06a49eaffafba",
+    intendedSubject: { kind: "lib", id: "xtermjs" },
+    manifest,
+  })
+  const batch = await collectBatch(backend, "xtermjs", definitions, draft, undefined, undefined, reasons)
+  // Never sent: the callback is not called, so nothing is fed and no reply or call log is retained for the row.
+  expect(definitions[0]!.lib).not.toHaveBeenCalled()
+  expect(definitions[1]!.lib).toHaveBeenCalled()
+  expect(Object.keys(batch.rawReplies).filter((key) => key.startsWith(id))).toEqual([])
+  const attempt = { scope: "collection", startedAt: expect.any(String) }
+  expect(batch.results.find((row) => row.featureId === id)).toEqual({
+    featureId: id,
+    status: "untestable",
+    attempt,
+    reason,
+    criterionBranch: "headless-observable-review",
+    tests: [{ id: "declared-untestable", status: "untestable", attempt, reason }],
+  })
+  expect(batch.results.find((row) => row.featureId === control)?.attempt.scope).toBe("probe")
+  const captured: CapturedRunDraft = {
+    ...draft,
+    subject: {
+      kind: "lib",
+      id: "xtermjs",
+      version: "fixture",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-11-27T09:40:00.000Z",
+    runtimeIdentity: {
+      kind: "js",
+      runtimeFormat: "js",
+      engineVersion: "fixture",
+      adapterVersion: "fixture",
+      termlessRevision: "539e4803eee45fcfe60369188c2189b57a06ae18",
+      resolvedPath: "fixture/xtermjs",
+      integrity: { kind: "registry", lockIntegrity: "fixture" },
+    },
+    origin: { kind: "collector" },
+    rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+    results: batch.results,
+    assertions: batch.assertions,
+  }
+  const parsed = parseRun(
+    "app-only.capture.json",
+    JSON.stringify(finalizeCollectedDraft(captured)),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(parsed.results?.find((row) => row.featureId === id)).toMatchObject({ status: "untestable", reason })
+  // @cto f33afd0b: the skip keys on the library context, never on App only alone; a terminal app run still sends them.
+  const app = selectAppProbes().selected.map((probe) => probe.id)
+  for (const appOnly of reasons.keys()) expect(app, appOnly).toContain(appOnly)
+}, 30_000)
 
 // Q2/bar93: callback tests miss a typed parser-state result rejected at the collector/parser boundary. Since #32246 the
 // former source review is PROBE TODO coverage, which must still survive collection and parsing.

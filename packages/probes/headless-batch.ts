@@ -53,7 +53,13 @@ import { createCallLog, withCallLog } from "viprobe"
 import { headlessRuntimeIdentity, readAdapterSources, type HeadlessProbeRuntime } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
-import { localeOf, notTestedResult, NO_SAME_PATH_CONTROL } from "../probe-defs/src/helpers.ts"
+import {
+  DECLARED_UNTESTABLE_TEST,
+  HEADLESS_OBSERVABLE_REVIEW,
+  localeOf,
+  notTestedResult,
+  NO_SAME_PATH_CONTROL,
+} from "../probe-defs/src/helpers.ts"
 
 /** Finalize the existing attempt without breaking its source-audited host-input citations. */
 export function finalizeHeadlessAttempt(
@@ -847,6 +853,34 @@ export function declaredLibAssertionTypes(
   return selected ? declaration.then : declaration.otherwise
 }
 
+/**
+ * #38801 (@cto e777b8ab, f33afd0b): the row a library run records for a feature the catalogue declares App only. This
+ * collector is the library context, so the probe is never sent; the row is the existing declared Untestable, decided
+ * by the collector at collection scope (a decided test needs an attempt; nothing was fed), and its reason is the declaration's own text, the one the card prints, so the two cannot drift.
+ */
+export function appOnlyResult(featureId: string, reason: string, startedAt: string): ProbeResult {
+  if (!reason.trim()) throw new Error(`App only declaration for ${featureId} has no reason`)
+  const attempt = { scope: "collection" as const, startedAt }
+  return {
+    featureId,
+    status: "untestable",
+    attempt,
+    reason,
+    criterionBranch: HEADLESS_OBSERVABLE_REVIEW,
+    tests: [{ id: DECLARED_UNTESTABLE_TEST, status: "untestable", attempt, reason }],
+  }
+}
+
+/** Write the App only row in place of the probe when the catalogue declares it; true when the probe is not sent. */
+function recordAppOnly(results: ProbeResult[], featureId: string, appOnly?: ReadonlyMap<string, string>): boolean {
+  const reason = appOnly?.get(featureId)
+  if (reason === undefined) return false
+  const index = results.findIndex((result) => result.featureId === featureId)
+  if (index < 0) throw new Error(`App only row ${featureId} is outside the initialized catalogue`)
+  results[index] = appOnlyResult(featureId, reason, new Date().toISOString())
+  return true
+}
+
 async function collectPass(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
@@ -855,6 +889,7 @@ async function collectPass(
   onCheckpoint?: (batch: Batch) => void,
   runtime?: HeadlessProbeRuntime,
   pass?: QueryPass,
+  appOnly?: ReadonlyMap<string, string>,
 ): Promise<Batch> {
   // One read of the grace window per pass: every sentinel outcome records it and G1 waits it out.
   let graceMs: number | undefined
@@ -881,6 +916,10 @@ async function collectPass(
   }
   for (const probe of definitions) {
     if (!probe.lib) continue
+    if (recordAppOnly(batch.results, probe.id, appOnly)) {
+      onCheckpoint?.(batch)
+      continue
+    }
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
@@ -1142,6 +1181,8 @@ export async function collectBatch(
   draft?: Pick<RunDraft, "results" | "runId" | "rawReplies">,
   onCheckpoint?: (batch: Batch) => void,
   runtime?: HeadlessProbeRuntime,
+  /** Feature id to declared reason for every row the catalogue declares App only; those probes are never sent. */
+  appOnly?: ReadonlyMap<string, string>,
 ): Promise<Batch> {
   const captures: HostQueryCapture[] = []
   const controlBackend = await createBackend()
@@ -1152,11 +1193,16 @@ export async function collectBatch(
   } finally {
     controlBackend.destroy()
   }
-  const first = await collectPass(createBackend, backendName, definitions, draft, onCheckpoint, runtime, {
-    control,
-    wait: true,
-    callLog: true,
-  })
+  const first = await collectPass(
+    createBackend,
+    backendName,
+    definitions,
+    draft,
+    onCheckpoint,
+    runtime,
+    { control, wait: true, callLog: true },
+    appOnly,
+  )
   first.rawReplies["collector.replyControl"] = JSON.stringify({ answered: control, captures })
   const facts = (batch: Batch, id: string): { queries: QueryFact[]; captures: HostQueryCapture[] } => {
     const raw = batch.rawReplies[`collector.queryCaptures.${id}`]
@@ -1164,7 +1210,7 @@ export async function collectBatch(
     return JSON.parse(raw) as { queries: QueryFact[]; captures: HostQueryCapture[] }
   }
   const selected = definitions.filter((probe) => {
-    if (!probe.lib) return false
+    if (!probe.lib || appOnly?.has(probe.id)) return false
     const result = first.results.find((row) => row.featureId === probe.id)
     if (!result) throw new Error(`Missing first-pass result for ${backendName}:${probe.id}`)
     // A callback's own review stays intact. A bare missing-control refusal can still
