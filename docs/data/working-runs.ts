@@ -19,6 +19,7 @@
  * - Every cell reads as its status; no cell waits on a source review (#32246).
  * - "Differs from reviewed" needs the same suite AND the same engine version and a different status.
  */
+import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
@@ -346,11 +347,40 @@ function loadedSiteWorkingRun(selection: WorkingRunSelection, retain = true): Lo
   return loaded
 }
 
-/** The `workingRun` field of build.json: the run every page read, and why it could not be read when it could not. */
-export function workingRunStamp(loaded: LoadedWorkingRun): { id: string; startedAt: string; unreadable?: string } {
+/**
+ * What a run shows, as one key (#38962, @cpo/term 2e3f479b): a sha256 over its `cells.json`, every engine × feature
+ * verdict, with object keys sorted. Two runs with the same key show the same results, so landed-serve rebuilds the site
+ * for a newer run only when its key differs from the one the served build.json carries. An unreadable cells.json throws.
+ */
+export function runResultsKey(dir: string): string {
+  const path = join(dir, "cells.json")
+  return createHash("sha256")
+    .update(canonicalJson(parseJsonStrict(path, readFileSync(path, "utf8"))))
+    .digest("hex")
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
+  if (record(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`
+  }
+  return JSON.stringify(value)
+}
+
+/** The `workingRun` field of build.json: the run every page read, its results key, and why it could not be read. */
+export function workingRunStamp(loaded: LoadedWorkingRun): {
+  id: string
+  startedAt: string
+  resultsKey: string
+  unreadable?: string
+} {
   return {
     id: loaded.id,
     startedAt: loaded.startedAt,
+    resultsKey: runResultsKey(loaded.dir),
     ...(loaded.unreadable && { unreadable: loaded.unreadable.reason }),
   }
 }

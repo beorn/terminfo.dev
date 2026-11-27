@@ -21,10 +21,10 @@ import {
   readServedStamp,
   rebuildForRun,
   rebuildReason,
-  RUN_REBUILD_GAP_MS,
   resolveServedPath,
   siteBuildArgs,
 } from "./landed-serve.ts"
+import { runResultsKey } from "../docs/data/working-runs.ts"
 
 let dist: string
 
@@ -393,19 +393,22 @@ describe("landed-serve hourly-run rebuild", () => {
     quiet?.mockRestore()
   })
 
-  function stamp(distDir: string, workingRunId: string | null, sourceCommit = CODE): void {
+  function stamp(distDir: string, workingRunId: string | null, sourceCommit = CODE, resultsKey?: string): void {
     mkdirSync(distDir, { recursive: true })
     writeFileSync(
       join(distDir, "build.json"),
-      JSON.stringify({ sourceCommit, ...(workingRunId && { workingRun: { id: workingRunId } }) }),
+      JSON.stringify({
+        sourceCommit,
+        ...(workingRunId && { workingRun: { id: workingRunId, ...(resultsKey && { resultsKey }) } }),
+      }),
     )
     writeFileSync(join(distDir, "index.html"), `built-for-${workingRunId}`)
   }
 
-  function completeRun(runsDir: string, id: string): void {
+  function completeRun(runsDir: string, id: string, cells: unknown = {}): void {
     mkdirSync(join(runsDir, id), { recursive: true })
     writeFileSync(join(runsDir, id, "summary.json"), JSON.stringify({ complete: true }))
-    writeFileSync(join(runsDir, id, "cells.json"), "{}")
+    writeFileSync(join(runsDir, id, "cells.json"), JSON.stringify(cells))
   }
 
   /** The one `.unproven-*` tree the run kept beside `name`, proving it was preserved rather than deleted. */
@@ -416,34 +419,47 @@ describe("landed-serve hourly-run rebuild", () => {
   }
 
   it("asks for a run rebuild only when the code matches and the newest complete run differs", () => {
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B, 0)).toBe("run")
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_B }, RUN_B, 0)).toBeNull()
-    expect(rebuildReason(CODE, { sourceCommit: "b".repeat(40), workingRunId: RUN_B }, RUN_B, 0)).toBe("code")
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, null, 0)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBe("run")
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_B }, RUN_B)).toBeNull()
+    expect(rebuildReason(CODE, { sourceCommit: "b".repeat(40), workingRunId: RUN_B }, RUN_B)).toBe("code")
+    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, null)).toBeNull()
   })
 
-  // Requirement (#38962, @cpo/term 2e3f479b interim): a newer hourly run rebuilds only once it started at least 4h after
-  // the run the served output shows, while a code change still rebuilds at once. Existing cases pass a 0 gap, so none
-  // of them would catch the hourly cadence coming back.
-  it("by default rebuilds for a run only 4 hours after the served one, and for code at once", () => {
-    const RUN_3H = "2026-11-02T23-34-04-000Z-aaaaaaaaaaaa"
-    const RUN_4H = "2026-11-03T00-34-05-309Z-bbbbbbbbbbbb"
-    expect(RUN_REBUILD_GAP_MS).toBe(4 * 60 * 60 * 1000)
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBeNull()
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_3H)).toBeNull()
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: RUN_A }, RUN_4H)).toBe("run")
-    expect(rebuildReason("b".repeat(40), { sourceCommit: CODE, workingRunId: RUN_A }, RUN_B)).toBe("code")
-    // No served run, or a name with no start time, rebuilds as before.
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: null }, RUN_B)).toBe("run")
-    expect(rebuildReason(CODE, { sourceCommit: CODE, workingRunId: "hand-made" }, RUN_B)).toBe("run")
+  // Requirement (#38962, @cpo/term 2e3f479b): a newer hourly run rebuilds only when its results differ from the ones
+  // the served build shows, compared by results key; a code change still rebuilds at once, and an output with no key
+  // rebuilds as before. The cases above name no key, so none of them would catch an unchanged run rebuilding.
+  it("asks for a run rebuild only when the newer run's results key differs from the served one", () => {
+    const served = { sourceCommit: CODE, workingRunId: RUN_A, workingResultsKey: "k1" }
+    expect(rebuildReason(CODE, served, RUN_B, "k1")).toBeNull()
+    expect(rebuildReason(CODE, served, RUN_B, "k2")).toBe("run")
+    expect(rebuildReason("b".repeat(40), served, RUN_B, "k1")).toBe("code")
+    expect(rebuildReason(CODE, { ...served, workingResultsKey: null }, RUN_B, "k1")).toBe("run")
   })
 
-  it("the rebuilder holds a run rebuild until a run 4 hours newer completes", async () => {
+  it("keys a run by its verdicts: the same cells in another order match, a changed verdict or engine does not", () => {
+    const runs = mkdtempSync(join(tmpdir(), "landed-serve-keys-"))
+    const cells = {
+      kitty: { "cursor.hide": "supported", "sgr.bold": "unsupported" },
+      vt100: { "cursor.hide": "supported" },
+    }
+    completeRun(runs, "a", cells)
+    completeRun(runs, "b", {
+      vt100: { "cursor.hide": "supported" },
+      kitty: { "sgr.bold": "unsupported", "cursor.hide": "supported" },
+    })
+    completeRun(runs, "c", { ...cells, kitty: { ...cells.kitty, "sgr.bold": "supported" } })
+    completeRun(runs, "d", { kitty: cells.kitty })
+    expect(runResultsKey(join(runs, "b"))).toBe(runResultsKey(join(runs, "a")))
+    expect(runResultsKey(join(runs, "c"))).not.toBe(runResultsKey(join(runs, "a")))
+    expect(runResultsKey(join(runs, "d"))).not.toBe(runResultsKey(join(runs, "a")))
+  })
+
+  it("the rebuilder skips a newer run with the served results and rebuilds for one whose results changed", async () => {
     const out = mkdtempSync(join(tmpdir(), "landed-serve-run-"))
     const runs = mkdtempSync(join(tmpdir(), "landed-serve-runs-"))
-    const RUN_4H = "2026-11-03T00-34-05-309Z-bbbbbbbbbbbb"
-    stamp(join(out, "dist"), RUN_A)
-    completeRun(runs, RUN_A)
+    const RUN_C = "2026-11-02T22-34-03-000Z-2d0bc819ffc1"
+    completeRun(runs, RUN_A, { kitty: { "cursor.hide": "supported" } })
+    stamp(join(out, "dist"), RUN_A, CODE, runResultsKey(join(runs, RUN_A)))
     const builds: string[] = []
     const rebuilder = createSiteRebuilder({
       runsDir: runs,
@@ -451,17 +467,18 @@ describe("landed-serve hourly-run rebuild", () => {
       target: CODE,
       runBuild: async (env) => {
         builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
-        stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_4H)
+        stamp(join(env["TERMINFO_SITE_OUT_DIR"] ?? "", "dist"), RUN_C, CODE, runResultsKey(join(runs, RUN_C)))
         return 0
       },
     })
-    completeRun(runs, RUN_B)
+    completeRun(runs, RUN_B, { kitty: { "cursor.hide": "supported" } })
     await rebuilder.check()
     expect(builds).toHaveLength(0)
-    completeRun(runs, RUN_4H)
+    expect(readServedStamp(join(out, "dist")).workingRunId).toBe(RUN_A)
+    completeRun(runs, RUN_C, { kitty: { "cursor.hide": "unsupported" } })
     await rebuilder.check()
     expect(builds).toHaveLength(1)
-    expect(readServedStamp(join(out, "dist")).workingRunId).toBe(RUN_4H)
+    expect(readServedStamp(join(out, "dist")).workingRunId).toBe(RUN_C)
   })
 
   it("a failed run rebuild keeps serving the previous build and reports loudly", async () => {
@@ -475,7 +492,11 @@ describe("landed-serve hourly-run rebuild", () => {
     } finally {
       spy.mockRestore()
     }
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_A })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_A,
+      workingResultsKey: null,
+    })
     expect(readFileSync(join(out, "dist", "index.html"), "utf8")).toBe(`built-for-${RUN_A}`)
     expect(errors.join("\n")).toContain(`rebuild for hourly run ${RUN_B} failed`)
     expect(errors.join("\n")).toContain("still serving the previous build")
@@ -497,7 +518,11 @@ describe("landed-serve hourly-run rebuild", () => {
     } finally {
       spy.mockRestore()
     }
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_A })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_A,
+      workingResultsKey: null,
+    })
     expect(readFileSync(join(out, "dist", "index.html"), "utf8")).toBe(`built-for-${RUN_A}`)
     expect(errors.join("\n")).toContain("site build failed (exit 70)")
     expect(errors.join("\n")).toContain(`NOT serving ${target.slice(0, 12)}`)
@@ -599,7 +624,11 @@ describe("landed-serve hourly-run rebuild", () => {
         log.mockRestore()
       }
       expect(built).toBe(false)
-      expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_A })
+      expect(readServedStamp(join(out, "dist"))).toEqual({
+        sourceCommit: CODE,
+        workingRunId: RUN_A,
+        workingResultsKey: null,
+      })
       expect(errors.join("\n")).toContain(LANDING_CONTENT_RULE)
       expect(errors.join("\n")).toContain(`still serving the previous build ${CODE.slice(0, 12)}`)
       expect((JSON.parse(readFileSync(join(out, "rebuild.json"), "utf8")) as { failure: string }).failure).toContain(
@@ -666,7 +695,11 @@ describe("landed-serve hourly-run rebuild", () => {
       },
     })
     expect(ok).toBe(true)
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: target, workingRunId: null })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: target,
+      workingRunId: null,
+      workingResultsKey: null,
+    })
     expect(existsSync(join(out, "staging", "dist"))).toBe(false)
     expect(existsSync(join(out, "rebuild.json"))).toBe(false)
   })
@@ -708,7 +741,11 @@ describe("landed-serve hourly-run rebuild", () => {
       },
     })
     expect(ok).toBe(true)
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_B,
+      workingResultsKey: null,
+    })
     expect(existsSync(join(out, "rebuild.json"))).toBe(false)
   })
 
@@ -725,7 +762,6 @@ describe("landed-serve hourly-run rebuild", () => {
         runsDir: runs,
         outRoot: out,
         target: CODE,
-        runGapMs: 0,
         runBuild: async (env) => {
           builds.push(env["TERMINFO_SITE_OUT_DIR"] ?? "")
           if (fail) return 1
@@ -781,7 +817,11 @@ describe("landed-serve hourly-run rebuild", () => {
     } finally {
       spy.mockRestore()
     }
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_B,
+      workingResultsKey: null,
+    })
     expect(readFileSync(join(keptAside(out, "staging"), "dist", "index.html"), "utf8")).toBe("somebody-elses-build")
     expect(errors.join("\n")).toContain("is not this program's build scratch")
   })
@@ -808,7 +848,11 @@ describe("landed-serve hourly-run rebuild", () => {
       spy.mockRestore()
     }
     expect(readFileSync(join(keptAside(out, "dist.previous"), "evidence.txt"), "utf8")).toBe("hand-copied output")
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_B,
+      workingResultsKey: null,
+    })
     expect(errors.join("\n")).toContain("carries no terminfo build stamp")
   })
 
@@ -844,6 +888,10 @@ describe("landed-serve hourly-run rebuild", () => {
       spy.mockRestore()
     }
     expect(readdirSync(out).filter((entry) => entry.includes(".unproven-"))).toEqual([])
-    expect(readServedStamp(join(out, "dist"))).toEqual({ sourceCommit: CODE, workingRunId: RUN_B })
+    expect(readServedStamp(join(out, "dist"))).toEqual({
+      sourceCommit: CODE,
+      workingRunId: RUN_B,
+      workingResultsKey: null,
+    })
   })
 })

@@ -39,6 +39,7 @@ import {
   pinSiteWorkingRun,
   selectedSiteWorkingRun,
   workingCell,
+  runResultsKey,
   workingRunStamp,
   siteWorkingHistory,
   siteWorkingView,
@@ -1502,6 +1503,7 @@ describe("an hourly run on a suite this build cannot trust", () => {
     expect(workingRunStamp(loaded)).toEqual({
       id: OLD,
       startedAt: "2026-11-02T19:34:05.072Z",
+      resultsKey: runResultsKey(loaded.dir),
       unreadable: loaded.unreadable?.reason,
     })
 

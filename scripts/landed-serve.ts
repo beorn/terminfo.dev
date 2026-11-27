@@ -47,7 +47,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { recordSiteRebuildFailure, siteDistDir, siteOutRoot, writeSiteRebuildMarker } from "./site-out.ts"
 import { peakCeilingBytes } from "./build-peak-guard.ts"
-import { newestCompleteRun, siteWorkingRunsDir } from "../docs/data/working-runs.ts"
+import { newestCompleteRun, runResultsKey, siteWorkingRunsDir } from "../docs/data/working-runs.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const distDir = siteDistDir(repoRoot)
@@ -63,6 +63,8 @@ function landingRevision(): string {
 export interface ServedStamp {
   sourceCommit: string | null
   workingRunId: string | null
+  /** The served run's results key (`runResultsKey`), or null when the stamp carries none. */
+  workingResultsKey?: string | null
 }
 
 /** The stamp of the output in `dir`, with nulls when there is no readable stamp. */
@@ -73,10 +75,11 @@ export function readServedStamp(dir: string): ServedStamp {
     const parsed: unknown = JSON.parse(readFileSync(stamp, "utf8"))
     if (parsed === null || typeof parsed !== "object") return { sourceCommit: null, workingRunId: null }
     const source = (parsed as { sourceCommit?: unknown }).sourceCommit
-    const run = (parsed as { workingRun?: { id?: unknown } }).workingRun?.id
+    const working = (parsed as { workingRun?: { id?: unknown; resultsKey?: unknown } }).workingRun
     return {
       sourceCommit: typeof source === "string" ? source : null,
-      workingRunId: typeof run === "string" ? run : null,
+      workingRunId: typeof working?.id === "string" ? working.id : null,
+      workingResultsKey: typeof working?.resultsKey === "string" ? working.resultsKey : null,
     }
   } catch (error) {
     // An unreadable or malformed stamp is not the same as an absent one: absent means "no build yet", but a stamp
@@ -97,36 +100,21 @@ function servedRevision(): string | null {
 }
 
 /**
- * Interim cadence for run rebuilds (#38962, @cpo/term 2e3f479b): a site build costs about 10 GB, so a newer hourly run
- * rebuilds only once it started at least this long after the run the served output shows. A code change still
- * rebuilds at once. This goes away when a run rebuilds only on changed results.
- */
-export const RUN_REBUILD_GAP_MS = 4 * 60 * 60 * 1000
-
-/** When a run started, from its directory name (`2026-11-02T20-34-05-309Z-<hash>`), or null for any other name. */
-function runStartedMs(id: string): number | null {
-  const [, day, hh, mm, ss, ms] = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/.exec(id) ?? []
-  if (day === undefined) return null
-  const at = Date.parse(`${day}T${hh}:${mm}:${ss}.${ms}Z`)
-  return Number.isNaN(at) ? null : at
-}
-
-/**
  * The one rebuild check: `code` when the served output is not this landing's revision (a staged rebuild that keeps the
- * previous dist if it fails, #38423), `run` when the code matches and a complete hourly run exists that started at
- * least `gapMs` after the one the output shows, else null. A run name that carries no start time rebuilds, as before.
+ * previous dist if it fails, #38423); `run` when the code matches and a newer complete hourly run exists whose results
+ * differ from the ones the output shows; else null. Results are compared by key (`runResultsKey`): a newer run with
+ * the same verdicts is not worth a build (#38962, @cpo/term 2e3f479b). An output with no key, from before keys or with
+ * no run, rebuilds as before, and so does a caller that names no key.
  */
 export function rebuildReason(
   target: string,
   stamp: ServedStamp,
   newestRunId: string | null,
-  gapMs: number = RUN_REBUILD_GAP_MS,
+  newestResultsKey: string | null = null,
 ): "code" | "run" | null {
   if (stamp.sourceCommit !== target) return "code"
   if (newestRunId === null || stamp.workingRunId === newestRunId) return null
-  const served = stamp.workingRunId === null ? null : runStartedMs(stamp.workingRunId)
-  const newest = runStartedMs(newestRunId)
-  if (served !== null && newest !== null && newest - served < gapMs) return null
+  if (newestResultsKey !== null && stamp.workingResultsKey === newestResultsKey) return null
   return "run"
 }
 
@@ -297,14 +285,7 @@ export async function rebuildForRun(args: {
  * hourly run, never two at once, and never a retry of a revision or run whose rebuild failed (a later one, or a
  * restart, tries again).
  */
-export function createSiteRebuilder(args: {
-  runsDir?: string
-  outRoot: string
-  target: string
-  runBuild?: RunBuild
-  /** The run-rebuild gap; defaults to RUN_REBUILD_GAP_MS. */
-  runGapMs?: number
-}): {
+export function createSiteRebuilder(args: { runsDir?: string; outRoot: string; target: string; runBuild?: RunBuild }): {
   check(): Promise<void>
 } {
   const attempted = new Set<string>()
@@ -324,8 +305,11 @@ export function createSiteRebuilder(args: {
     }
     if (args.runsDir === undefined) return
     let newest: string
+    let resultsKey: string
     try {
-      newest = newestCompleteRun(args.runsDir).id
+      const run = newestCompleteRun(args.runsDir)
+      newest = run.id
+      resultsKey = runResultsKey(run.dir)
     } catch (error) {
       console.error(
         `terminfo-site: cannot read hourly runs (${error instanceof Error ? error.message : String(error)}); ` +
@@ -333,7 +317,16 @@ export function createSiteRebuilder(args: {
       )
       return
     }
-    if (rebuildReason(args.target, stamp, newest, args.runGapMs) !== "run" || attempted.has(newest)) return
+    if (attempted.has(newest)) return
+    if (rebuildReason(args.target, stamp, newest, resultsKey) !== "run") {
+      if (stamp.workingRunId !== newest) {
+        attempted.add(newest)
+        console.log(
+          `terminfo-site: hourly run ${newest} has the results of the served build (run ${stamp.workingRunId}); not rebuilding`,
+        )
+      }
+      return
+    }
     attempted.add(newest)
     await rebuildForRun({ outRoot: args.outRoot, target: args.target, runId: newest, runBuild: args.runBuild })
   }
