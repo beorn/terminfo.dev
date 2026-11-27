@@ -11,6 +11,7 @@ import {
   cursorStyleReadbackDecision,
   focusWithPlainKeyReadback,
   decrpmReading,
+  declaredUntestableResult,
   parserStateResult,
   probe,
   replyFailure,
@@ -392,18 +393,24 @@ export const cursorProbes: ProbeDefinition[] = [
             ctx.write(shown === 1 || shown === 3 ? "\x1b[?25h" : "\x1b[?25l")
           }
           if (hidden !== null && hidden !== 0) {
-            // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
-            const ok = (shown === 1 || shown === 3) && (hidden === 2 || hidden === 4)
+            // #38800 (ruling 56269cef, @cto c76dd6b9 and 0bd4d1a5): the reply never decides. Ps 4 (cannot be set)
+            // refuses; a clean toggle or a permanently set reply (Ps 3) is recognition, never a pass. Only a raster
+            // read of the cursor decides Supported.
+            if (shown !== 4 && hidden !== 4 && ((shown === 1 && hidden === 2) || shown === 3 || hidden === 3)) {
+              return declaredUntestableResult(
+                `Recognized; effect not tested: DECRQM mode 25 reads ${decrpmReading(shown)} after CSI ? 25 h and ${decrpmReading(hidden)} after CSI ? 25 l, and the cursor-visibility effect needs a measured raster of the cursor`,
+                { shown: decrpmReading(shown), hidden: decrpmReading(hidden) },
+              )
+            }
+            // The stored reading keeps the Ps (#30557 r2): permanently reset, or a show or hide that did not take, refuses.
             return {
-              pass: ok,
+              pass: false,
               response: JSON.stringify({ shown: decrpmReading(shown), hidden: decrpmReading(hidden) }),
-              observation: ok
-                ? { outcome: "supported", assertionType: "query_reply" }
-                : { outcome: "unsupported", assertionType: "query_reply" },
+              observation: { outcome: "unsupported", assertionType: "query_reply" },
               assertions: [
                 {
                   assertionType: "query_reply" as const,
-                  kind: ok ? "positive" : "negative",
+                  kind: "negative",
                   expected: "DECRQM mode 25 reports set after CSI ? 25 h and reset after CSI ? 25 l",
                   observed: `${decrpmReading(shown)} -> ${decrpmReading(hidden)}`,
                 },

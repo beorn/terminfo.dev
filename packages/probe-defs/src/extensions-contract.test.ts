@@ -524,7 +524,10 @@ test.each(EXTENSIONS_SEMANTIC_SURFACE_CONTROLS)("controls for extensions.%s with
   const beforeIcon = workingSource.getIconLabel?.()
   const beforeCwd = workingSource.getCwd?.()
   const working = await regradeRow(probe, row, { headless: workingSource })
-  expect(working.after, `${id}: working feature must establish support`).toBe("supported")
+  // #38800 (@cto 0bd4d1a5): an OSC 5522 DECRPM reply is recognition, read Untestable, never Supported.
+  expect(working.after, `${id}: working feature must establish support`).toBe(
+    id === "extensions.osc5522-clipboard" ? undefined : "supported",
+  )
   expect(workingSource.getTitle(), `${id}: restores the title`).toBe(beforeTitle)
   expect(workingSource.getIconLabel?.(), `${id}: restores the icon`).toBe(beforeIcon)
   expect(workingSource.getCwd?.(), `${id}: restores the working directory`).toBe(beforeCwd)
@@ -761,7 +764,13 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   { id: "extensions.osc1337-capabilities", expected: "decided", claim: "iTerm2 Capability Reporting (OSC 1337)" },
   { id: "extensions.osc9-progress", expected: "inconclusive", claim: "OSC 9;4 progress bar" },
   { id: "extensions.osc66-text-sizing", expected: "decided", claim: "OSC 66 text sizing" },
-  { id: "extensions.osc5522-clipboard", expected: "decided", claim: "OSC 5522 advanced clipboard" },
+  {
+    id: "extensions.osc5522-clipboard",
+    expected: "not-tested",
+    // #38800 (@cto 0bd4d1a5): the DECRPM reply is recognition; no route reads the clipboard effect back.
+    claim:
+      "OSC 5522 advanced clipboard: a set, reset or permanently set reply is recognition only, declared Untestable",
+  },
   { id: "extensions.osc1-icon", expected: "inconclusive", claim: "Icon name (OSC 1): ESC ] 1 ; Pt BEL" },
   { id: "extensions.osc4-palette", expected: "decided", claim: "Color palette (OSC 4): ESC ] 4 ; c ; spec BEL" },
   { id: "extensions.osc5-special-color", expected: "decided", claim: "Special color (OSC 5): ESC ] 5 ; c ; spec BEL" },
@@ -1189,14 +1198,6 @@ function decidedSatisfactionSources(id: string) {
       }),
     }
   }
-  if (id === "extensions.osc5522-clipboard") {
-    return {
-      headless: libProbeSource({
-        ...inertModel(),
-        feedCapture: () => "\x1b[?5522;1$y",
-      }),
-    }
-  }
   if (id === "extensions.osc21-kitty-color") {
     return {
       headless: libProbeSource({
@@ -1419,7 +1420,8 @@ test("every decided extension contract row is satisfied by its required protocol
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
   const nonDecidedCount = EXTENSIONS_CONTRACT.filter((row) => row.expected !== "decided").length
   expect(decidedRows).toHaveLength(EXTENSIONS_CONTRACT.length - nonDecidedCount)
-  expect(decidedRows.length).toBeGreaterThanOrEqual(46)
+  // 45 since #38800 moved OSC 5522 to declared Untestable (@cto 0bd4d1a5).
+  expect(decidedRows.length).toBeGreaterThanOrEqual(45)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)

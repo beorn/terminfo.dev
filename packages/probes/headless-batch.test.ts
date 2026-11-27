@@ -3720,14 +3720,16 @@ test.each([0, 1, 4] as const)(
     })
     const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
     expect(batch.rawReplies[id]).toBe(response)
-    const supported = ps === 1
-    expect(batch.observations).toMatchObject([
-      { featureId: id, outcome: supported ? "supported" : "unsupported", assertionType: "query_reply" },
-    ])
-    expect(batch.assertions).toMatchObject([{ featureId: id, kind: supported ? "positive" : "negative" }])
-    expect(batch.results.find((result) => result.featureId === id)?.status).toBe(
-      supported ? "supported" : "unsupported",
-    )
+    if (ps === 1) {
+      // #38800 (@cto 0bd4d1a5): a set reply is recognition, declared Untestable, never Supported.
+      expect(batch.observations).toEqual([])
+      expect(batch.assertions).toEqual([])
+      expect(batch.results.find((result) => result.featureId === id)?.status).toBe("untestable")
+      return
+    }
+    expect(batch.observations).toMatchObject([{ featureId: id, outcome: "unsupported", assertionType: "query_reply" }])
+    expect(batch.assertions).toMatchObject([{ featureId: id, kind: "negative" }])
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("unsupported")
   },
 )
 

@@ -82,20 +82,43 @@ function kittySource(answer: boolean, resets = true, permanent = false): TermPro
   }
 }
 
-test.each([
-  ["sgr.bold", "1"],
-  ["cursor.hide", "set (Ps 1) -> reset (Ps 2)"],
-] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
+test("sgr.bold is decided supported by its readback query on a responding terminal", async () => {
   // This contract exercises query-only readback; an owned capture would decide visual SGR instead.
-  const source = kittySource(true)
-  const { capture: _capture, ...queryOnly } = source
-  const result = await termProbe(id)(id === "sgr.bold" ? queryOnly : source)
+  const { capture: _capture, ...queryOnly } = kittySource(true)
+  const result = await termProbe("sgr.bold")(queryOnly)
   expect(result.pass).toBe(true)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
-  if (id === "sgr.bold") expect(result.response).toContain(observed)
-  else expect(result.assertions?.[0]?.observed).toBe(observed)
+  expect(result.response).toContain("1")
 })
+
+// #38800 (ruling 56269cef, @cto 0bd4d1a5): a DECRQM mode 25 reply alone reads Untestable (Recognized); only a raster
+// read of the cursor decides Supported, and Ps 4 stays Unsupported (the permanently reset test below).
+test.each([
+  ["a clean toggle", undefined, "set (Ps 1)", "reset (Ps 2)"],
+  ["a permanently set mode", "3", "permanently set (Ps 3)", "permanently set (Ps 3)"],
+] as const)(
+  "cursor.hide reads %s on DECRQM alone as recognized, never supported",
+  async (_name, fixed, shown, hidden) => {
+    const source = kittySource(true)
+    if (fixed) {
+      source.queryWithSentinel = async (sequence, pattern) =>
+        sequence === "\x1b[?25$p" ? pattern.exec(`\x1b[?25;${fixed}$y`) : null
+    }
+    const result = await termProbe("cursor.hide")(source)
+    expect(result.pass).toBe(false)
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(result.tests).toEqual([
+      expect.objectContaining({
+        status: "untestable",
+        reason:
+          `Recognized; effect not tested: DECRQM mode 25 reads ${shown} after CSI ? 25 h and ${hidden} after CSI ? 25 l, ` +
+          "and the cursor-visibility effect needs a measured raster of the cursor",
+      }),
+    ])
+  },
+)
 
 // #38772 (@cpo/term 56269cef): IRM's DECRQM toggle is recognition, never the pass. With no cell route it reads
 // Untestable, "Recognized; effect not tested"; with one, the inserted cell decides (modes-observations.test.ts).
