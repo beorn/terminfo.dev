@@ -317,7 +317,11 @@ export function hasAuditedOscInterfaceAbsence(
       (tree === "e94b7948e9ad7871d57addfb23f0e9cc57dc6928" ||
         tree === "f11c935e06882887a41a9cc8e7bbb0fc6aa7b209" ||
         tree === "12283b14668a92872f97bd8eecffe5307fc1cab8" ||
-        tree === "4c490d55a36aea132819d38c09a305a765720ffb"))
+        tree === "4c490d55a36aea132819d38c09a305a765720ffb")) ||
+    (identity.engineVersion === "0.15.0" &&
+      // #38966: the vt100 and vt220 package trees only. Their src is identical to 0.14.0 (README and version
+      // changed), so the audited absence carries over. vterm.js 0.15.0 changed screen.ts and is not re-read here.
+      (tree === "506d9de4a8dc144d72c99cbef2333abd64fd1b54" || tree === "2f873a308a3751f7c021580ec3b97b6340113416"))
   )
 }
 
@@ -10545,7 +10549,9 @@ export function withD2LibraryObservation(definition: ProbeDefinition): ProbeDefi
         if (decsace) {
           return ctx.runtimeIdentity?.engineVersion === "0.13.1" ||
             ctx.runtimeIdentity?.engineVersion === "0.13.2" ||
-            ctx.runtimeIdentity?.engineVersion === "0.14.0"
+            ctx.runtimeIdentity?.engineVersion === "0.14.0" ||
+            // #38966: vt100 and vt220 0.15.0 change only README and version over 0.14.0 (identical src).
+            ctx.runtimeIdentity?.engineVersion === "0.15.0"
             ? declaredUntestableResult(
                 `${ctx.backendName} exposes no DECSACE extent state or effect reader through its public Screen API.`,
                 { backend: ctx.backendName, engineVersion: ctx.runtimeIdentity.engineVersion },
