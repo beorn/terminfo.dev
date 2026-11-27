@@ -218,6 +218,19 @@ describe("owned Terminal.app receipt", () => {
     { status: 1, stdout: "", stderr: "owned Terminal window no longer exists uniquely", reason: "already absent" },
     { status: 1, stdout: "", stderr: "query denied", reason: "query error" },
   ])("retains failed close evidence: $reason", (result) => {
+    // #37257: a positive remaining count ("1") enters the close-sheet dismissal path before refusing; mock its
+    // follow-up osascript/sleep calls so the window stays unclosed and we prove original close evidence survives.
+    if (result.status === 0 && /^[1-9][0-9]*$/.test(result.stdout.trim())) {
+      vi.mocked(spawnSync).mockImplementation((command, args) => {
+        const stdout =
+          command === "sleep"
+            ? ""
+            : String(args?.[3] ?? "").includes("AXSheet")
+              ? JSON.stringify({ status: "refused", reason: "osascript is not trusted for Accessibility" })
+              : "1\n"
+        return { status: 0, stdout, stderr: "", pid: 1, signal: null, output: [null, stdout, ""] }
+      })
+    }
     vi.mocked(spawnSync).mockReturnValueOnce({
       ...result,
       pid: 1,
@@ -229,6 +242,8 @@ describe("owned Terminal.app receipt", () => {
       closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })
     } catch (cause) {
       failure = cause
+    } finally {
+      vi.mocked(spawnSync).mockReset()
     }
     expect(failure).toMatchObject({
       name: "CaptureRestoreFailed",

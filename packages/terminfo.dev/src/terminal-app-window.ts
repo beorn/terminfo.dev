@@ -910,7 +910,14 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): string | 
           captureCommand: trace,
         })
       }
-      if (String(trace.stdout).trim() !== "0") {
+      const trimmed = String(trace.stdout).trim()
+      if (!/^[0-9]+$/.test(trimmed)) {
+        throw Object.assign(new Error("Owned Terminal window close and zero-match absence could not be proved"), {
+          name: "CaptureRestoreFailed",
+          captureCommand: trace,
+        })
+      }
+      if (trimmed !== "0") {
         // 37257: the window stayed because Terminal put up its own "terminate running processes?" sheet for a
         // still-live process. Terminate ends one process per round (the serve script, then the login shell), and the
         // window still has to be closed again afterwards, so close and dismiss repeat until the id's count is zero.
