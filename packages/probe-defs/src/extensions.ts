@@ -263,6 +263,11 @@ export function hasAuditedOscInterfaceAbsence(
       identity.integrity.repository === "git@github.com:beorn/vterm.git" &&
       ((identity.engineVersion === "0.14.0" &&
         identity.integrity.treeOid === "89dac5839077e57249405ab6673b996918c03f04") ||
+        // #38970: 0.15.0 changes only OSC 52 over 0.14.0 (a set calls onClipboardWrite and is no longer echoed,
+        // #38825). OSC 52 never reaches this cohort (appJobHandoff returns before it for every engine but xterm),
+        // so each audited absence holds.
+        (identity.engineVersion === "0.15.0" &&
+          identity.integrity.treeOid === "077db6829a322150b5ec197eec028b7ec6f01791") ||
         (identity.engineVersion === "0.13.1" &&
           (identity.integrity.treeOid === "3d58d29a8265aafd928e0736dde6723e2bac2007" ||
             identity.integrity.treeOid === "656da900d83e7c41af13b7ca679f8e1e31481537")) ||
