@@ -1228,7 +1228,13 @@ function libraryFedSteps(
     const t = trimCode(r.count > 1 ? `${r.code} ×${r.count}` : r.code)
     const setup = firstKeptUnderTest >= 0 && n < firstKeptUnderTest
     return [
-      { num: n + 1, code: t.code, ...(t.fullCode ? { fullCode: t.fullCode } : {}), ...(setup ? { setup: true } : {}), words: r.words },
+      {
+        num: n + 1,
+        code: t.code,
+        ...(t.fullCode ? { fullCode: t.fullCode } : {}),
+        ...(setup ? { setup: true } : {}),
+        words: r.words,
+      },
     ]
   })
 }
@@ -2735,18 +2741,31 @@ export function buildCardModel(input: {
         ? `Feed to the library: ${explainSentCommand(fedCommands[0].raw, false).words}`
         : "Feed sequence to library parser"
     const fedWrites = exchange?.writes?.length ? exchange.writes : undefined
+    // A probe that feeds nothing and asks the library's own encoder names the key it asked for (#38788).
+    const encodedKey = /\blibrary key-event encoder (\S+) report\b/.exec(
+      exchange?.assertions?.find((a) => a.expected)?.expected ?? "",
+    )?.[1]
     const libSteps: CardStepRow[] = fedWrites
       ? libraryFedSteps(fedWrites, featureId, declaredSequence, trimCode)
-      : seqTrim
-      ? [
-          {
-            num: 1,
-            code: seqTrim.code,
-            ...(seqTrim.fullCode ? { fullCode: seqTrim.fullCode } : {}),
-            words: fedWords,
-          },
-        ]
-      : [{ num: 1, code: "", codeMuted: "not recorded", words: "This run did not record the bytes fed to the library" }]
+      : encodedKey && !fed
+        ? [{ num: 1, code: encodedKey, words: `Ask the library's own key encoder for key ${encodedKey}` }]
+        : seqTrim
+          ? [
+              {
+                num: 1,
+                code: seqTrim.code,
+                ...(seqTrim.fullCode ? { fullCode: seqTrim.fullCode } : {}),
+                words: fedWords,
+              },
+            ]
+          : [
+              {
+                num: 1,
+                code: "",
+                codeMuted: "not recorded",
+                words: "This run did not record the bytes fed to the library",
+              },
+            ]
     const rawLibSummary =
       sanitizeCardText(summarizeLibraryState(parserState, traceEvidence, { keepDa1Reply: isDa1Feature(featureId) })) ??
       "State recorded in parser buffer"

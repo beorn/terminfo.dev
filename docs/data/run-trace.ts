@@ -339,7 +339,11 @@ const FED_CALL_PATHS: ReadonlySet<string> = new Set([
  * Undefined when the run has no call log for this feature (it predates the log); a present log whose fed call
  * carries no string fails the build, since the card would otherwise show fewer bytes than were fed.
  */
-function libraryFedWrites(raw: Readonly<Record<string, string>>, featureId: string, where: string): string[] | undefined {
+function libraryFedWrites(
+  raw: Readonly<Record<string, string>>,
+  featureId: string,
+  where: string,
+): string[] | undefined {
   const key = `${featureId}.callLog`
   const log = storedRecord(raw, key, where)
   if (log === undefined) return undefined
