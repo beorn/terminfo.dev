@@ -14,6 +14,16 @@
     "description": "Escape sequences for application-to-terminal communication: window title, clipboard, hyperlinks.",
     "link": "/osc"
   },
+  "OSC 7577": {
+    "expansion": "Program Resume Protocol",
+    "description": "Escape sequence for reporting a signed relaunch command (argv, pid, time, mac) so the terminal can resume the program after a restart, with feature detection via the per-pane OSC7577_TOKEN environment variable.",
+    "link": "/extensions/osc-7577-program-resume-token"
+  },
+  "OSC 88": {
+    "expansion": "Terminal Resume Protocol",
+    "description": "Earlier, unauthenticated escape sequence from otty for arming and clearing a terminal relaunch command (OSC 88 ; arm ; cmd=… ST and OSC 88 ; clear ST).",
+    "link": "/extensions/osc-88-terminal-resume-silent"
+  },
   "OSC 7501": {
     "expansion": "Program Status Protocol",
     "description": "Escape sequence for reporting program state (idle, working, done, blocked, error) to the terminal as a record per id, with feature detection via OSC 7501 ; ? ST before DA1.",
