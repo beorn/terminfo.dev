@@ -399,7 +399,7 @@ describe("owned-app ssh transport", () => {
     const malformed = run({}, ["--run-id", "NOT-HEX"])
     expect(malformed.status).not.toBe(0)
     expect(malformed.stderr).toMatch(/invalid run id: run id "NOT-HEX" is not 32 lowercase hex characters/)
-  })
+  }, 60_000)
 
   it("carries the handed run id in the explicit remote command, before the output directory", () => {
     const result = run()
@@ -415,7 +415,7 @@ describe("owned-app ssh transport", () => {
     expect(probe!.indexOf("--run-id")).toBeLessThan(probe!.indexOf("--output"))
     expect(probe).toContain("probe")
     expect(probe).toContain("app")
-  })
+  }, 60_000)
 
   // Real staging and receipt subprocesses exceeded the 5 s default under fleet load (7.04 s).
   it("stages portable resource modes without source-host privilege bits", () => {
