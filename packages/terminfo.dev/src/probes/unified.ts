@@ -300,13 +300,15 @@ export function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; 
 /**
  * OSC633 P can pin the pane cwd until it closes, so it follows cwd and prompt observations.
  * OSC 52 stays after the other probes so a clipboard write does not disturb them. Consent
- * probes run last in fixed order: banner probes first (`editing.decrqcra` covers pixels on
- * iTerm2, #31741) and modal probes last (`extensions.iterm2-images` raises "Allow
- * Terminal-Initiated Display?" on default-config iTerm2 3.7.9 and blocks PTY replies,
- * #37678 run 5ed559c9).
+ * and column-mode probes run last in fixed order: `modes.deccolm` first (after `reset.ris`
+ * and every region-fixture / `modes.xt*` probe, because `?40h`/`?3l` locks libghostty to 80
+ * columns and raises iTerm2's resize-consent banner over rows 1–3, #39042), then
+ * `editing.decrqcra` (covers pixels on iTerm2, #31741), and modal probes last
+ * (`extensions.iterm2-images` raises "Allow Terminal-Initiated Display?" on default-config
+ * iTerm2 3.7.9 and blocks PTY replies, #37678 run 5ed559c9).
  */
 export function scheduleAppProbes<T extends { readonly id: string }>(requested: readonly T[]): T[] {
-  const consentOrder = ["editing.decrqcra", "extensions.iterm2-images"] as const
+  const consentOrder = ["modes.deccolm", "editing.decrqcra", "extensions.iterm2-images"] as const
   const body: T[] = []
   const clipboard: T[] = []
   const consent = new Map<string, T[]>()

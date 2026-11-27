@@ -4746,9 +4746,8 @@ it.each(["start", "read", "write"])(
 it("stops the batch when modes.deccolm leaves a different stty size", async () => {
   verifiedBatchFixture()
   const deccolm = ALL_PROBES.find((probe) => probe.id === "modes.deccolm")
-  const next = ALL_PROBES.find(
-    (probe) => probe.term && probe.termNeedsGeometry && !probe.termNeedsDisposable && probe.id !== "modes.deccolm",
-  )
+  // Pick a geometry probe scheduled AFTER modes.deccolm (#39042 moved deccolm into consentOrder).
+  const next = ALL_PROBES.find((probe) => probe.id === "extensions.iterm2-images")
   if (!deccolm?.term || !next?.term) throw new Error("missing geometry probes")
   const original = { term: deccolm.term, disposable: deccolm.termNeedsDisposable, next: next.term }
   const calls: string[] = []

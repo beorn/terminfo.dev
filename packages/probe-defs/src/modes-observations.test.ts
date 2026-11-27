@@ -1726,6 +1726,28 @@ test("App DECCOLM puts back the width it found when the terminal honors CSI 8", 
   expect(result.note).not.toContain("restore left")
 })
 
+test("App DECCOLM skips redundant CSI 8 resize when width never left initial size (#39042)", async () => {
+  const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
+  if (!definition?.term) throw new Error("Missing App DECCOLM callback")
+  const writes: string[] = []
+  const result = await definition.term(
+    replayTermProbeSource(new Map(), {
+      cols: 80,
+      rows: 25,
+      write: (bytes) => {
+        writes.push(bytes)
+      },
+      queryWithSentinel: async (query, pattern) => {
+        if (query === "\x1b[?3$p") return pattern.exec("\x1b[?3;2$y")
+        expect(query).toBe("\x1b[18t")
+        return pattern.exec("\x1b[8;25;80t")
+      },
+    }),
+  )
+  expect(result.observation?.outcome).toBe("unsupported")
+  expect(writes.join("")).not.toContain("\x1b[8;25;80t")
+})
+
 test.each([null, 0] as const)("App DECCOLM reads controlled width frames after DECRPM %s", async (ps) => {
   const definition = modesProbes.find((entry) => entry.id === "modes.deccolm")
   if (!definition?.term) throw new Error("Missing App DECCOLM callback")

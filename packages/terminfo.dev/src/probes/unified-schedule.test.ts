@@ -48,8 +48,37 @@ it("keeps editing.decrqcra immediately before extensions.iterm2-images regardles
   expect(forward).toEqual(["sgr.bold", "editing.decrqcra", "extensions.iterm2-images"])
   expect(reversed).toEqual(["sgr.bold", "editing.decrqcra", "extensions.iterm2-images"])
 
-  // Full single-session app catalogue lands decrqcra second-to-last and iterm2-images last.
+  // Full single-session app catalogue lands deccolm before decrqcra and iterm2-images last,
+  // after reset.ris, reset.soft, reset.decaln, scrollback.*, charsets.*, and modes.xt*.
   const all = selectAppProbes().selected.map((probe) => probe.id)
   expect(all.at(-1)).toBe("extensions.iterm2-images")
   expect(all.at(-2)).toBe("editing.decrqcra")
+  expect(all.at(-3)).toBe("modes.deccolm")
+})
+
+it("schedules modes.deccolm after reset.ris and every region-fixture / modes.xt* probe (#39042)", () => {
+  const ordered = scheduleAppProbes([
+    { id: "modes.deccolm" },
+    { id: "modes.xtpushsgr" },
+    { id: "reset.ris" },
+    { id: "reset.soft" },
+    { id: "reset.decaln" },
+    { id: "scrollback.decstbm" },
+    { id: "charsets.dec-special" },
+    { id: "extensions.osc52-write" },
+    { id: "editing.decrqcra" },
+    { id: "extensions.iterm2-images" },
+  ]).map((probe) => probe.id)
+  expect(ordered).toEqual([
+    "modes.xtpushsgr",
+    "reset.ris",
+    "reset.soft",
+    "reset.decaln",
+    "scrollback.decstbm",
+    "charsets.dec-special",
+    "extensions.osc52-write",
+    "modes.deccolm",
+    "editing.decrqcra",
+    "extensions.iterm2-images",
+  ])
 })
