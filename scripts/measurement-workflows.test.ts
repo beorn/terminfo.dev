@@ -254,7 +254,10 @@ test.each(["1", "0"])("iTerm API preference readback %s controls launch after th
   const execute = () =>
     runInNewContext(script, {
       Buffer,
-      process: { argv: ["node", "-", "/Applications/iTerm.app", "--command=fixture"], stdout: { write() {} } },
+      process: {
+        argv: ["node", "-", "/Applications/iTerm.app", "--command=fixture", "0123456789abcdef0123456789abcdef"],
+        stdout: { write() {} },
+      },
       require: () => ({
         spawnSync: (file: string, args: string[]) => {
           calls.push({ file, args })
@@ -280,6 +283,23 @@ test.each(["1", "0"])("iTerm API preference readback %s controls launch after th
   if (!first) throw new Error("API preference write absent")
   expect(calls.findIndex(({ file }) => file.endsWith("pgrep"))).toBeLessThan(calls.indexOf(first))
   expect(calls.some(({ file }) => file.endsWith("/open"))).toBe(readback === "1")
+  if (readback === "1") {
+    // #38933 (@cto c743635d): the one open carries both marker variables, right after a second pgrep.
+    expect(calls.at(-2)?.file).toBe("/usr/bin/pgrep")
+    expect(calls.at(-1)).toEqual({
+      file: "/usr/bin/open",
+      args: [
+        "-a",
+        "/Applications/iTerm.app",
+        "--env",
+        "TERMINFO_TERM_FEATURES_LAUNCH=0123456789abcdef0123456789abcdef",
+        "--env",
+        "TERMINFO_RUN_ID=0123456789abcdef0123456789abcdef",
+        "--args",
+        "--command=fixture",
+      ],
+    })
+  }
 })
 
 // The actual shell must launch and record one array. Parser fixtures cannot catch a
@@ -1138,11 +1158,18 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
   const launches: string[][] = []
   const native: string[][] = []
   let setupFailure = ""
+  let runId = "0123456789abcdef0123456789abcdef"
+  let pgrepStatus = 1
   const run = (status: number) =>
     runInNewContext(`(async () => {${source}\n})()`, {
       process: {
         cwd: () => root,
-        env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/cmux.app", RUNNER_TEMP: "/runner" },
+        env: {
+          COMMAND_PATH: command,
+          APP_BUNDLE: "/Applications/cmux.app",
+          RUNNER_TEMP: "/runner",
+          TERMINFO_LAUNCH_RUN_ID: runId,
+        },
       },
       Bun: {
         spawn: (argv: string[]) => {
@@ -1168,6 +1195,7 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
             spawnSync: (file: string, args: string[]) => {
               native.push([file, ...args])
               events.push(`native:${args[0]}`)
+              if (file === "/usr/bin/pgrep") return { status: pgrepStatus, stdout: "", stderr: "" }
               if (setupFailure === "write" && args[0] === "write") {
                 return { status: 9, stdout: "", stderr: "fixture preference write denied" }
               }
@@ -1204,12 +1232,26 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
     ["/usr/bin/defaults", "write", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion", "-string", "0.65.1"],
     ["/usr/bin/defaults", "read", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion"],
     ["/usr/bin/defaults", "read-type", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion"],
+    // #38933 (@cto c743635d): the running-process refusal runs immediately before the open that carries the marker.
+    ["/usr/bin/pgrep", "-f", "--", "^/Applications/cmux.app/Contents/MacOS/"],
   ])
+  expect(events.at(-2)).toBe("native:-f")
+  expect(events.at(-1)).toBe("launch")
   expect(events.indexOf("native:write")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("native:read-type")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("evidence")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("config")).toBeLessThan(events.indexOf("launch"))
-  expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
+  expect(launches).toEqual([
+    [
+      "open",
+      "-a",
+      "/Applications/cmux.app",
+      "--env",
+      "TERMINFO_TERM_FEATURES_LAUNCH=0123456789abcdef0123456789abcdef",
+      "--env",
+      "TERMINFO_RUN_ID=0123456789abcdef0123456789abcdef",
+    ],
+  ])
   expect(JSON.parse(writes.get("/runner/measurement-artifacts/cmux-launch-setup.json")!)).toMatchObject({
     domain: "fixture.installed.cmux",
     version: "0.65.2",
@@ -1222,7 +1264,16 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
   const argv = spawnSync("/bin/bash", ["-c", `set -- ${configured}; printf '%s\\0' "$@"`], { encoding: "utf8" })
   expect(argv.status, argv.stderr).toBe(0)
   expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
-  await expect(run(7)).rejects.toThrow(/open.*7/)
+  await expect(run(7)).rejects.toThrow(/open --env exited 7; no plain-open fallback/)
+  // A running cmux, or no receipt run id, refuses before any open: never a plain-open fallback.
+  launches.length = 0
+  pgrepStatus = 0
+  await expect(run(0)).rejects.toThrow(/cmux is running immediately before open/)
+  pgrepStatus = 1
+  runId = ""
+  await expect(run(0)).rejects.toThrow(/cmux clean-launch marker: no receipt run id/)
+  expect(launches).toHaveLength(0)
+  runId = "0123456789abcdef0123456789abcdef"
   for (setupFailure of ["write", "type", "value"]) {
     launches.length = 0
     await expect(run(0)).rejects.toThrow(/cmux.*setup failed/)
@@ -2085,9 +2136,9 @@ test.each([
 })
 
 // 32555 (@cto c8b7704b): the direct-binary arms launch under one helper that names this job's receipt run id as
-// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process; Terminal.app,
-// iTerm2 and cmux (`open -a`) keep their named PROBE TODO. The helper is read out of the workflow and run with
-// stubbed node and pgrep.
+// the TERM_FEATURES clean-launch marker, strips TERM_FEATURES and refuses a reused app process. Terminal.app keeps
+// its named PROBE TODO; iTerm2 and cmux (`open -a`) carry the marker as `open --env` (#38933, @cto c743635d).
+// The helper is read out of the workflow and run with stubbed node and pgrep.
 test("the direct-binary arms launch under the TERM_FEATURES marker helper, which refuses a missing id or a reused app", () => {
   const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const helper = /^ {10}term_features_launch_env\(\) \{\n[\s\S]*?\n {10}\}\n/mu.exec(macos)?.[0]
@@ -2110,9 +2161,17 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
       /^\s*(?:nohup )?"\$\{APP_ARGV\[@\]\}"/mu,
     )
   }
-  for (const app of ["terminal-app", "iterm2", "cmux"]) {
-    expect(arms.get(app), `${app} arm`).not.toContain("term_features_launch_env")
+  expect(arms.get("terminal-app"), "terminal-app arm").not.toContain("term_features_launch_env")
+  for (const app of ["iterm2", "cmux"]) {
+    expect(arms.get(app), `${app} arm`).toContain("term_features_launch_env")
   }
+  // iTerm2's launcher: pgrep immediately before its one open, which carries both variables; no plain open.
+  const iterm = macos.split("<<'ITERM_STARTUP'\n")[1]!.split("\n          ITERM_STARTUP")[0]!
+  const opens = iterm.match(/run\('open', '\/usr\/bin\/open', \[[^\]]*\]/gu) ?? []
+  expect(opens).toEqual(["run('open', '/usr/bin/open', ['-a', bundle, ...marker, '--args', command]"])
+  expect(iterm).toContain("const marker = ['--env', `TERMINFO_TERM_FEATURES_LAUNCH=${runId}`, '--env', `TERMINFO_RUN_ID=${runId}`];")
+  const beforeOpen = iterm.slice(0, iterm.indexOf("run('open'")).trim().split("\n").slice(-5).join("\n")
+  expect(beforeOpen).toContain("run('pgrep before open', '/usr/bin/pgrep', ['-x', 'iTerm2'])")
 
   const dir = mkdtempSync(join(tmpdir(), "tf-marker-"))
   try {

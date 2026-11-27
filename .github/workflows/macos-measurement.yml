@@ -474,9 +474,11 @@ jobs:
           # (Ghostty, WezTerm, Alacritty, Warp). This job's receipt run id, read from the job-start sample and refused when
           # absent, goes into the app's own launch environment with TERM_FEATURES removed; an app already running
           # from this bundle is refused, because a reused process cannot carry this run's marker. The child reader
-          # (terminal-child-environment.ts) measures only when both variables equal the run id. Terminal.app and
-          # iTerm2 open windows inside an existing app process and keep their named PROBE TODO; cmux starts through
-          # `open -a`, whose LaunchServices launch does not carry this shell's environment, so it keeps one too.
+          # (terminal-child-environment.ts) measures only when both variables equal the run id. Terminal.app opens
+          # its window inside an AppleScript-started process and keeps its named PROBE TODO. iTerm2 and cmux start
+          # through LaunchServices, which drops this shell's environment, so they carry the two variables as
+          # `open --env` (#38933, @cto c743635d): the running-process refusal runs again immediately before that
+          # open, and an `open` that rejects --env fails the step by name; there is no plain-open fallback.
           term_features_launch_env() {
             local run_id
             run_id="$(node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" run-id "$OUT/job-start.json")" || {
@@ -488,6 +490,7 @@ jobs:
               return 1
             fi
             TERM_FEATURES_LAUNCH_ENV=(env -u TERM_FEATURES -u OSC7577_TOKEN "TERMINFO_TERM_FEATURES_LAUNCH=$run_id" "TERMINFO_RUN_ID=$run_id")
+            TERM_FEATURES_RUN_ID="$run_id"
           }
           case "$APP_ID" in
             terminal-app)
@@ -525,9 +528,14 @@ jobs:
                 echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
                 exit 1
               fi
-              if node - "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
+              if ! term_features_launch_env; then
+                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
+              if node - "$APP_BUNDLE" "--command=$launch_command" "$TERM_FEATURES_RUN_ID" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
           const { spawnSync } = require('node:child_process');
-          const [bundle, command] = process.argv.slice(2);
+          const [bundle, command, runId] = process.argv.slice(2);
           const run = (name, file, args, timeout = 5000) => {
             const result = spawnSync(file, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 262144 });
             process.stdout.write(JSON.stringify({ name, file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr, stdoutBytes: Buffer.byteLength(result.stdout || ''), stderrBytes: Buffer.byteLength(result.stderr || '') }) + '\n');
@@ -563,8 +571,14 @@ jobs:
           // 34664: the dynamic profile written before this script (offscreen command line off) becomes the default.
           const profile = run('default profile', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'Default Bookmark Guid', '-string', 'terminfo-measure-0001']);
           if (profile.status !== 0) throw new Error(`iTerm2 default profile failed (${profile.status})`);
-          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
-          if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
+          // #38933 (@cto c743635d): refuse a running iTerm2 immediately before the open that carries the marker.
+          if (!/^[0-9a-f]{32}$/.test(runId ?? '')) throw new Error('iTerm2 clean-launch marker: no receipt run id');
+          const reused = run('pgrep before open', '/usr/bin/pgrep', ['-x', 'iTerm2']);
+          if (reused.status === 0) throw new Error('iTerm2 is running immediately before open; a reused process cannot carry this run\'s marker');
+          if (reused.status !== 1) throw new Error(`iTerm2 pgrep before open failed (${reused.status})`);
+          const marker = ['--env', `TERMINFO_TERM_FEATURES_LAUNCH=${runId}`, '--env', `TERMINFO_RUN_ID=${runId}`];
+          const opened = run('open', '/usr/bin/open', ['-a', bundle, ...marker, '--args', command], 10000);
+          if (opened.status !== 0) throw new Error(`iTerm2 open --env failed (${opened.status}): ${(opened.stderr ?? '').trim()}; no plain-open fallback`);
           ITERM_STARTUP
               then
                 printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
@@ -740,7 +754,8 @@ jobs:
           )" > "$OUT/launcher.log" 2>&1
               ;;
             cmux)
-              COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_CMUX_START'
+              term_features_launch_env || exit 1
+              COMMAND_PATH="$COMMAND_PATH" TERMINFO_LAUNCH_RUN_ID="$TERM_FEATURES_RUN_ID" bun --eval "$(cat <<'HOSTED_CMUX_START'
           const { mkdirSync, writeFileSync } = require("node:fs");
           const { join } = require("node:path");
           const { homedir } = require("node:os");
@@ -777,8 +792,15 @@ jobs:
           const directory = join(homedir(), ".config", "ghostty");
           mkdirSync(directory, { recursive: true });
           writeFileSync(join(directory, "config"), "initial-command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });
-          const status = await Bun.spawn(["open", "-a", process.env.APP_BUNDLE], { stdout: "inherit", stderr: "inherit" }).exited;
-          if (status !== 0) throw new Error("open exited " + status);
+          // #38933 (@cto c743635d): refuse a running cmux immediately before the open that carries the marker.
+          const runId = process.env.TERMINFO_LAUNCH_RUN_ID ?? "";
+          if (!/^[0-9a-f]{32}$/.test(runId)) throw new Error("cmux clean-launch marker: no receipt run id");
+          const reused = spawnSync("/usr/bin/pgrep", ["-f", "--", "^" + process.env.APP_BUNDLE + "/Contents/MacOS/"], { encoding: "utf8", timeout: 5000 });
+          if (reused.status === 0) throw new Error("cmux is running immediately before open; a reused process cannot carry this run's marker");
+          if (reused.status !== 1) throw new Error("cmux pgrep before open failed (" + reused.status + ")");
+          const marker = ["--env", "TERMINFO_TERM_FEATURES_LAUNCH=" + runId, "--env", "TERMINFO_RUN_ID=" + runId];
+          const status = await Bun.spawn(["open", "-a", process.env.APP_BUNDLE, ...marker], { stdout: "inherit", stderr: "inherit" }).exited;
+          if (status !== 0) throw new Error("cmux open --env exited " + status + "; no plain-open fallback");
           HOSTED_CMUX_START
           )" > "$OUT/launcher.log" 2>&1
               ;;
