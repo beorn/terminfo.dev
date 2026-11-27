@@ -72,7 +72,7 @@ const NEW_VARIANT: ProbeSubject = {
   config: "nice -n 10 kitty --config NONE --class terminfo-kitty-container-daemon",
 }
 
-const run = (runId: string, suite: string, subject: ProbeSubject, measuredAt: string) => {
+const run = (runId: string, suite: keyof typeof suites, subject: ProbeSubject, measuredAt: string) => {
   const spec = suites[suite]!
   const draft = initializeRunDraft({
     runId,
