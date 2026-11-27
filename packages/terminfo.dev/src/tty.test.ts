@@ -939,6 +939,111 @@ describe("TTY transaction replies", () => {
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
+  // #39055: a conforming lone selector (U+FE0F with no base) advances nothing, so a settled report of 1;1 IS the
+  // measurement. Refusing it made the VS16 control unpassable everywhere and blanked text.wide.emoji-vs16 on every app.
+  it("reads a zero-column sample as zero once a second report confirms it settled", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else if (lastControl === "A") reply("\x1b[1;2R")
+        else reply("\x1b[1;1R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("\uFE0F"), out)).toBe(0)
+    expect(writes).toEqual([
+      "\x1b7",
+      "\x1b[2;1H",
+      "\x1b[6n",
+      "\x1b[1;1HA",
+      "\x1b[6n",
+      "\x1b[1;1H\uFE0F",
+      "\x1b[6n",
+      "\x1b[6n",
+      "A",
+      "\x1b[6n",
+      "\x1b8",
+    ])
+  })
+
+  // A zero reading is only evidence when it stays put: a stale or overtaking reply shows up as the confirmation read
+  // disagreeing, which is refused rather than published as a zero-width sample.
+  it("declines a home-cell report that a second report contradicts", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    let sampleReads = 0
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else {
+          sampleReads += 1
+          reply(sampleReads === 1 ? "\x1b[1;1R" : "\x1b[1;2R")
+        }
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("\uFE0F"), out)).toEqual({
+      kind: "control-mismatch",
+      step: "sample",
+      observed: { row: 1, col: 2 },
+    })
+    expect(writes).not.toContain("A")
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
+  // Replay of kitty-0.49.2's recorded replies (run 539844bd99c5080400e866d488ea4923, #39042): the lone selector
+  // answered 1;1, which the old guard took for a failed control, while the sample answered 1;3 — two columns.
+  it("reads kitty's recorded selector and sample reports as a zero selector and a two-column sample", async () => {
+    const replies = [
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[1;4R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;1R",
+      // The recorded run stopped after the selector's home report; a cursor left at 1 then "A" is 1;2.
+      "\x1b[1;1R",
+      "\x1b[1;2R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[1;4R",
+    ]
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        if (chunk === "\x1b[6n") reply(replies.shift() ?? "")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    const measured = await withTTYOperation(
+      async () => ({
+        ascii: await measureRenderedWidth("AA"),
+        base: await measureRenderedWidth("\u263A"),
+        selector: await measureRenderedWidth("\uFE0F"),
+        sample: await measureRenderedWidth("\u263A\uFE0F"),
+      }),
+      out,
+    )
+    expect(measured).toEqual({ ascii: 2, base: 1, selector: 0, sample: 2 })
+    expect(replies).toEqual([])
+  })
+
   it("restores cursor and declines a width when the setup grid cannot be verified", async () => {
     const writes: string[] = []
     const out = {

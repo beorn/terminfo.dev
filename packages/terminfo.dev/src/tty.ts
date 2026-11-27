@@ -683,6 +683,11 @@ export async function queryCursorPosition(): Promise<[number, number] | null> {
 
 /**
  * Measure from a verified 1;1 origin, rejecting a sample that wraps to another row.
+ *
+ * A sample may legitimately advance nothing — a lone combining selector such as U+FE0F takes no column — so a report
+ * of 1;1 is a width of zero, not a failed control (#39055). It is accepted only when a second report, with no write
+ * between, reads the same cell: a stale or overtaking reply disagrees there and is refused, and the trailing control
+ * still proves the transport moved afterwards.
  */
 export async function measureRenderedWidth(text: string): Promise<RenderedWidthResult> {
   return withTTYOperation(async () => {
@@ -706,8 +711,15 @@ export async function measureRenderedWidth(text: string): Promise<RenderedWidthR
       const pos = await queryCursorPosition()
       if (!pos) return { kind: "no-reply", step: "sample" }
       if (pos[0] > 1) return { kind: "wrapped", observed: { row: pos[0], col: pos[1] } }
-      if (pos[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] <= 1) {
+      if (pos[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] < 1) {
         return { kind: "control-mismatch", step: "sample", observed: { row: pos[0], col: pos[1] } }
+      }
+      if (pos[1] === 1) {
+        const settled = await queryCursorPosition()
+        if (!settled) return { kind: "no-reply", step: "sample" }
+        if (settled[0] !== 1 || settled[1] !== 1) {
+          return { kind: "control-mismatch", step: "sample", observed: { row: settled[0], col: settled[1] } }
+        }
       }
 
       writeTTY("A")
