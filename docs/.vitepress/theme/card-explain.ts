@@ -1637,6 +1637,8 @@ function expectedNonReplyWords(opts: {
   isScreen: boolean
   isAppLog: boolean
   expectedSentence?: string
+  /** The probe's own criterion (the first assertion's expected text), read when no feature sentence fits. */
+  criterion?: string
   sentCommands: readonly string[]
 }): string {
   const {
@@ -1696,7 +1698,8 @@ function expectedNonReplyWords(opts: {
       return "Test image drawn inside the cell"
     }
     const clean = sanitizeCardText(expectedSentence)
-    return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Screen shows ${featureName}`
+    if (clean && !isMethodDescription(clean) && clean.length <= 110) return clean
+    return screenCriterionWords(opts.criterion) ?? `The screen matches this run's expected frame for ${featureName}`
   }
   const clean = sanitizeCardText(expectedSentence)
   return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Terminal applies ${featureName}`
@@ -1720,6 +1723,29 @@ function plainAssertionSentence(text: string | undefined): string | undefined {
 }
 
 const CPR_FORMAT_CODE = "ESC [ <row>;<col> R"
+
+/**
+ * What a screen check compares, in reader words (#38790, @cpo/term e5905ee6): the probe's plain criterion first, then
+ * the cell region it compares with this run's expected frame, e.g. "Bold off, other attributes kept (rows 1–3,
+ * columns 1–6 match this run's expected frame)". The region alone when the criterion has no plain words. Undefined
+ * when the criterion names neither, so the caller keeps its own sentence.
+ */
+function screenCriterionWords(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const box = /cell-aligned region \{"top":(\d+),"left":(\d+),"bottom":(\d+),"right":(\d+)\} equals the same-run expected frame/.exec(
+    text,
+  )
+  const span = (noun: string, from: string, to: string) => (from === to ? `${noun} ${from}` : `${noun}s ${from}–${to}`)
+  const region = box
+    ? `${span("row", box[1]!, box[3]!)}, ${span("column", box[2]!, box[4]!)} match this run's expected frame`
+    : undefined
+  const lastClause = text.includes(": ") ? text.slice(text.lastIndexOf(": ") + 2) : undefined
+  const words = /\breturns the crop to (?:its |the )?(?:immutable )?initial rendition\b/i.test(text)
+    ? "The text looks as it did before any style was set"
+    : (plainAssertionSentence(text) ?? plainAssertionSentence(lastClause))
+  if (words && region) return `${words} (${region})`
+  return words ?? (region ? capitalizeFirst(region) : undefined)
+}
 
 const COLUMN_COUNT_WORDS: Readonly<Record<string, number>> = { one: 1, two: 2, three: 3, four: 4 }
 
@@ -3315,6 +3341,7 @@ export function buildCardModel(input: {
               isScreen,
               isAppLog,
               expectedSentence,
+              criterion: exchange?.assertions?.find((a) => a.expected)?.expected,
               sentCommands,
             }),
           }

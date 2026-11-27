@@ -1220,6 +1220,21 @@ describe("card-explain #38777 — command under test, deciding values, library s
     expect(card.steps.at(-1)).toEqual({ num: 6, code: "ESC H ×16", words: "Set a tab stop here" })
   })
 
+  // #38790 (@cpo/term e5905ee6). A screen card's Expected used to read "Screen shows <title>". It now says what the
+  // probe compares: the cell region against this run's expected frame, or the criterion's own plain words.
+  it("#38790: a screen card's Expected names the region or the criterion, never 'Screen shows <title>'", () => {
+    const XTERM = "probes-apps/xterm-411-linux-9905a004f5250013a413d73fb7e5011a.json"
+    const expectedWords = (featureId: string) => cardFor(XTERM, featureId).card.expected.words
+    expect(expectedWords("editing.decfra")).toBe("Rows 1–3, columns 1–6 match this run's expected frame")
+    expect(expectedWords("modes.xtpushcolors")).toBe(
+      "After set index 1 magenta, push, set index 1 green, pop, magenta is restored",
+    )
+    expect(expectedWords("sgr.reset")).toBe("The text looks as it did before any style was set")
+    for (const featureId of ["editing.decfra", "modes.xtpushcolors", "sgr.reset"]) {
+      expect(expectedWords(featureId)).not.toMatch(/^Screen shows\b/)
+    }
+  })
+
   // Pattern 6. Alacritty never answered the OSC 13 starting-color query; no color was set.
   it("6: an Untestable reason is true: the unanswered starting-color query, not 'setting the base color did not take effect'", () => {
     const { card, cell } = cardFor(ALACRITTY, "extensions.osc113-reset-pointer-fg")
