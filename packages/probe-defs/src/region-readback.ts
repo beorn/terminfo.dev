@@ -47,7 +47,7 @@ import type {
   TerminalQueryOutcome,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
-import { replyFailure, utf8DecodingRefusal } from "./helpers.ts"
+import { declaredUntestableResult, replyFailure, utf8DecodingRefusal } from "./helpers.ts"
 import { CALIBRATION_SOLID_PAINT } from "./calibrated-capture-geometry.ts"
 
 export type CellRegion = CaptureCells
@@ -173,6 +173,13 @@ export interface RegionReadback {
   ignored?: string
   /** Independently authored full setup; the observed seed must match before any reset verdict. */
   setupReference?: string
+  /**
+   * #39009 (@cpo/term 2026-11-27): when this run's own seed frame reads as the expected frame, the setup attribute was
+   * never applied, so the reset has nothing to clear. That is a measured absence, not an unseparable fixture: the row
+   * declares Untestable with this reason, and reverses on its own once the seed shows the attribute. Only a row whose
+   * setup is the attribute under test can declare it; the seed === expected check below is the witness.
+   */
+  setupAbsentReason?: string
   /**
    * The frame that paints NO attribute at all — not the seed, which may carry the attribute the row
    * qualifies. A colour claim may never read support from it. A terminal that does not implement the
@@ -3216,6 +3223,13 @@ export async function captureRegionReadbackDecision(
       })
     }
     if (seed === expected && discriminator?.expected !== "no-change") {
+      // #39009: the seed itself never showed the setup attribute, so there is nothing for the sequence under test to
+      // change. The row declares Untestable on its own run instead of publishing an unseparable failure.
+      // A multiplexer capture cannot attribute a missing setup to the mux or to its outer terminal, so the mux
+      // demotion path below keeps its own reading (@cpo/term 2026-11-27).
+      if (spec.setupAbsentReason !== undefined && ctx.kind !== "mux" && ctx.mux === undefined) {
+        return declaredUntestableResult(spec.setupAbsentReason, { capture: JSON.parse(observed) })
+      }
       const layoutClause =
         assertionType === "screenshot"
           ? ((await layoutCheckFor(ctx, `${id}: same cells`, witnessCell, witnessBaseline, timeoutMs, pollMs)?.()) ??
