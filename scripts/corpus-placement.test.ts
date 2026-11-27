@@ -54,7 +54,8 @@ afterEach(() => {
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 const MUX_SPECIMENS = {
   tmux: { run: "tmux-3.8-linux-ea920f3547c0e7f0ced0f80b277f2939.json", suite: "4b01b0117e18.json" },
-  // Zellij answers no release version (XTVERSION "Zellij(4600)"); placement takes it from the attached executable (#38759).
+  // herdr and Zellij answer no release version (XTVERSION "libghostty" / "Zellij(4600)"); placement takes it from the attached executable (#38759, #38850).
+  herdr: { run: "herdr-0.9.5-linux-2fbd38d87c1a1fd837a06b4fc097a0bc.json", suite: "a3c3a1eced22.json" },
   zellij: { run: "zellij-0.46.0-linux-7c2f430ae8edaa4e5f0300eaa730f27c.json", suite: "c95f3b5b465f.json" },
 } as const
 function muxSpecimen(mux: keyof typeof MUX_SPECIMENS = "tmux") {
@@ -1083,6 +1084,8 @@ test.each([
   ["tmux", "clipboard-hash"],
   ["tmux", "preflight"],
   ["tmux", "config"],
+  ["herdr", "valid"],
+  ["herdr", "version"],
   ["zellij", "valid"],
   ["zellij", "version"],
 ] as const)("Linux %s mux custody join: %s", (mux, fault) => {

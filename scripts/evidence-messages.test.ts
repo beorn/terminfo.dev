@@ -700,3 +700,37 @@ describe("OSC 7501 program-status rows (#38743)", () => {
     )
   })
 })
+
+describe("a library colour-reset card keeps its readback (#38799)", () => {
+  const VTERM_014 = "bc88db1d-a303-4872-86c5-adbc5fd8fb58"
+  const WEZTERM_LIB = "13d0ae95-3484-4ade-b9a0-045583a8941b"
+  const RESETS: Array<[string, string, string, string]> = [
+    [VTERM_014, "extensions.osc113-reset-pointer-fg", "rgb:ffff/ffff/ffff", "rgb:aaaa/bbbb/cccc"],
+    [VTERM_014, "extensions.osc114-reset-pointer-bg", "rgb:0000/0000/0000", "rgb:aaaa/bbbb/cccc"],
+    [VTERM_014, "extensions.osc117-reset-highlight-bg", "rgb:ffff/ffff/ffff", "rgb:aaaa/bbbb/cccc"],
+    [VTERM_014, "extensions.osc119-reset-highlight-fg", "rgb:0000/0000/0000", "rgb:aaaa/bbbb/cccc"],
+    // A palette reply carries its index, OSC 4 ; 0 ; rgb:…
+    [VTERM_014, "extensions.osc104-reset-palette", "rgb:0000/0000/0000", "rgb:aaaa/bbbb/cccc"],
+    [WEZTERM_LIB, "extensions.osc110-reset-fg", "rgb:b2b2/b2b2/b2b2", "rgb:aaaa/bbbb/cccc"],
+  ]
+
+  test.each(RESETS)(
+    "run %s: %s publishes the original, changed and restored colour",
+    (runId, featureId, original, changed) => {
+      const { cell, pre, trace } = card("probes-libs", runId, featureId)
+      expect(cell.parserState).toEqual({ original, changed, restored: original })
+      expect(pre).toBe(`original: "${original}"\nchanged: "${changed}"\nrestored: "${original}"`)
+      // The reply bytes stay private: only the colour value is published.
+      for (const window of ["originalRaw", "changedRaw", "restoredRaw"]) expect(trace.bytes).not.toContain(window)
+    },
+  )
+
+  test("a library read window that is not an OSC colour reply stays private", () => {
+    const { cell } = card("probes-libs", VTERM_014, "extensions.osc113-reset-pointer-fg", (raw) =>
+      editJson(raw, "extensions.osc113-reset-pointer-fg", (value) => {
+        value.originalRaw = "\u001b]13;private marker\u001b\\"
+      }),
+    )
+    expect(cell.parserState).toEqual({ changed: "rgb:aaaa/bbbb/cccc", restored: "rgb:ffff/ffff/ffff" })
+  })
+})
