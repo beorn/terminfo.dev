@@ -1175,7 +1175,26 @@ function readbackSourceLabel(featureId: string, assertionType?: string): string 
   return "Reply"
 }
 
-function inputProbeActionWords(featureId: string): string {
+/**
+ * An OS-injected input names the event and its route (#38790, @cpo/term de466ce4): "Key ctrl+a, injected by the OS".
+ * The event comes from the run's own criterion ("OS XTEST ctrl+a report …"); undefined when it names none.
+ */
+function injectedInputWords(criterion: string | undefined): string | undefined {
+  const event = /\bOS XTEST (\S+) report\b/.exec(criterion ?? "")?.[1]
+  if (!event) return undefined
+  const button = /^button-(\d+)$/.exec(event)?.[1]
+  if (button) return `${button === "1" ? "Left click" : `Mouse button ${button}`}, injected by the OS`
+  const wheel = /^wheel-(\d+)$/.exec(event)?.[1]
+  if (wheel) {
+    return `Mouse wheel ${wheel === "4" ? "up" : wheel === "5" ? "down" : `button ${wheel}`}, injected by the OS`
+  }
+  if (/^(?:drag|move|motion)$/.test(event)) return `Mouse ${event}, injected by the OS`
+  return `Key ${event}, injected by the OS`
+}
+
+function inputProbeActionWords(featureId: string, criterion?: string): string {
+  const injected = injectedInputWords(criterion)
+  if (injected) return injected
   if (featureId.includes("paste")) return "Paste test text"
   if (featureId.includes("focus")) return "Move focus away and back"
   if (featureId.includes("mouse") || featureId.includes("click")) return "Click / move mouse in terminal"
@@ -1637,6 +1656,8 @@ function expectedNonReplyWords(opts: {
   isScreen: boolean
   isAppLog: boolean
   expectedSentence?: string
+  /** The probe's own criterion (the first assertion's expected text), read when no feature sentence fits. */
+  criterion?: string
   sentCommands: readonly string[]
 }): string {
   const {
@@ -1696,7 +1717,8 @@ function expectedNonReplyWords(opts: {
       return "Test image drawn inside the cell"
     }
     const clean = sanitizeCardText(expectedSentence)
-    return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Screen shows ${featureName}`
+    if (clean && !isMethodDescription(clean) && clean.length <= 110) return clean
+    return screenCriterionWords(opts.criterion) ?? `The screen matches this run's expected frame for ${featureName}`
   }
   const clean = sanitizeCardText(expectedSentence)
   return clean && !isMethodDescription(clean) && clean.length <= 110 ? clean : `Terminal applies ${featureName}`
@@ -1720,6 +1742,57 @@ function plainAssertionSentence(text: string | undefined): string | undefined {
 }
 
 const CPR_FORMAT_CODE = "ESC [ <row>;<col> R"
+
+/**
+ * What a screen check compares, in reader words (#38790, @cpo/term e5905ee6): the probe's plain criterion first, then
+ * the cell region it compares with this run's expected frame, e.g. "Bold off, other attributes kept (rows 1–3,
+ * columns 1–6 match this run's expected frame)". The region alone when the criterion has no plain words. Undefined
+ * when the criterion names neither, so the caller keeps its own sentence.
+ */
+function screenCriterionWords(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const box =
+    /cell-aligned region \{"top":(\d+),"left":(\d+),"bottom":(\d+),"right":(\d+)\} equals the same-run expected frame/.exec(
+      text,
+    )
+  const span = (noun: string, from: string, to: string) => (from === to ? `${noun} ${from}` : `${noun}s ${from}–${to}`)
+  const [, top = "", left = "", bottom = "", right = ""] = box ?? []
+  const region = box
+    ? `${span("row", top, bottom)}, ${span("column", left, right)} match this run's expected frame`
+    : undefined
+  const lastClause = text.includes(": ") ? text.slice(text.lastIndexOf(": ") + 2) : undefined
+  const words = /\breturns the crop to (?:its |the )?(?:immutable )?initial rendition\b/i.test(text)
+    ? "The text looks as it did before any style was set"
+    : (plainAssertionSentence(text) ?? plainAssertionSentence(lastClause))
+  if (words && region) return `${words} (${region})`
+  return words ?? (region ? capitalizeFirst(region) : undefined)
+}
+
+/**
+ * The step words for text a no-command text feature writes as its test (#38790, @cpo/term de466ce4): labelled
+ * "Text written", with code points for anything past printable ASCII, e.g. "Text written: e + U+0301".
+ */
+function textWrittenWords(text: string): string {
+  const pieces: string[] = []
+  let ascii = ""
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0
+    if (cp >= 0x20 && cp < 0x7f) {
+      ascii += ch
+      continue
+    }
+    if (ascii) pieces.push(ascii)
+    ascii = ""
+    pieces.push(`U+${cp.toString(16).toUpperCase().padStart(4, "0")}`)
+  }
+  if (ascii) pieces.push(ascii)
+  if (pieces.some((p) => p.startsWith("U+"))) return `Text written: ${pieces.join(" + ")}`
+  const repeated = /^(.)\1{3,}$/.exec(text)
+  if (repeated) return `Text written: “${repeated[1]}” ×${text.length}`
+  return text.length > 24
+    ? `Text written: “${text.slice(0, 24)}…”, ${text.length} characters`
+    : `Text written: “${text}”`
+}
 
 const COLUMN_COUNT_WORDS: Readonly<Record<string, number>> = { one: 1, two: 2, three: 3, four: 4 }
 
@@ -2141,7 +2214,7 @@ function buildInputBytesModel(opts: {
     num: steps.length + 1,
     code: "",
     codeMuted: "no bytes",
-    words: inputProbeActionWords(featureId),
+    words: inputProbeActionWords(featureId, exchange?.assertions?.find((a) => a.expected)?.expected),
   })
 
   const expected = expectedReplyForProbe({
@@ -2902,6 +2975,85 @@ export function buildCardModel(input: {
     splitRawCommands(step.sequence).filter((c) => da1Feature || !isDa1Fence(c.raw)),
   )
   let flatIdx = -1
+  // A text feature with no declared command tests the text it writes: the sample past ASCII when there is one (the
+  // plain "A" writes beside it calibrate), otherwise every text write (#38790).
+  const testsWrittenText = !declaredSequence && /^(?:text\.|unicode\.|charsets\.utf8$)/.test(featureId)
+  const nonAsciiText = (c: { raw: string; isText: boolean }) => c.isText && /[^\x00-\x7f]/.test(c.raw)
+  const writtenSampleIsNonAscii = testsWrittenText && flatCommands.some(nonAsciiText)
+  // The ligature probe's sample is the operator string ("!= -> => <= =="); its spaced and underscored controls are not.
+  const testsLigatures = featureId === "extensions.font-ligatures"
+  const isTextUnderTest = (c: { raw: string; isText: boolean }): boolean =>
+    testsLigatures
+      ? c.isText && /[^\s\w]{2}/.test(c.raw)
+      : testsWrittenText && c.isText && c.raw.trim().length > 0 && (!writtenSampleIsNonAscii || nonAsciiText(c))
+  // A scrollback feature with no declared command tests the lines it writes: one row per run of numbered lines
+  // ("line 0" to "line 34") and one per run of a repeated filler line, never a CR LF row per line (#38790,
+  // @cpo/term de466ce4: "Scrollback names the lines written").
+  const writtenLineRowsAt = new Map<(typeof activeSteps)[number], StepRow[]>()
+  const writtenLineSteps = new Set<(typeof activeSteps)[number]>()
+  if (!declaredSequence && featureId.startsWith("scrollback.")) {
+    // Lines may lead or trail with CR LF and sit inside a synchronized-output wrapper (ESC [ ? 2026 h … l).
+    const lineText = (s: (typeof activeSteps)[number]) => s.sequence.replace(/^\x1b\[\?2026h|\x1b\[\?2026l$/g, "")
+    const isLineWrite = (s: (typeof activeSteps)[number]) =>
+      s.kind === "write" && lineText(s).includes("\r\n") && /^[^\x1b]*$/.test(lineText(s))
+    const blocks: Array<{ head: (typeof activeSteps)[number]; lines: string[] }> = []
+    let prevWasLines = false
+    for (const s of activeSteps) {
+      if (!isLineWrite(s)) {
+        prevWasLines = false
+        continue
+      }
+      writtenLineSteps.add(s)
+      const lines = lineText(s)
+        .split("\r\n")
+        .filter((l) => l.length > 0)
+      const block = blocks[blocks.length - 1]
+      if (prevWasLines && block) block.lines.push(...lines)
+      else blocks.push({ head: s, lines })
+      prevWasLines = true
+    }
+    const numbered = (line: string) => /^(.*?)(\d+)$/.exec(line)?.[1]
+    const anyNumbered = blocks.some((b) => b.lines.some((l) => numbered(l) !== undefined))
+    for (const block of blocks) {
+      const groups: string[][] = []
+      for (const line of block.lines) {
+        const group = groups[groups.length - 1]
+        const first = group?.[0]
+        const sameRun =
+          first !== undefined && (numbered(line) !== undefined ? numbered(first) === numbered(line) : first === line)
+        if (group && sameRun) group.push(line)
+        else groups.push([line])
+      }
+      writtenLineRowsAt.set(
+        block.head,
+        groups.map((lines) => {
+          const first = lines[0] ?? ""
+          const last = lines[lines.length - 1] ?? ""
+          const isNumbered = numbered(first) !== undefined && lines.length > 1
+          const code = isNumbered ? `${first} … ${last}` : lines.length > 1 ? `${first} ×${lines.length}` : first
+          const words = isNumbered
+            ? `Lines written: “${first}” to “${last}”, ${lines.length} lines`
+            : lines.length > 1
+              ? `Lines written: “${first}” ×${lines.length}`
+              : `Line written: “${first}”`
+          const filler = !isNumbered && anyNumbered
+          const trimmedLines = trimCode(code)
+          return {
+            num: 0,
+            code: trimmedLines.code,
+            ...(trimmedLines.fullCode ? { fullCode: trimmedLines.fullCode } : {}),
+            ...(filler ? { setup: true } : {}),
+            words,
+            isQuery: false,
+            isSeed: filler,
+            isContext: false,
+            raw: lines.join("\r\n"),
+            underTest: !filler,
+          }
+        }),
+      )
+    }
+  }
   const positionsCommandUnderTest = (): boolean => {
     for (let j = flatIdx + 1; j < flatCommands.length; j++) {
       const next = flatCommands[j]
@@ -2912,6 +3064,15 @@ export function buildCardModel(input: {
   }
 
   for (const step of activeSteps) {
+    if (writtenLineSteps.has(step)) {
+      flatIdx += splitRawCommands(step.sequence).length
+      for (const row of writtenLineRowsAt.get(step) ?? []) {
+        const numbered = { ...row, num: orderedSteps.length + 1 }
+        orderedSteps.push(numbered)
+        writeSteps.push(numbered)
+      }
+      continue
+    }
     const cmds = splitRawCommands(step.sequence)
     const isQuery = step.kind === "query"
     const stepFirstRow = orderedSteps.length
@@ -2921,7 +3082,7 @@ export function buildCardModel(input: {
       if (!da1Feature && isDa1Fence(cmd.raw)) continue
       flatIdx++
       if (hasAppLogPlumbing && isAppLogCalibrationCmd(cmd.raw, featureId)) continue
-      const underTest = !cmd.isText && isUnderTest(cmd.raw)
+      const underTest = (!cmd.isText && isUnderTest(cmd.raw)) || (!isQuery && isTextUnderTest(cmd))
       // A cursor placement right before the command under test is where that command acts: keep it as setup.
       const placesUnderTest =
         !isQuery && !underTest && /^\x1b\[\d*(?:;\d*)?H$/.test(cmd.raw) && positionsCommandUnderTest()
@@ -2989,7 +3150,11 @@ export function buildCardModel(input: {
       const crlfRun = /^(?:\r\n)+$/.test(raw) && newLines > 1
       const rawCode = crlfRun ? `CR LF ×${newLines}` : cmd.isText ? raw.trim() : formatControlBytes(raw)
       if (!rawCode) continue
-      let words = crlfRun ? `Move down ${newLines} lines` : explainSentCommand(raw, cmd.isText, hasCaptures).words
+      let words = crlfRun
+        ? `Move down ${newLines} lines`
+        : underTest && cmd.isText
+          ? `${textWrittenWords(raw.trim())}${testsLigatures ? ", in the terminal's configured font" : ""}`
+          : explainSentCommand(raw, cmd.isText, hasCaptures).words
       if (pendingSaveCup && (raw === "\x1b7" || raw === "\x1b[s")) {
         words = `Save the cursor at ${pendingSaveCup}`
         pendingSaveCup = undefined
@@ -3315,6 +3480,7 @@ export function buildCardModel(input: {
               isScreen,
               isAppLog,
               expectedSentence,
+              criterion: exchange?.assertions?.find((a) => a.expected)?.expected,
               sentCommands,
             }),
           }
