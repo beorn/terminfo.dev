@@ -763,6 +763,9 @@ if [[ "${1:-}" == "--mux-shell" ]]; then
   mux_config="$mux_output/mux-empty.conf"
   : > "$mux_config"
   chmod 600 "$mux_config"
+  # Plant the test-only 22-character sentinel token in the multiplexer's launch environment (#38754, @cto 953d6a6c)
+  # after the outer preflight collector has finished, so the pane's child reader can compare its OSC7577_TOKEN in memory.
+  export OSC7577_TOKEN="SSSSSSSSSSSSSSSSSSSSSS"
   case "$TERMINFO_MUX_KIND" in
     tmux)
       unset TERM_PROGRAM TERM_PROGRAM_VERSION

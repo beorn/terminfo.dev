@@ -14,14 +14,15 @@ import {
 import { isatty, WriteStream } from "node:tty"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, win32 } from "node:path"
-import type {
-  DarwinMuxAttachmentProof,
-  MuxAttachmentProof,
-  OwnerBasisScope,
-  OuterAppProof,
-  ProbeSubject,
-  TerminalScrollbackReading,
-  TermProbeSource,
+import {
+  OSC7577_MUX_SENTINEL_TOKEN,
+  type DarwinMuxAttachmentProof,
+  type MuxAttachmentProof,
+  type OwnerBasisScope,
+  type OuterAppProof,
+  type ProbeSubject,
+  type TerminalScrollbackReading,
+  type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { readTerminalChildEnvironment, type TerminalChildEnvironment } from "./terminal-child-environment.ts"
 import {
@@ -2890,7 +2891,13 @@ export async function createOwnedTerminal(options: {
               binding.platform === "linux"
                 ? `tty_nr=${binding.controllingTtyNr};fd=${binding.selectedFd};rdev=${binding.outputRdev}`
                 : binding.controllingTty
-            return readTerminalChildEnvironment(process.env, expectedLaunchRunId, process.pid, tty)[key]
+            return readTerminalChildEnvironment(
+              process.env,
+              expectedLaunchRunId,
+              process.pid,
+              tty,
+              muxAttachmentProof ? OSC7577_MUX_SENTINEL_TOKEN : undefined,
+            )[key]
           }
           return {
             readTermFeatures: () =>
