@@ -8,6 +8,8 @@ Correct overstated results and terminal attribution, review controlled Linux Kit
 
 R1 does not add Mac or Windows app measurements, multiplexer implementation, new protocol families or automatic refresh. A result we haven't decided, because the test was never attempted or the attempt failed, is left blank and never becomes a support claim.
 
+One exception, asked for by the operator on 2026-11-25: R1 adds two program-integration protocol families, OSC 7577 (program resume) and OSC 7501 (program status), beside the earlier OSC 88, and re-checks their specifications monthly while they are still being revised. The resume and verification checks those specifications define are deferred, and the pages above name them.
+
 ## R2 — Everyday interactions
 
 Add behavioral evidence for common keyboard, paste, mouse, clipboard and basic image scenarios. A terminal recognizing a request is separate from successfully performing the interaction. Each new result needs a controlled target and an observable outcome.

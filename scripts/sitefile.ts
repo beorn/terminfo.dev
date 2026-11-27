@@ -292,6 +292,42 @@ export const sources: Source[] = [
     definesSupport: false,
     featureFamilies: ["extensions"],
   },
+  {
+    id: "osc-7577-program-resume",
+    type: "proposal",
+    label: "OSC 7577 Program Resume Protocol (revision 0.5)",
+    url: "https://www.superlogical.com/rex/docs/build/program-resume",
+    description:
+      "Program-to-terminal resume protocol: a program reports the command that brings it back, and the terminal offers it after the session ends. Draft revision 0.5, published 2026-11-25, and its own revision table already lists stricter rules, so it is re-checked monthly until it settles.",
+    freshnessDays: 30,
+    definesFeatures: true,
+    definesSupport: false,
+    featureFamilies: ["extensions"],
+  },
+  {
+    id: "osc-7501-program-status",
+    type: "proposal",
+    label: "OSC 7501 Program Status Protocol (revision 0.4)",
+    url: "https://www.superlogical.com/rex/docs/build/program-status",
+    description:
+      "Program-to-terminal status protocol: a program reports state a person can read at a glance, such as progress and what it is working on. Revision 0.4, re-checked monthly while the specification is still being revised.",
+    freshnessDays: 30,
+    definesFeatures: true,
+    definesSupport: false,
+    featureFamilies: ["extensions"],
+  },
+  {
+    id: "osc-88-terminal-resume",
+    type: "proposal",
+    label: "OSC 88 Terminal Resume Protocol",
+    url: "https://github.com/otty-sh/osc-88",
+    description:
+      "The earlier, unauthenticated resume protocol: a program arms the terminal with its relaunch command, or clears it, and gets no reply. OSC 7577 cites it as earlier work on the same idea. Historical and stable, so an annual check is enough.",
+    freshnessDays: 365,
+    definesFeatures: true,
+    definesSupport: false,
+    featureFamilies: ["extensions"],
+  },
 
   // --- Release feeds ---
   {

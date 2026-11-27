@@ -25,7 +25,7 @@
     "color": "#8b5cf6",
     "order": 2,
     "tagline": "Advanced features for cutting-edge TUIs",
-    "description": "Cutting-edge terminal capabilities that enable the richest user experiences: the Kitty keyboard protocol (unambiguous key reporting with modifiers and release events), Kitty graphics protocol and Sixel for inline images, OSC 8 hyperlinks (clickable links in terminal output), OSC 52 clipboard access, extended underline styles (curly, dotted, dashed) with independent underline colors, semantic prompt markers (OSC 133), and text reflow on terminal resize.",
+    "description": "Cutting-edge terminal capabilities that enable the richest user experiences: the Kitty keyboard protocol (unambiguous key reporting with modifiers and release events), Kitty graphics protocol and Sixel for inline images, OSC 8 hyperlinks (clickable links in terminal output), OSC 52 clipboard access, extended underline styles (curly, dotted, dashed) with independent underline colors, semantic prompt markers (OSC 133), and text reflow on terminal resize. Rich also covers program-integration sequences (OSC 7577, OSC 88, OSC 7501).",
     "forDevelopers": "Rich features enable experiences that were previously impossible in terminals — clickable links, inline images, precise keyboard input. Use feature detection (via DA1 responses or DECRPM queries) and degrade gracefully when unavailable.",
     "forTerminalAuthors": "Rich compliance differentiates your terminal. The Kitty keyboard protocol is the most impactful single feature — it solves decades of terminal input ambiguity. Ghostty, Kitty, WezTerm, and foot lead here."
   },
