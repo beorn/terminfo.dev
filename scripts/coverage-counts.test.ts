@@ -15,6 +15,7 @@ import {
   aggregateCurrentResults,
   currentCoverageSentence,
   currentSupportedShare,
+  liveRollupInputs,
   rollupInputs,
 } from "../docs/data/release-scope.ts"
 
@@ -119,5 +120,39 @@ describe("rollupInputs folds published cells over the whole catalogue (Q4)", () 
         featureResults: { "sgr.bold": { featureId: "sgr.bold", status: "maybe" as never } },
       }),
     ).toThrow(/unknown feature status/)
+  })
+})
+
+// #38806 (@cpo/term 435a3dcc option B, @cto 3e3e5add): without the live fold, a catalogue addition left every run
+// measured before it on its old denominator, so terminals printed different "of N" until each ran the full suite.
+describe("liveRollupInputs folds a context over the live public catalogue (#38806)", () => {
+  const recorded = { catalogIds: ["sgr.bold", "sgr.italic", "sgr.retired"] }
+  const featureResults = {
+    "sgr.bold": { featureId: "sgr.bold", status: "supported" as const },
+    "sgr.retired": { featureId: "sgr.retired", status: "unsupported" as const },
+  }
+  const live = ["sgr.bold", "sgr.italic", "sgr.added", "input.xtest-key"]
+
+  it("keeps decided cells, reads a live id the run never measured as no result, and drops a retired id", () => {
+    const inputs = liveRollupInputs("term", { ...recorded, featureResults }, live)
+    expect(inputs).toEqual([
+      { featureId: "sgr.bold", status: "supported", derived: undefined, declared: undefined },
+      { featureId: "sgr.italic", status: "probe-todo" },
+      { featureId: "sgr.added", status: "probe-todo" },
+      { featureId: "input.xtest-key", status: "probe-todo" },
+    ])
+    expect(currentCoverageSentence(aggregateCurrentResults(inputs, live), live)).toBe("1 of 4 tested")
+  })
+
+  it("reads a declared App only id with no cell as App only on a library: outside the count, never open", () => {
+    const inputs = liveRollupInputs("lib", { ...recorded, featureResults }, live, new Set(["input.xtest-key"]))
+    expect(inputs.at(-1)).toEqual({ featureId: "input.xtest-key", status: "app-only" })
+    const bar = aggregateCurrentResults(inputs, live)
+    expect(currentCoverageSentence(bar, live)).toBe("1 of 3 tested")
+  })
+
+  it("still refuses a published cell outside the catalogue its run recorded", () => {
+    const stray = { "sgr.added": { featureId: "sgr.added", status: "supported" as const } }
+    expect(() => liveRollupInputs("term", { ...recorded, featureResults: stray }, live)).toThrow(/sgr\.added.*outside/)
   })
 })

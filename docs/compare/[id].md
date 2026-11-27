@@ -94,7 +94,7 @@ function differenceRows(pair) {
   <table class="compare-table">
     <thead><tr><th>Measurement</th><th v-for="column in osColumns" :key="column.name">{{ column.label }}</th></tr></thead>
     <tbody>
-      <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, column.selected.catalogIds) }}</td></tr>
+      <tr><th>Results</th><td v-for="column in osColumns" :key="column.name">{{ currentSupportedShare(column.bar) }} · {{ currentCoverageSentence(column.bar, data.releaseCatalogIds) }}</td></tr>
       <tr><th>Measured</th><td v-for="column in osColumns" :key="column.name"><ul><li v-for="run in Object.values(column.selected.sources)" :key="run.runId">{{ displayMeasuredDate(run.measuredAt) }} · {{ displayVersion(run.subject.version) }} · {{ displayOs(run.subject.os) }}</li></ul></td></tr>
     </tbody>
   </table>

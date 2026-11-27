@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
 import { RESULT_CATEGORIES, categoryIds, categoryIdsWithin } from "../docs/data/result-categories.ts"
+import { currentCoverageSentence, testedOfGraded } from "../docs/data/release-scope.ts"
+import { scoredFeatureIds } from "@terminfo/probe-defs"
 
 const data = loadFullProbes()
 const subject = (key: string) => data.selectedByBackend[key]!.selected.subject!
@@ -63,6 +65,24 @@ describe("bar row names (#37761 items 2-4)", () => {
         : []
     })
     expect(leaked).toEqual([])
+  })
+})
+
+// #38806: a terminal measured before a catalogue addition printed its old "of N" until it ran the full suite again.
+describe("one denominator over the live public catalogue (#38806)", () => {
+  it("folds every release bar and stats readout over the live catalogue: one of-N, less App only on a library", () => {
+    const live = data.releaseCatalogIds
+    expect(live).toEqual(Object.keys(data.featureDescriptions))
+    const positions = scoredFeatureIds(live).length
+    for (const [key, bar] of Object.entries(data.releaseBars)) {
+      const appOnly = bar.counts["app-only"]
+      if (subject(key).kind !== "lib") expect(appOnly, key).toBe(0)
+      expect(bar.denominator + appOnly, key).toBe(positions)
+      expect(currentCoverageSentence(bar, live), key).toMatch(new RegExp(` of ${positions - appOnly} tested$`))
+      const stats = data.stats[key]!
+      expect(testedOfGraded(stats.counts).graded, key).toBe(bar.denominator)
+      expect(stats.score.all, key).toBe(bar.denominator)
+    }
   })
 })
 

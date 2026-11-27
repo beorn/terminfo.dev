@@ -199,7 +199,7 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
       publicResults(project([first], declared), new Map()).projection.contexts["term:alacritty"]!
     const declaredContext = published([marksRow()])
     expect(declaredContext.byReview).toBe(1)
-    const os = subjectStats(declaredContext, undefined)
+    const os = subjectStats(declaredContext, undefined, declaredContext.catalogIds, new Set())
     expect(os.byReview).toBe(1)
     // #37341 D2: the coverage line counts the declared cell as tested and prints no breakdown.
     expect(currentCoverageSentence(os)).toBe("3 of 3 tested")
@@ -209,8 +209,8 @@ describe("declared-untestable cells (@cto 82a54984 (c))", () => {
     // A feature group without the declared cell counts none by review.
     expect(baselineStat("alacritty", declaredContext, [BLINK]).byReview).toBe(0)
     const plain = published([])
-    expect(subjectStats(plain, undefined).byReview).toBe(0)
-    expect(currentCoverageSentence(subjectStats(plain, undefined))).toBe("2 of 3 tested")
+    expect(subjectStats(plain, undefined, plain.catalogIds, new Set()).byReview).toBe(0)
+    expect(currentCoverageSentence(subjectStats(plain, undefined, plain.catalogIds, new Set()))).toBe("2 of 3 tested")
   })
 
   it("a probe result beats a declaration: a measured, reopened or missing cell throws naming the row to remove", () => {

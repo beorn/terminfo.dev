@@ -76,6 +76,29 @@ export function rollupInputs(
   return published.catalogIds.map((featureId) => byId.get(featureId) ?? { featureId, status: "probe-todo" })
 }
 
+/**
+ * #38806 (@cpo/term 435a3dcc option B, @cto 3e3e5add): a terminal's current readout folds over the LIVE public
+ * catalogue, so every terminal shares one denominator and a catalogue addition needs no full run at its own head.
+ * Each published cell is still checked against the catalogue its run recorded (rollupInputs). A live id the run never
+ * measured folds as no result yet (probe-todo), or as App only where the subject is a library and the catalogue
+ * declares the feature App only (`appOnlyIds`; #38801: a library never measures those). A cell for an id the live
+ * catalogue no longer has is left out.
+ */
+export function liveRollupInputs(
+  app: string,
+  published: Parameters<typeof rollupInputs>[1],
+  liveIds: readonly string[],
+  appOnlyIds: ReadonlySet<string> = new Set(),
+): ReturnType<typeof rollupInputs> {
+  // rollupInputs reads a recorded id with no published cell as probe-todo: only decided and App only cells publish.
+  const byId = new Map(rollupInputs(app, published).map((input) => [input.featureId, input]))
+  return liveIds.map((featureId) => {
+    const own = byId.get(featureId)
+    if (own && own.status !== "probe-todo") return own
+    return { featureId, status: appOnlyIds.has(featureId) ? APP_ONLY : "probe-todo" }
+  })
+}
+
 /** The populated categories a page displays, preserving the catalog's supplied order. */
 export function visibleCategoryIds(
   categoryOrder: readonly string[],

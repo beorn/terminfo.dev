@@ -183,7 +183,8 @@ function catLabel(cat) {
 function coverageLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No selected run'
-  return currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)
+  // #38806: every row folds over the live public catalogue, so every row prints the same "of N".
+  return currentCoverageSentence(bar, data.releaseCatalogIds)
 }
 
 // #37341 D2: every baseline row prints the one readout, "S supported · T of N tested".

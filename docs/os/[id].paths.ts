@@ -125,7 +125,7 @@ export default {
         kind,
         score:
           stats && source
-            ? `${currentSupportedShare(stats)} · ${currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)}`
+            ? `${currentSupportedShare(stats)} · ${currentCoverageSentence(stats, data.releaseCatalogIds)}`
             : "",
         yes: stats?.score.all ? String(stats.score.supported) : "",
         total: stats?.score.all ? String(stats.score.all) : "",

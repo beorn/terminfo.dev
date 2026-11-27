@@ -23,8 +23,8 @@ const osColumns = JSON.parse(p.osBackends || '[]').map(name => {
     name,
     label: data.meta[name]?.label ?? name,
     selected,
-    // #37341 Q4: published cells are decided ones only; the fold reads an absent catalogue id as no result yet.
-    bar: aggregateCurrentResults(rollupInputs(name, selected), selected.catalogIds),
+    // #38806: the release bar, folded over the live public catalogue like every other current readout.
+    bar: data.releaseBars[name],
     sources: Object.values(selected.sources),
     measured: measurementLine(Object.values(selected.sources), selected.subject?.os ?? null),
   }
@@ -41,9 +41,13 @@ const selectedRun = computed(() => runSha.value ? recordedRuns.find(run => run.s
 const sourceRuns = computed(() => !selectedRun.value ? [] : 'sources' in selectedRun.value ? Object.values(selectedRun.value.sources) : [selectedRun.value])
 // #37761 (@cto e81def55): observer-only switches sit beside the configuration, never in it.
 const observerSwitches = computed(() => [...new Set(sourceRuns.value.flatMap(run => data.observers[run.runId] ?? []))].join(', '))
+// #38806: the current selection reads its release bar over the live catalogue; an older run picked below keeps the
+// catalogue it recorded (D132 B), so its readout counts the positions that run measured.
+const measuredCatalogIds = computed(() => selectedRun.value === defaultRun ? data.releaseCatalogIds : selectedRun.value?.catalogIds)
 const measuredBar = computed(() => {
   const selection = selectedRun.value
   if (!selection) return undefined
+  if (selection === defaultRun) return data.releaseBars[p.backendId]
   return aggregateCurrentResults(rollupInputs(p.backendId, selection), selection.catalogIds)
 })
 // #37341 D2: the readout's first half; the template prints it beside the coverage sentence, never a percentage.
@@ -226,7 +230,7 @@ const breadcrumbParent = (() => {
   <div v-for="column in osColumns" :key="column.name" class="measurement-system">
     <p class="selected-run">{{ p.terminalName }} <PlatformIcon :os="column.measured.os" :platform="column.measured.platform">({{ column.measured.platform }})</PlatformIcon> <span v-if="column.measured.versions" class="term-version">{{ column.measured.versions }}</span> · {{ column.measured.when }}</p>
     <SupportBar :label="facts.name(column.name)" :ids="categoryIds(column.bar)" :describe="describeIn(column.selected)" :version="column.selected"
-      :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, column.selected.catalogIds)" />
+      :readout="currentSupportedShare(column.bar) + ' · ' + currentCoverageSentence(column.bar, data.releaseCatalogIds)" />
   </div>
 </section>
 
@@ -234,10 +238,10 @@ const breadcrumbParent = (() => {
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} <PlatformIcon :os="measured.os" :platform="measured.platform">({{ measured.platform }})</PlatformIcon> <span v-if="measured.versions" class="term-version">{{ measured.versions }}</span> · {{ measured.when }}</p>
-  <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
+  <p class="result-share-label">{{ measuredShare }} · {{ currentCoverageSentence(measuredBar, measuredCatalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="term-rows term-rows-single">
     <SupportBar :label="p.terminalName" :ids="measuredIds" :describe="describeIn(selectedRun)" :version="selectedRun"
-      :readout="measuredShare + ' · ' + currentCoverageSentence(measuredBar, selectedRun.catalogIds)" />
+      :readout="measuredShare + ' · ' + currentCoverageSentence(measuredBar, measuredCatalogIds)" />
   </div>
   <!-- #37341 Q2: the public catalogue holds no environment position, so the page names none. -->
   <p>{{ measuredBar.complete ? 'Every feature has a result. See each row for whether it is supported.' : 'Some features have no result yet. See each row for what is known.' }}</p>

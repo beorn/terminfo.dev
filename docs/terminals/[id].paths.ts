@@ -134,7 +134,7 @@ export default {
         const bar = data.releaseBars[b.name]
         if (selected && !bar) throw new Error(`Missing release bar for selected terminal ${b.name}`)
         const readout = bar
-          ? `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected?.catalogIds)}`
+          ? `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, data.releaseCatalogIds)}`
           : ""
 
         return {

@@ -58,7 +58,7 @@ export default {
       if (!bar) throw new Error(`Missing release bar for comparison terminal ${b.name}`)
       return {
         name: b.name,
-        readout: `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, selected.catalogIds)}`,
+        readout: `${currentSupportedShare(bar)} · ${currentCoverageSentence(bar, data.releaseCatalogIds)}`,
         routeKey: current.routeKey,
         appLabel: subjectLabel(
           catalog,

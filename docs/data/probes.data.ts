@@ -13,7 +13,8 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilitySubjects, joinedAppCells, loadCurrentResults } from "./current-results.ts"
-import { DIFFERS_BY_CONTEXT, isPublishedStatus, type AppCellStatus } from "./app-cells.ts"
+import { APP_ONLY, DIFFERS_BY_CONTEXT, isPublishedStatus, type AppCellStatus } from "./app-cells.ts"
+import { catalogAppOnly } from "./app-only-cells.ts"
 import {
   publicResults,
   type PublicProjection,
@@ -33,7 +34,9 @@ import { scoredFeatureIds, type ProbeStatus, type FeatureResultStatus } from "@t
 import {
   aggregateCurrentResults,
   currentSupportedShare,
+  liveRollupInputs,
   rollupInputs,
+  testedOfGraded,
   hasCurrentSource,
   staleCaption,
   type CurrentAggregate,
@@ -120,6 +123,8 @@ export interface ProbeData {
   selectedByBackend: Record<string, PublicCurrentResult>
   currentContextCount: number
   releaseBars: Record<string, CurrentAggregate>
+  /** #38806: the live public catalogue every releaseBars entry and stats readout folds over, in catalogue order. */
+  releaseCatalogIds: string[]
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
@@ -154,29 +159,52 @@ type JoinedApp = NonNullable<ReturnType<ReturnType<typeof joinedAppCells>["get"]
  * else its own. A reviewed declaration covers every context of its app on its OS, so a declared cell is counted by
  * review wherever its counted status reads untestable.
  */
-export function subjectStats(selected: PublicCurrentResult["selected"], app: JoinedApp | undefined): CurrentStats {
+export function subjectStats(
+  selected: PublicCurrentResult["selected"],
+  app: JoinedApp | undefined,
+  liveIds: readonly string[],
+  appOnlyIds: ReadonlySet<string>,
+): CurrentStats {
   // Counts are per app and probe (@cto d321729a rule 5): every joined context's grade counts in its
   // bucket here, and a disagreement lands in its own `differs-by-context` bucket instead of Supported or
-  // Unsupported (@cto c3c2f885). The joined app already counts all seven buckets. A stored-only context's
-  // published counts carry its decided buckets only (#37341 Q4), so its cells are folded again over its catalogue.
+  // Unsupported (@cto c3c2f885). A stored-only context's published counts carry its decided buckets only
+  // (#37341 Q4), so its cells are folded again. #38806: both fold over the live public catalogue, the one
+  // denominator every terminal shares; a live id the subject never measured is no result yet (or App only).
   const counts: RollupCounts = app
-    ? { ...app.counts }
-    : aggregateCurrentResults(rollupInputs(selected.contextKey, selected), selected.catalogIds).counts
-  const supported = app ? app.counts.supported : selected.score.supported
-  const byReview = scoredFeatureIds(selected.catalogIds).filter(
+    ? joinedLiveCounts(app, liveIds, appOnlyIds)
+    : aggregateCurrentResults(liveRollupInputs(selected.contextKey, selected, liveIds, appOnlyIds), liveIds).counts
+  const supported = counts.supported
+  const all = testedOfGraded(counts).graded
+  const byReview = scoredFeatureIds(liveIds).filter(
     (id) =>
       selected.featureResults[id]?.declared !== undefined &&
       (app?.cells[id]?.status ?? selected.featureResults[id]?.status) === "untestable",
   ).length
   return {
-    score: { supported, all: selected.score.all },
+    score: { supported, all },
     counts: { ...counts },
     differs: counts[DIFFERS_BY_CONTEXT],
     derived: selected.derivedIds.length,
     byReview,
     complete: selected.complete,
-    pct: selected.score.all === 0 ? null : Math.round((100 * supported) / selected.score.all),
+    pct: all === 0 ? null : Math.round((100 * supported) / all),
   }
+}
+
+/** #38806: a joined app's counts over the live public catalogue, by the one rule liveRollupInputs folds a context by. */
+function joinedLiveCounts(app: JoinedApp, liveIds: readonly string[], appOnlyIds: ReadonlySet<string>): RollupCounts {
+  const counts = Object.fromEntries(Object.keys(app.counts).map((status) => [status, 0])) as RollupCounts
+  for (const featureId of scoredFeatureIds(liveIds)) {
+    const own = app.cells[featureId]?.status
+    const status = own && own !== "probe-todo" ? own : appOnlyIds.has(featureId) ? APP_ONLY : "probe-todo"
+    counts[status as keyof RollupCounts]++
+  }
+  return counts
+}
+
+/** #38806: the App only ids a subject folds as App only: the catalogue's declarations on a library, none elsewhere. */
+function appOnlyFor(selected: PublicCurrentResult["selected"], declared: ReadonlySet<string>): ReadonlySet<string> {
+  return selected.subject?.kind === "lib" ? declared : new Set()
 }
 
 /** One subject's stats over one baseline's features, as the baseline page reads them. */
@@ -297,6 +325,9 @@ export function loadFullProbes(progress?: import("./analysis-progress.ts").Analy
   // categories, the client payload, results, notes and baselines here. No count moves: the folds grade the graded
   // ids only, and the stats and bars below still read each run's full recorded catalogIds.
   const featureDescriptions = publicFeatures(loadFeatureDescriptions())
+  // #38806: the live public catalogue every terminal's current readout folds over, and the declared App only ids.
+  const releaseCatalogIds = Object.keys(featureDescriptions)
+  const declaredAppOnly = new Set(catalogAppOnly(contentDir).keys())
   const features: FeatureResult[] = Object.entries(featureDescriptions)
     .filter(([id]) => !id.startsWith("$"))
     .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
@@ -394,7 +425,7 @@ export function loadFullProbes(progress?: import("./analysis-progress.ts").Analy
         return text ? [[result.featureId, text]] : []
       }),
     )
-    stats[key] = subjectStats(selected, app)
+    stats[key] = subjectStats(selected, app, releaseCatalogIds, appOnlyFor(selected, declaredAppOnly))
   }
   backends.sort(
     (a, b) =>
@@ -410,7 +441,10 @@ export function loadFullProbes(progress?: import("./analysis-progress.ts").Analy
   const releaseStale: Record<string, string | null> = {}
   for (const [key, entry] of bySubject) {
     const { selected } = entry
-    const bar = aggregateCurrentResults(rollupInputs(key, selected), selected.catalogIds)
+    const bar = aggregateCurrentResults(
+      liveRollupInputs(key, selected, releaseCatalogIds, appOnlyFor(selected, declaredAppOnly)),
+      releaseCatalogIds,
+    )
     releaseBars[key] = bar
     releaseShares[key] = currentSupportedShare(bar)
     const sources = Object.values(selected.sources)
@@ -445,6 +479,7 @@ export function loadFullProbes(progress?: import("./analysis-progress.ts").Analy
     selectedByBackend,
     currentContextCount: published.projection.contextCount,
     releaseBars,
+    releaseCatalogIds,
     releaseShares,
     releaseStale,
     releaseTable,
