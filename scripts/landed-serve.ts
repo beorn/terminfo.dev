@@ -97,14 +97,37 @@ function servedRevision(): string | null {
 }
 
 /**
- * The one rebuild check: `code` when the served output is not this landing's revision (a staged rebuild that keeps the
- * previous dist if it fails, #38423), `run` when the code matches but a newer complete hourly run exists than the one
- * the output shows, else null.
+ * Interim cadence for run rebuilds (#38962, @cpo/term 2e3f479b): a site build costs about 10 GB, so a newer hourly run
+ * rebuilds only once it started at least this long after the run the served output shows. A code change still
+ * rebuilds at once. This goes away when a run rebuilds only on changed results.
  */
-export function rebuildReason(target: string, stamp: ServedStamp, newestRunId: string | null): "code" | "run" | null {
+export const RUN_REBUILD_GAP_MS = 4 * 60 * 60 * 1000
+
+/** When a run started, from its directory name (`2026-11-02T20-34-05-309Z-<hash>`), or null for any other name. */
+function runStartedMs(id: string): number | null {
+  const [, day, hh, mm, ss, ms] = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/.exec(id) ?? []
+  if (day === undefined) return null
+  const at = Date.parse(`${day}T${hh}:${mm}:${ss}.${ms}Z`)
+  return Number.isNaN(at) ? null : at
+}
+
+/**
+ * The one rebuild check: `code` when the served output is not this landing's revision (a staged rebuild that keeps the
+ * previous dist if it fails, #38423), `run` when the code matches and a complete hourly run exists that started at
+ * least `gapMs` after the one the output shows, else null. A run name that carries no start time rebuilds, as before.
+ */
+export function rebuildReason(
+  target: string,
+  stamp: ServedStamp,
+  newestRunId: string | null,
+  gapMs: number = RUN_REBUILD_GAP_MS,
+): "code" | "run" | null {
   if (stamp.sourceCommit !== target) return "code"
-  if (newestRunId !== null && stamp.workingRunId !== newestRunId) return "run"
-  return null
+  if (newestRunId === null || stamp.workingRunId === newestRunId) return null
+  const served = stamp.workingRunId === null ? null : runStartedMs(stamp.workingRunId)
+  const newest = runStartedMs(newestRunId)
+  if (served !== null && newest !== null && newest - served < gapMs) return null
+  return "run"
 }
 
 type RunBuild = (env: NodeJS.ProcessEnv) => Promise<number | null>
@@ -274,7 +297,14 @@ export async function rebuildForRun(args: {
  * hourly run, never two at once, and never a retry of a revision or run whose rebuild failed (a later one, or a
  * restart, tries again).
  */
-export function createSiteRebuilder(args: { runsDir?: string; outRoot: string; target: string; runBuild?: RunBuild }): {
+export function createSiteRebuilder(args: {
+  runsDir?: string
+  outRoot: string
+  target: string
+  runBuild?: RunBuild
+  /** The run-rebuild gap; defaults to RUN_REBUILD_GAP_MS. */
+  runGapMs?: number
+}): {
   check(): Promise<void>
 } {
   const attempted = new Set<string>()
@@ -303,7 +333,7 @@ export function createSiteRebuilder(args: { runsDir?: string; outRoot: string; t
       )
       return
     }
-    if (rebuildReason(args.target, stamp, newest) !== "run" || attempted.has(newest)) return
+    if (rebuildReason(args.target, stamp, newest, args.runGapMs) !== "run" || attempted.has(newest)) return
     attempted.add(newest)
     await rebuildForRun({ outRoot: args.outRoot, target: args.target, runId: newest, runBuild: args.runBuild })
   }
