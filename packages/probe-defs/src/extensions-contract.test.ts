@@ -1322,7 +1322,7 @@ function decidedSatisfactionSources(id: string) {
     }
   }
   if (id === "extensions.osc7577-silent" || id === "extensions.osc88-silent" || id === "extensions.osc7501-silent") {
-    // #38699, #38743: a terminal that consumes every OSC string. Printed text moves the reading; the reports do not.
+    // #38699, #38743, #38754: a terminal that consumes every OSC string and answers DA1 without writing anything before it.
     const osc = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
     let text = ""
     let col = 1
@@ -1333,15 +1333,19 @@ function decidedSatisfactionSources(id: string) {
           if (bytes.startsWith("\x1b[2J\x1b[H")) text = ""
           text += bytes.replace("\x1b[2J\x1b[H", "").replace(osc, "")
         },
+        feedCapture: () => "\x1b[?62;4c",
         getText: () => text,
         getCursor: () => ({ x: text.length, y: 0, visible: true, style: null }),
       }),
-      term: replayTermProbeSource(new Map(), {
-        write: (bytes: string) => {
-          col = bytes === "\x1b[1;1H\x1b[2K" ? 1 : col + bytes.replace(osc, "").length
+      term: replayTermProbeSource(
+        new Map([["\x1b[c", { sequence: "\x1b[c", match: ["\x1b[?62;4c"], reason: "reply", raw: "\x1b[?62;4c" }]]),
+        {
+          write: (bytes: string) => {
+            col = bytes === "\x1b[1;1H\x1b[2K" ? 1 : col + bytes.replace(osc, "").length
+          },
+          queryCursorPosition: async () => ({ row: 1, col }),
         },
-        queryCursorPosition: async () => ({ row: 1, col }),
-      }),
+      ),
     }
   }
   throw new Error(`No satisfaction context configured for decided row ${id}`)

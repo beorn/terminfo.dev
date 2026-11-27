@@ -3,16 +3,21 @@ import type { ProgramResumeTokenReading, TermFeaturesReading } from "@terminfo/p
 
 export interface TerminalChildEnvironment {
   readonly termFeatures: TermFeaturesReading
-  /** OSC 7577 spec revision 0.5 (#38699); the token's bytes never leave this function (@cto ee6b7fd9). */
+  /** OSC 7577 spec revision 0.5 (#38699, #38754); the token's bytes never leave this function (@cto ee6b7fd9, @cto 953d6a6c). */
   readonly programResumeToken: ProgramResumeTokenReading
 }
 
-/** Both readings share one binding: this run's clean-launch marker and run control, PID and TTY. */
+/**
+ * Both readings share one binding: this run's clean-launch marker and run control, PID and TTY.
+ * When `plantedSentinel` is supplied (multiplexer runs, #38754, @cto 953d6a6c), `OSC7577_TOKEN` is compared against it
+ * in memory and only `"equal" | "different" | "absent"` is recorded.
+ */
 export function readTerminalChildEnvironment(
   env: NodeJS.ProcessEnv,
   runId: string,
   pid: number,
   tty: string,
+  plantedSentinel?: string,
 ): TerminalChildEnvironment {
   const launchMarker = env.TERMINFO_TERM_FEATURES_LAUNCH
   const runControl = env.TERMINFO_RUN_ID
@@ -33,7 +38,7 @@ export function readTerminalChildEnvironment(
   const binding = { runId: runControl, launchMarker, pid, tty }
   return {
     termFeatures: termFeatures(env.TERM_FEATURES, binding),
-    programResumeToken: token(env.OSC7577_TOKEN, binding),
+    programResumeToken: token(env.OSC7577_TOKEN, binding, plantedSentinel),
   }
 }
 
@@ -51,10 +56,27 @@ function termFeatures(value: string | undefined, binding: Binding): TermFeatures
   return { status: "measured", present: value !== undefined, value: value ?? "", ...binding }
 }
 
-/** Spec rev 0.5: 22-64 characters of [A-Za-z0-9_-]. Only the length and the broken rule are kept. */
-function token(value: string | undefined, binding: Binding): ProgramResumeTokenReading {
-  if (value === undefined) return { status: "measured", present: false, length: 0, ...binding }
+/** Spec rev 0.5: 22-64 characters of [A-Za-z0-9_-]. Only the length, broken rule, and optional sentinel relation are kept. */
+function token(value: string | undefined, binding: Binding, plantedSentinel?: string): ProgramResumeTokenReading {
+  const sentinel =
+    plantedSentinel === undefined
+      ? undefined
+      : value === undefined
+        ? ("absent" as const)
+        : value === plantedSentinel
+          ? ("equal" as const)
+          : ("different" as const)
+  if (value === undefined) {
+    return { status: "measured", present: false, length: 0, ...(sentinel && { sentinel }), ...binding }
+  }
   const malformed =
     value.length < 22 || value.length > 64 ? "length" : /^[A-Za-z0-9_-]+$/.test(value) ? undefined : "charset"
-  return { status: "measured", present: true, length: value.length, ...(malformed && { malformed }), ...binding }
+  return {
+    status: "measured",
+    present: true,
+    length: value.length,
+    ...(malformed && { malformed }),
+    ...(sentinel && { sentinel }),
+    ...binding,
+  }
 }
