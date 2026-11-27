@@ -2954,3 +2954,32 @@ it("a run drops its probe image root after docker load and deletes the image unl
     if (outcome === "lock-wait") expect(result.stderr).toContain("nix-store --delete waited 120 s for the GC lock")
   }
 })
+
+// @failure The 61-column Kitty container triggers herdr's default mobile_width_threshold = 64 (starting on the mobile
+//          machine picker and reserving rows 1..2 for the mobile header) or pane_scrollbars = true (repainting column 61
+//          across alternate-screen transitions so calibrateCaptureOrigin's baseline restore times out with
+//          CaptureCommandDeadline, #38850).
+it("herdr mux arm configures zero-chrome full-window pane and focuses w1 before launching the collector (#38850)", () => {
+  const script = readFileSync(launcher, "utf8")
+  const herdrStart = script.indexOf("    herdr)\n")
+  const zellijStart = script.indexOf("    zellij)\n", herdrStart)
+  expect(herdrStart).toBeGreaterThan(0)
+  expect(zellijStart).toBeGreaterThan(herdrStart)
+  const arm = script.slice(herdrStart, zellijStart)
+  for (const required of [
+    "mobile_width_threshold = 0",
+    "sidebar_start_collapsed = true",
+    'sidebar_collapsed_mode = "hidden"',
+    "hide_tab_bar_when_single_tab = true",
+    'pane_borders = "off"',
+    "pane_outer_borders = false",
+    "pane_scrollbars = false",
+    'workspace create --cwd "$mux_output" --label "$mux_session" --focus',
+    "surface_active=true",
+    'herdr --session "$mux_session" workspace focus w1',
+    'read -r -a collector_stat < "/proc/$collector/stat"',
+  ]) {
+    expect(arm).toContain(required)
+  }
+  expect(arm).not.toContain("awk ")
+})
