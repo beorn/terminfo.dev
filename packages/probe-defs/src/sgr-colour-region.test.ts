@@ -1172,6 +1172,26 @@ test.each([
   }
 })
 
+// @dev/1's finding on #39009: every other test drives the declaration through a PLANE_SPEC, so dropping
+// setupAbsentReason from the real row would leave the suite green. This one asks the shipped row itself
+// on a terminal that ignores SGR 58, and requires the row's own sentence, not a test's.
+test("the shipped underline-colour reset row declares its own Untestable on a colourless seed", async () => {
+  const reason =
+    "Underline colour is not applied here (SGR 58 left the plain underline), so there is no colour for SGR 59 to reset"
+  const { ctx } = colourTerminal("ignore-58", PALETTES[0] as Palette)
+  const result = await run("sgr.underline-color-reset", ctx)
+  expect(result.pass).toBe(false)
+  // The capture prefixes its own setup line, so the row is pinned by the sentence it declares, not by equality.
+  expect(result.tests).toMatchObject([
+    { id: "declared-untestable", status: "untestable", reason: expect.stringContaining(reason) },
+  ])
+  expect(result.tests?.some((test) => test.status === "unsupported")).toBe(false)
+  expect(result.notTested).toMatchObject({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining(reason),
+  })
+})
+
 /**
  * @failure Routing reset captures through the colour owner must preserve non-mux negatives and
  *   broken mux captures, rather than converting either to a pending colour comparison.
