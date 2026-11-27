@@ -405,10 +405,14 @@ describe("landed-serve hourly-run rebuild", () => {
     writeFileSync(join(distDir, "index.html"), `built-for-${workingRunId}`)
   }
 
-  function completeRun(runsDir: string, id: string, cells: unknown = {}): void {
-    mkdirSync(join(runsDir, id), { recursive: true })
+  function completeRun(runsDir: string, id: string, cells: unknown = {}, drafts: string[] = []): void {
+    mkdirSync(join(runsDir, id, "headless"), { recursive: true })
     writeFileSync(join(runsDir, id, "summary.json"), JSON.stringify({ complete: true }))
     writeFileSync(join(runsDir, id, "cells.json"), JSON.stringify(cells))
+    writeFileSync(
+      join(runsDir, id, "headless", "collection.json"),
+      JSON.stringify({ runs: drafts.map((draft) => join(runsDir, id, "headless", draft)) }),
+    )
   }
 
   /** The one `.unproven-*` tree the run kept beside `name`, proving it was preserved rather than deleted. */
@@ -452,6 +456,18 @@ describe("landed-serve hourly-run rebuild", () => {
     expect(runResultsKey(join(runs, "b"))).toBe(runResultsKey(join(runs, "a")))
     expect(runResultsKey(join(runs, "c"))).not.toBe(runResultsKey(join(runs, "a")))
     expect(runResultsKey(join(runs, "d"))).not.toBe(runResultsKey(join(runs, "a")))
+  })
+
+  // @cpo/term 73589c51: the site names each engine's version, so a version change rebuilds even with every verdict the
+  // same, while a new run id for the same engine and version does not.
+  it("keys a run by its engines' versions too, and not by the run id in a draft's name", () => {
+    const runs = mkdtempSync(join(tmpdir(), "landed-serve-keys-"))
+    const cells = { wezterm: { "cursor.hide": "supported" } }
+    completeRun(runs, "a", cells, ["wezterm-0.1.0-fork.5-linux-91fb7f89-0d85-43f8-8ced-b05aaf84fc96.draft.json"])
+    completeRun(runs, "b", cells, ["wezterm-0.1.0-fork.5-linux-00000000-1111-2222-3333-444444444444.draft.json"])
+    completeRun(runs, "c", cells, ["wezterm-0.1.0-fork.6-linux-91fb7f89-0d85-43f8-8ced-b05aaf84fc96.draft.json"])
+    expect(runResultsKey(join(runs, "b"))).toBe(runResultsKey(join(runs, "a")))
+    expect(runResultsKey(join(runs, "c"))).not.toBe(runResultsKey(join(runs, "a")))
   })
 
   it("the rebuilder skips a newer run with the served results and rebuilds for one whose results changed", async () => {

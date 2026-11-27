@@ -348,15 +348,39 @@ function loadedSiteWorkingRun(selection: WorkingRunSelection, retain = true): Lo
 }
 
 /**
- * What a run shows, as one key (#38962, @cpo/term 2e3f479b): a sha256 over its `cells.json`, every engine × feature
- * verdict, with object keys sorted. Two runs with the same key show the same results, so landed-serve rebuilds the site
- * for a newer run only when its key differs from the one the served build.json carries. An unreadable cells.json throws.
+ * What a run shows, as one key (#38962, @cpo/term 2e3f479b, 73589c51): a sha256 over its `cells.json` (every engine ×
+ * feature verdict, object keys sorted) and the engines it measured with their versions, because the site names the
+ * version. Two runs with the same key show the same results, so landed-serve rebuilds the site for a newer run only when
+ * its key differs from the one the served build.json carries. Evidence text is not part of it. An unreadable
+ * `cells.json` or `headless/collection.json` throws.
  */
 export function runResultsKey(dir: string): string {
-  const path = join(dir, "cells.json")
+  const cellsPath = join(dir, "cells.json")
+  const cells = parseJsonStrict(cellsPath, readFileSync(cellsPath, "utf8"))
   return createHash("sha256")
-    .update(canonicalJson(parseJsonStrict(path, readFileSync(path, "utf8"))))
+    .update(canonicalJson({ cells, subjects: measuredSubjects(dir) }))
     .digest("hex")
+}
+
+/** A draft's name less its run id: `<engine>-<version>-<os>` (capture-writer.ts names it `…-<runId>.draft.json`). */
+const DRAFT_RUN_ID = /-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.draft\.json$/
+
+/**
+ * Each engine the run measured, as `<engine>-<version>-<os>`, read from the draft names its collection lists (the drafts
+ * themselves are about 150 MB a run). capture-writer.ts names every collected draft `<id>-<version>-<os>-<runId>`; a
+ * name of any other shape (a hand-made fixture) is keyed whole, so its key changes only when the name does.
+ */
+function measuredSubjects(dir: string): string[] {
+  const path = join(dir, "headless", "collection.json")
+  const collection = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (
+    !record(collection) ||
+    !Array.isArray(collection.runs) ||
+    !collection.runs.every((run) => typeof run === "string")
+  ) {
+    throw new Error(`${path}: collection requires a runs array of draft paths`)
+  }
+  return (collection.runs as string[]).map((run) => basename(run).replace(DRAFT_RUN_ID, "")).sort()
 }
 
 function canonicalJson(value: unknown): string {
