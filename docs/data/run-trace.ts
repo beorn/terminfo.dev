@@ -145,7 +145,15 @@ function isUndecidedSubcheck(value: unknown): boolean {
   return false
 }
 
-/** Public headless parser state: read windows and undecided subcheck records removed before hashing. */
+/** A library's OSC colour reply, `ESC ] Ps [; index] ; rgb:r/g/b ST`: its colour value is the public reading (#38799). */
+const LIBRARY_COLOUR_REPLY =
+  /^\x1b\]\d+(?:;\d+)?;(rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4})(?:\x07|\x1b\\)$/
+
+/**
+ * Public headless parser state: read windows and undecided subcheck records removed before hashing. A
+ * headless library has no terminal behind it, so a read window that holds only an OSC colour reply keeps its
+ * colour under the plain key (`originalRaw` → `original: "rgb:…"`); any other read window stays private.
+ */
 function publicParserState(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.filter((item) => !isUndecidedSubcheck(item)).map(publicParserState)
@@ -153,7 +161,13 @@ function publicParserState(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value
   const out: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(value)) {
-    if (READ_WINDOW.test(key) || isUndecidedSubcheck(child)) continue
+    if (isUndecidedSubcheck(child)) continue
+    if (READ_WINDOW.test(key)) {
+      const colour = typeof child === "string" ? LIBRARY_COLOUR_REPLY.exec(child)?.[1] : undefined
+      const plain = key.replace(/Raw$/, "")
+      if (colour !== undefined && plain !== key && !(plain in value)) out[plain] = colour
+      continue
+    }
     out[key] = publicParserState(child)
   }
   return out
