@@ -297,7 +297,8 @@
     "group": "selective-reset",
     "body": "SGR 22 resets both bold (SGR 1) and faint/dim (SGR 2) attributes. The sequence is <code>ESC [ 22 m</code>. There is no way to reset bold without also resetting faint, or vice versa — they share this single reset code.\n\nThis paired reset is one of the awkward corners of SGR. ECMA-48 uses SGR 22 for both bold and faint, so applications cannot clear only one of those attributes portably. Emulators should preserve that shared reset behavior even if their internal style model stores bold and dim separately.",
     "probe": "In a headless backend, compare neutral C, bold/dim/italic X, and SGR 22 Y: bold and dim must clear while italic remains. Missing style readback leaves the reset check without a result; a TTY cursor reply does not verify styling. App: before any attribute is set, draw YY and save with DECSC. For each of the seven nonempty subsets of bold, faint and italic, draw YY with the subset set, then restore with DECRC: every subset must change the crop and every restore must return it exactly. The italic-only crop must differ from the original and every other subset crop. Then set all three, draw YY, send the made-up SGR 99 and draw YY: the crop must not change. Send SGR 22 and draw YY. Supported: the crop equals the italic-only crop. Unsupported: the crop equals the original or a different subset crop. A change at the made-up SGR, or a crop matching neither, gives no result. When the faint-only subset paints exactly the original crop and its restore returns it, faint is not observable in that run: the faint combinations are not drawn, bold, italic and bold+italic must each change the crop and be distinct, the setup before SGR 99 is bold+italic, and SGR 22 is graded on clearing bold and keeping italic, with the result saying faint was not observable and claiming nothing about its reset. A faint that paints always takes the full seven-subset test. On a multiplexer a negative gives no result and names the outer terminal. If a subset, restore or expected-crop separation does not qualify, the row stays undecided naming the failed step; a DECRQSS status reply is kept as a diagnostic and never decides what is painted.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC [ 22 m"
   },
   "sgr.selective-reset.underline": {
     "name": "Reset underline (SGR 24)",
@@ -307,7 +308,8 @@
     "group": "selective-reset",
     "body": "SGR 24 resets all underline styles — single, double, curly, dotted, and dashed. The sequence is <code>ESC [ 24 m</code>.\n\nTargeted resets are important for nested styling: an application can clear an underline without also discarding color, bold, inverse video, or other active SGR attributes. Modern terminals map SGR 24 across both classic ECMA-48 underline and newer styled underline variants, so it is the safe cleanup sequence after curly, dotted, dashed, or colored underline output.",
     "probe": "In a headless backend, compare neutral C, bold/underlined X, and SGR 24 Y: underline must clear while bold remains. Missing setup readback leaves the reset check without a result; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC [ 24 m"
   },
   "sgr.selective-reset.inverse": {
     "name": "Reset inverse (SGR 27)",
@@ -317,7 +319,8 @@
     "group": "selective-reset",
     "body": "SGR 27 resets the inverse video (SGR 7) attribute, restoring the original foreground/background color relationship. The sequence is <code>ESC [ 27 m</code>.\n\nInverse video was one of the hardware-era highlight mechanisms, long before terminals had theme-aware selection colors. SGR 27 matters because status bars, menus, and cursor renderers often combine inverse video with explicit colors; using SGR 0 would clear every attribute, while SGR 27 restores only the foreground/background relationship.",
     "probe": "In a headless backend, compare neutral C, bold/inverse X, and SGR 27 Y: inverse must clear while bold remains. Missing setup readback leaves the reset check without a result; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC [ 27 m"
   },
   "sgr.selective-reset.italic": {
     "name": "Reset italic (SGR 23)",
@@ -327,7 +330,8 @@
     "group": "selective-reset",
     "body": "SGR 23 resets the italic (SGR 3) attribute, returning text to upright rendering. The sequence is <code>ESC [ 23 m</code>. This is a targeted reset that does not affect other active attributes like bold, underline, or colors.\n\nItalic reset became more visible once terminal fonts gained real italic variants. A targeted SGR 23 lets syntax highlighters and markdown renderers end emphasis without disturbing color, underline, or bold state. Older terminals that fake or ignore italic should still parse and clear the attribute cleanly.",
     "probe": "In a headless backend, compare neutral C, bold/italic X, and SGR 23 Y: italic must clear while bold remains. Missing setup readback leaves the reset check without a result; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC [ 23 m"
   },
   "sgr.reset": {
     "name": "Reset all (SGR 0)",
@@ -493,7 +497,8 @@
     "baseline": "rich",
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.\n\nReverse wrap is an xterm compatibility mode for editing across visually wrapped lines. It lets a backspace at the left edge move to the previous row's right edge, matching how users expect command-line editing to behave on soft-wrapped input. Because it changes a normally clamped control character, applications should not assume it is enabled.",
     "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "sequence": "ESC [ ? 45 h"
   },
   "cursor.cup-boundaries": {
     "name": "CUP at screen boundaries",
@@ -502,7 +507,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUP (Cursor Position, CSI row ; col H) with out-of-bounds parameters should clamp the cursor to the screen edges rather than wrapping or producing undefined behavior. Sending <code>CSI 999 ; 999 H</code> should place the cursor at the last row and last column of the visible screen. This is important for applications that use CUP with large values as a shorthand for \"move to bottom-right corner\" without querying screen dimensions first.",
-    "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries."
+    "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries.",
+    "sequence": "ESC [ 999 ; 999 H"
   },
   "cursor.cuu-past-top": {
     "name": "CUU stops at top",
@@ -511,7 +517,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUU (Cursor Up, CSI Pn A) should stop at the top margin of the scroll region, or row 1 if no scroll region is set. Moving up with a count exceeding the current row should clamp to row 0 rather than wrapping to the bottom. This prevents cursor escape from the visible area and is relied upon by screen-clearing routines that use large CUU counts.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe's own expectation is measured by cursor-position replies: tmux answers DSR 6 from its local screen position (input.c:1643-1658) and its movement handlers mutate that same local screen, which establishes deciding-response ownership and never conformance of every movement. Setup 4;1 and final 1;1 through the local CUU plus DSR, where source ownership is not proof that the clamp succeeded.",
-    "probe": "Position at row 3, send <code>\\x1b[999A</code> (CUU with count 999), verify cursor stopped at row 0."
+    "probe": "Position at row 3, send <code>\\x1b[999A</code> (CUU with count 999), verify cursor stopped at row 0.",
+    "sequence": "ESC [ 999 A"
   },
   "cursor.cud-past-bottom": {
     "name": "CUD stops at bottom",
@@ -520,7 +527,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUD (Cursor Down, CSI Pn B) should stop at the bottom margin of the scroll region, or the last row if no scroll region is set. Moving down with a count exceeding the remaining rows should clamp to the last row rather than scrolling or wrapping. Unlike a linefeed at the bottom margin, CUD never triggers scrolling — it simply stops.",
-    "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row."
+    "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row.",
+    "sequence": "ESC [ 999 B"
   },
   "cursor.cup-scroll-region": {
     "name": "CUP with DECOM",
@@ -529,7 +537,8 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When DECOM (Origin Mode, CSI ? 6 h) is set, CUP coordinates become relative to the current scroll region set by DECSTBM. With a scroll region of rows 5-15 and DECOM enabled, <code>CSI 1 ; 1 H</code> moves the cursor to row 5 (the top of the scroll region) rather than the absolute top of the screen. This interaction between DECSTBM and DECOM is fundamental to how full-screen applications partition the terminal into independently scrolling regions.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: Readback writes '&lt;' with DECOM under margins 5–15; reference paints it at physical row5, cols1–2 sampled; cursor parks row16 and witness is row1. CPR is region-relative and cannot prove physical placement. No-adapter CPR responsiveness stays insufficient. Minimum measured grid decisive adapter path 16x6; sampled region 5:1–5:2 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region."
+    "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region.",
+    "sequence": "ESC [ ? 6 h"
   },
   "cursor.vpa": {
     "name": "VPA vertical position absolute (CSI d)",
@@ -655,7 +664,8 @@
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.\n\nSelective erase belongs to DEC's form-oriented terminal model. Protected fields let host applications clear user-entered data while preserving labels and layout, a pattern common in data-entry systems before graphical forms. It survives mostly in xterm and high-compatibility emulators, but it explains why protected attributes exist at all.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: DECSCA marks P protected; DECSED ?2J must preserve P and clear ABCDE. All-cleared ignored frame separates loss of protection; no flank control vetoes that negative. Minimum measured grid 3x8; sampled region 1:1–1:6 (rows x columns unless the row states a cell address; region addresses are one-based).",
     "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify the text is erased. Confirms selective erase display is recognized.",
-    "url": "https://vt100.net/docs/vt510-rm/DECSED.html"
+    "url": "https://vt100.net/docs/vt510-rm/DECSED.html",
+    "sequence": "ESC [ ? 2 J"
   },
   "erase.el-with-attrs": {
     "name": "EL erases with bg color",
@@ -664,7 +674,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "EL (Erase in Line) should fill erased cells with the current background color, not the default background. When a background color is set via SGR (e.g., SGR 42 for green) before issuing EL, the erased area should be painted with that background color. This is how TUI applications create colored status bars, highlighted regions, and filled backgrounds — they set a background color and erase the line to paint the entire line with that color.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: An independently measured default background qualifies SGR42-painted XXXXX; EL must blank the cells while retaining their measured background. Same-as-before alone cannot qualify an ignored SGR. Minimum measured grid 3x7; sampled region 1:1–1:5 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color."
+    "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color.",
+    "sequence": "ESC [ 0 K"
   },
   "erase.ed-scroll-region": {
     "name": "ED at scroll region boundary",
@@ -673,7 +684,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "ED (Erase in Display) behavior when a scroll region (DECSTBM) is active varies by terminal. Some terminals erase only within the scroll region, while others erase the full screen regardless. The key edge case is that content outside the scroll region should generally be preserved by ED operations performed inside the region. This matters for applications that use scroll regions with fixed header/footer areas.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: ED0 at row 3 in margins 3–10 clears ERASE while KEEP! above remains. The fixture needs 10 rows despite sampling only three; cleanup resets margins. Minimum measured grid 10x7; sampled region 1:1–3:5 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\"."
+    "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\".",
+    "sequence": "ESC [ 0 J"
   },
   "editing.insert-chars": {
     "name": "Insert characters (ICH)",
@@ -853,7 +865,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.\n\nmodifyOtherKeys is xterm's opt-in path for less ambiguous keyboard reporting. It predates the Kitty keyboard protocol and is still relevant because many applications learned to parse it first. The tradeoff is compatibility: once enabled, key sequences change shape, so applications must enable it deliberately and restore terminal state on exit.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. Mode 2 is honoured subject to <code>extended-keys</code> and the encoder chooses the outgoing encoding, so inner policy can transform the report without a binding or paste-time conversion; the unproven part is upstream retention of the Ctrl-I identity rather than an ambiguous TAB.",
-    "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Without the OS XTEST adapter, no attempt runs and there is no result. Reset with CSI > 4 ; 0 m."
+    "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Without the OS XTEST adapter, no attempt runs and there is no result. Reset with CSI > 4 ; 0 m.",
+    "sequence": "ESC [ > 4 ; 2 m"
   },
   "input.csi-u": {
     "tier1": "included",
@@ -863,7 +876,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.\n\nCSI u came from the 'fixterms' effort to repair ambiguous keyboard input without replacing the whole terminal protocol. It reports Unicode code points plus modifiers, making Ctrl-I distinguishable from Tab and Ctrl-M from Enter. Kitty's keyboard protocol is the richer successor, but CSI u remains an important compatibility step.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
-    "probe": "Query keyboard mode flags. Expected: the acknowledged flags include mask 1. A primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents."
+    "probe": "Query keyboard mode flags. Expected: the acknowledged flags include mask 1. A primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
+    "sequence": "ESC [ > 1 u"
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
@@ -872,7 +886,8 @@
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.\n\nPixel mouse mode is the precision extension to SGR mouse reporting. Cell coordinates are enough for text widgets, but drawing tools, image viewers, and high-DPI terminal UIs need sub-cell location. The mode uses the familiar SGR mouse response shape, replacing cell units with pixel units.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. The private-mode handler has no 1016 case, and the encoder constructs SGR reports from pane coordinates: a coordinate change alone is the implemented positive predicate and not independent pixel-unit calibration, so the upstream format and pane-coordinate transformation remain to be shown.",
     "probe": "No result until controlled mouse events and their pixel-coordinate reports are checked. A parser mode flag alone does not verify coordinate encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "sequence": "ESC [ ? 1016 h"
   },
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
@@ -881,7 +896,8 @@
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.\n\nURxvt mode was an intermediate answer to xterm's coordinate limit: it kept the mouse idea but reported decimal coordinates. SGR mouse later became the cleaner and more widely adopted version, so mode 1015 is mostly legacy. Testing it still catches parsers that hard-code only the oldest byte-encoded mouse format.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. The private-mode handler has no 1015 case, and the encoder has SGR, UTF-8 and legacy output branches but no urxvt branch, while 1006 stays enabled during target injection: the outer encoding is not shown to reach the callback unchanged.",
     "probe": "No result until controlled mouse events and their urxvt-encoded reports are checked. A generic mouse-tracking flag does not verify this encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "sequence": "ESC [ ? 1015 h"
   },
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
@@ -890,7 +906,8 @@
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.\n\nX10 mode is the ancestor of terminal mouse reporting. It came from xterm and reports only button presses using compact byte-encoded coordinates, which creates the classic 223-column limit. Modern applications should prefer SGR mouse, but X10 remains useful for understanding the compatibility stack that later mouse modes extended.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. The private-mode handler has no mode 9 case, the encoder can keep SGR output while the pane still has 1006 enabled, and a separate legacy encoder exists: legacy-shaped output alone would not prove native X10 mode-9 semantics, and matching is decoded-string based rather than full raw-stream equality.",
     "probe": "App: after a click under 1000+1006 reaches the app, reset both, set 9 and click. A CSI M report with three bytes is Supported. No report is Unsupported. An SGR report, or a failed delivery control, gives no result. Libraries: ask the library's native mouse encoder for a click under mode 9. A CSI M report with three bytes is Supported. Any other report, or none, is Unsupported once the same encoder answers a click under 1000+1006 with its SGR report; without that control there is no result. A library declared, for its exact version, to have no mouse encoder is Untestable; an adapter that cannot reach the library's encoder gives no result. A parser mode flag alone does not verify event encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "sequence": "ESC [ ? 9 h"
   },
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
@@ -899,7 +916,8 @@
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).\n\nMode 1002 was one of xterm's steps from click-only reporting toward interactive mouse tracking. It reports drags only while a button is held, which is enough for selection, resize handles, and sliders without the volume of all-motion mode. The later SGR coordinate encoding made the same event model practical on large terminals.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. tmux sets its local button-motion mode, filters motion by pane mode and regenerates SGR coordinates, so a positive means a matching motion report reached the app; neither source proves unchanged encoding or complete drag transport.",
     "probe": "App: after a click under 1000+1006 reaches the app, set 1002 and drag with the button held. A motion report (SGR Pb+32) before the release is Supported. A press and release with no motion report is Unsupported. No report at all, or a failed delivery control, gives no result. Libraries: ask the library's native mouse encoder for a button-held motion under 1002 with 1006. A motion report (SGR Pb+32) is Supported. Any other report, or none, is Unsupported once the same encoder answers a click under 1000+1006 with its SGR report; without that control there is no result. A library declared, for its exact version, to have no mouse encoder is Untestable; an adapter that cannot reach the library's encoder gives no result. A parser mode flag alone does not verify button-event tracking.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "sequence": "ESC [ ? 1002 h"
   },
   "modes.alt-screen.enter": {
     "name": "Enter alt screen (DECSET 1049)",
@@ -1010,7 +1028,8 @@
     "baseline": "rich",
     "body": "DECLRMM (mode 69) enables left and right scroll margins, similar to top/bottom margins set by DECSTBM. When enabled, DECSLRM sets the left and right margins. Scrolling and editing operations are confined to the margin area.\n\nLeft/right margins extend DEC's top/bottom scroll-region idea into two dimensions. They are useful for forms, panes, and rectangular editing operations, but many modern terminals skip them because most contemporary TUIs manage rectangles in application code. Correct behavior requires editing and scrolling operations to honor both horizontal and vertical margins.",
     "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode.",
-    "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html"
+    "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html",
+    "sequence": "ESC [ ? 69 h / ESC [ left ; right s"
   },
   "modes.insert-replace": {
     "name": "Insert/replace mode (IRM)",
@@ -1180,7 +1199,8 @@
     "tags": ["xterm-extensions"],
     "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Full-screen applications often manage their own scrolling. Screen switching and cursor positions alone cannot establish whether either screen retains scrollback.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: 1049 enter writes an alternate marker, leave restores MAIN_SCREEN_MARKER, then live OK on main row 2. Ignored frame retains the alternate marker tail. Tests both entry and return. Minimum measured grid 4x20; sampled region 1:1–2:18 (rows x columns unless the row states a cell address; region addresses are one-based).",
     "probe": "Enter and leave the alternate screen, then inspect cursor position. This cannot establish independent retained scrollback without history readback, so the cursor-position attempt gives no result for the scrollback claim without history readback.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC [ ? 1049 h/l"
   },
   "scrollback.decstbm": {
     "name": "DECSTBM constrains scrolling",
@@ -1189,7 +1209,8 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When a scroll region is set via DECSTBM, scrolling (line feeds, index, SU/SD) should be constrained to the defined region. Lines outside the scroll region must remain fixed. This is the fundamental mechanism that enables fixed headers, footers, and split-screen layouts in TUI applications. Without proper scroll region isolation, tmux panes, vim status bars, and editor chrome would be disrupted by scrolling content.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: Margins 3–6 plus LF at row 6 lift B/C within the region while F above stays; margins reset. Minimum measured grid 8x3; sampled region 1:1–5:1 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\"."
+    "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\".",
+    "sequence": "ESC [ top ; bottom r"
   },
   "scrollback.decstbm-reset": {
     "name": "DECSTBM reset to full screen",
@@ -1198,7 +1219,8 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "DECSTBM with no parameters (<code>ESC [ r</code>) resets the scroll region to the full screen. After reset, scrolling operations should affect all rows. Applications use this to restore normal scrolling behavior after using scroll regions. Failing to properly reset can leave the terminal in a state where only part of the screen scrolls, causing rendering corruption for subsequent applications.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: Set margins 4–6, SU, reset margins, then SU full screen; row-3 A reaches measured row 2. Witness row 8 governs minimum. Minimum measured grid 8x3; sampled region 1:1–2:1 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height)."
+    "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height).",
+    "sequence": "ESC [ r"
   },
   "scrollback.viewport-hold-output": {
     "name": "Viewport holds on output",
@@ -1230,7 +1252,8 @@
     "tags": ["kitty-extensions"],
     "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits PNG, RGB, or RGBA image data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nThis probe measures acceptance of the canonical direct RGB query: a correlated OK reply accepts it, while a correlated printable error refuses it and separately proves protocol recognition. Visible rendering, transmission and placement require their own measurements. Other terminals may document implementations, but their app behavior requires its own measurement.",
     "probe": "Send the canonical 1x1 direct raw-RGB Kitty graphics query (<code>a=q,t=d,f=24,i=31</code>). A correlated <code>OK</code> reply establishes acceptance; a correlated printable error establishes refusal of this query while retaining protocol recognition separately. The query is followed by a primary device attributes request; a device attributes answer with no graphics reply before it is Unsupported, the detection the protocol's own documentation gives. A malformed reply stays inconclusive. This does not measure visible rendering, transmission or placement.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC _ G i=31,s=1,v=1,a=q,t=d,f=24 ; AAAA ST → ESC _ G i=31 ; OK ST"
   },
   "extensions.sixel": {
     "name": "Sixel graphics",
@@ -1239,7 +1262,8 @@
     "tags": ["sixel"],
     "body": "Sixel is DEC’s raster graphics format, documented in the <a href=\"https://vt100.net/dec/ek-vt3xx-hr-002.pdf\">VT330/VT340 Programmer Pocket Guide</a>. A data character represents a vertical column of six pixels; color-register commands select the palette entry. <code>$</code> returns to the left edge of a band and <code>-</code> advances to the next band.\n\n<a href=\"https://invisible-island.net/xterm/xterm.log.html#xterm_294\">xterm added experimental Sixel support in July 2013</a>. Sixel predates Kitty graphics, but age does not establish support in a particular terminal or transport path.",
     "probe": "App: paint a sixel tile sized to this run's geometry and compare the rectangle with a block painted as SGR truecolor background or, where that paints nothing, SGR 48;5;196. Supported: the rectangle matches the reference. Unsupported: the rectangle is unchanged, or it equals the sixel's own bytes written as plain text. A Sixel declaration or cursor movement does not verify rendering. On a multiplexer that advertises sixel in the same run, an unchanged rectangle gives no result and names the outer terminal. Libraries: Untestable (no library rasterises Sixel); where a library stores Sixel, payload and position are retained as detail, and a failed readback gives no result.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC P 0 ; 1 ; 0 q data ST"
   },
   "extensions.osc8": {
     "name": "Hyperlinks (OSC 8)",
@@ -1492,7 +1516,8 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>\n<p>A notification is a one-time event. <a href=\"/extensions/osc-7501-program-status-query\" class=\"hover-link\">OSC 7501</a> holds the program’s current state instead, and a terminal may notify when a record changes.</p>",
-    "probe": "Desktop delivery itself gives no result: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness. Library engines that keep parsed toasts are measured at that store, never OS delivery, read after each single sequence: <code>OSC 9 ; 4 ; 0</code> must add no toast before any probe result, then an OSC 777 notify toast with a unique title and body must add exactly that toast before any Unsupported, then OSC 9 with a unique body must add exactly one toast with that body; the title the engine stores for it is recorded, not used to decide the probe result. On an App run the terminal itself is asked: launched at its own default configuration and unfocused, it must first show a control notification sent from its own process environment in the same 1000 ms window, and OSC 9 delivery is recorded as not supported only when that control was seen and the target nonce is absent. Under a multiplexer that verdict also requires the terminal hosting the multiplexer to be measured as supported for the same row, so the absence belongs to the multiplexer's default pass-through."
+    "probe": "Desktop delivery itself gives no result: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness. Library engines that keep parsed toasts are measured at that store, never OS delivery, read after each single sequence: <code>OSC 9 ; 4 ; 0</code> must add no toast before any probe result, then an OSC 777 notify toast with a unique title and body must add exactly that toast before any Unsupported, then OSC 9 with a unique body must add exactly one toast with that body; the title the engine stores for it is recorded, not used to decide the probe result. On an App run the terminal itself is asked: launched at its own default configuration and unfocused, it must first show a control notification sent from its own process environment in the same 1000 ms window, and OSC 9 delivery is recorded as not supported only when that control was seen and the target nonce is absent. Under a multiplexer that verdict also requires the terminal hosting the multiplexer to be measured as supported for the same row, so the absence belongs to the multiplexer's default pass-through.",
+    "sequence": "ESC ] 9 ; message BEL"
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
@@ -1501,7 +1526,8 @@
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
     "probe": "App: write a solid-red inline PNG sized to three cells square at row 3 column 3, park the cursor outside it, and read the interior cell against a blank seed, an SGR truecolor red block of the same size or, where that paints nothing, an SGR 48;5;196 block and the same OSC body written as plain text. Supported: the cell matches the SGR reference. Unsupported: the cell is unchanged, or it equals the plain-text body. On a multiplexer an unchanged cell gives no result and names the outer terminal. A third frame or a failed control gives no result. A capability declaration or cursor reply does not verify inline images. Libraries: Untestable (no library renders inline image pixels).",
-    "url": "https://iterm2.com/documentation-images.html"
+    "url": "https://iterm2.com/documentation-images.html",
+    "sequence": "ESC ] 1337 ; File=inline=1 ; width=3 ; height=3 ; preserveAspectRatio=0 : base64 BEL"
   },
   "extensions.truecolor": {
     "name": "24-bit truecolor",
@@ -1622,7 +1648,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.\n\nTabs are cursor motion, not spacing characters painted into the grid. The default eight-column stops are a convention inherited from mechanical devices and codified in terminal behavior. Custom stops are rarely used by modern TUIs, but correct HT behavior is still visible in shells, logs, Makefile output, and legacy full-screen programs.",
     "probe": "Clear every tab stop (<code>CSI 3 g</code>), set one at column 9 (<code>ESC H</code>), return home, then write tab and \"X\": X must land on the stop the program set. The default eight-column stops are tested by Tab Stops (HT).",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC H"
   },
   "unicode.tab-stops": {
     "name": "Tab Stops (HT)",
@@ -1631,7 +1658,8 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "HT (0x09) advances the cursor to the next tab stop. Default tab stops are at every 8th column. Terminals should support HTS (ESC H) to set custom tab stops and TBC (CSI 3 g) to clear them.\n\nHorizontal tab predates video terminals: it comes from mechanical tab stops on typewriters and teletypes. Video terminals inherited the every-eight-columns convention, then added HTS and TBC so full-screen applications could manage tab positions. Modern apps often avoid relying on custom tab stops, but emulators still need them for compatibility.",
-    "probe": "Send a tab character, verify cursor moves to column 8."
+    "probe": "Send a tab character, verify cursor moves to column 8.",
+    "sequence": "HT"
   },
   "text.cr": {
     "name": "Carriage return",
@@ -1640,7 +1668,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "CR (0x0D) moves the cursor to the beginning of the current line without advancing to the next line. Used in combination with LF for line endings, and on its own for overwriting the current line (e.g., progress bars).\n\nCarriage return is a direct inheritance from mechanical printers: it returns the carriage to the start of the line without advancing paper. Terminals kept that behavior, which is why progress bars can redraw one row by emitting CR and replacement text. Newline handling differs by environment because LF and CR remain separate controls.",
     "probe": "Write \"AB\\rC\", verify C overwrote A at col 0 while B remains at col 1.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "CR"
   },
   "text.newline": {
     "name": "Line feed",
@@ -1649,7 +1678,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. Terminal newline mode or TTY output processing can also cause a carriage return to column 1. The observed cursor position alone does not distinguish these causes.",
     "probe": "Headless: write \"A\\r\\nB\" and verify A and B on consecutive rows. App: establish row 3, column 5, write LF, and measure advancement to row 4; retain the final column without requiring it to stay unchanged.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "LF"
   },
   "text.backspace": {
     "name": "Backspace (BS)",
@@ -1658,7 +1688,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "BS (0x08) moves the cursor one position to the left. It does not delete the character — the character remains until overwritten. The cursor stops at column 1 and does not wrap to the previous line.\n\nBackspace is a control character, not an erase command. The hardware-era distinction still matters: BS moves the print position, while the application must overwrite with a space if it wants deletion. Shells and line editors combine BS, space, and BS again for the familiar destructive-backspace visual effect.",
     "probe": "Write \"AB\\x08C\", verify backspace moved cursor back so C overwrote B at col 1, while A remains at col 0.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "BS"
   },
   "text.index": {
     "name": "Index (IND)",
@@ -1667,7 +1698,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "IND (Index) moves the cursor down one line without changing the column. The sequence is <code>ESC D</code>. If the cursor is at the bottom margin of the scroll region, the content scrolls up. Unlike LF, IND never performs a carriage return.\n\nIND is line-feed-like vertical motion without carriage return. It descends from hardware terminal controls where moving down and returning to the left edge were separate operations. At the bottom margin it scrolls the region, making it part of the scrolling model rather than just cursor movement.",
     "probe": "Write \"A\" then send <code>\\x1bD</code> (IND), verify cursor moved down to row 1.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC D"
   },
   "text.next-line": {
     "name": "Next line (NEL)",
@@ -1676,7 +1708,8 @@
     "tags": ["ecma-48", "vt100"],
     "body": "NEL (Next Line) moves the cursor to the beginning of the next line. The sequence is <code>ESC E</code>. Equivalent to a carriage return followed by a line feed (CR + LF). If the cursor is at the bottom margin, the content scrolls up.\n\nNEL is a single control for the CR+LF combination. It reflects the standard's attempt to describe character-imaging devices more generally than Unix line feeds. Many applications just emit CR and LF directly, but NEL support matters for standards-complete parsers and software that targets 8-bit control environments.",
     "probe": "Write \"ABC\" then send <code>\\x1bE</code> (NEL), verify cursor is at row 1, col 0.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC E"
   },
   "text.reverse-index-scroll": {
     "name": "Reverse Index at Scroll Top",
@@ -1685,7 +1718,8 @@
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.\n\nReverse Index is the upward-scrolling counterpart to a newline at the bottom margin. DEC terminals used it for smooth scrolling and region-local updates; modern terminal emulators still need it for applications that manipulate split panes or status areas by moving content down instead of repainting.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: Region 3–10; RI at row 3 pushes MARKER to row 4 while KEEPS! above stays. Ignored frame is the seed; margins reset. Minimum measured grid 10x8; sampled region 1:1–4:6 (rows x columns unless the row states a cell address; region addresses are one-based).",
     "probe": "Set scroll region, write text at top row, send Reverse Index (<code>ESC M</code>), verify content shifted down by one line.",
-    "url": "https://vt100.net/docs/vt510-rm/chapter4.html"
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
+    "sequence": "ESC M"
   },
   "text.overwrite": {
     "name": "Overwrite at cursor",
@@ -1742,7 +1776,8 @@
     "body": "Tests whether SGR 0 (<code>ESC [ 0 m</code>) correctly clears all text attributes — bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and colors. This is the most basic reset and should leave the terminal in its default text rendering state.",
     "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared. App: before any attribute is set, draw YY and save with DECSC. For each of the seven subsets of bold, italic and inverse, draw YY with the subset set, then restore with DECRC: every subset must change the crop and every restore must return it exactly. Then set all three, draw YY, send the made-up SGR 99 and draw YY: the crop must not change. Send SGR 0 and draw YY. Supported: the crop equals the original. Unsupported: the crop equals a subset's crop. A change at the made-up SGR, or a crop matching neither, gives no result. On a multiplexer a crop equal to a subset gives no result and names the outer terminal. If a subset or restore does not qualify, DECRQSS decides, and a silent DECRQSS keeps the row's named refusal.",
     "baseline": "core",
-    "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/"
+    "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
+    "sequence": "ESC [ 0 m"
   },
   "reset.ris": {
     "name": "Full reset (RIS)",
@@ -1788,7 +1823,8 @@
     "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: DEC G0 q maps to U+2500 between ASCII q flank controls; expected frame writes Unicode plainly, so UTF-8 qualification is required. Minimum measured grid 3x5; sampled region 1:1–1:3 (rows x columns unless the row states a cell address; region addresses are one-based).",
     "probe": "Headless: qualify ASCII controls and require exactly U+2500 after DEC Special Graphics designation. The app cursor reply does not establish glyph rendering.",
-    "baseline": "core"
+    "baseline": "core",
+    "sequence": "ESC ( 0"
   },
   "charsets.utf8": {
     "name": "UTF-8 mode",
@@ -1806,7 +1842,8 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: G0 ASCII l, SO-selected DEC G1 l→U+250C, SI ASCII l, between A/Z controls. UTF-8 reference qualification and designation cleanup required. Minimum measured grid 3x7; sampled region 1:1–1:5 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching."
+    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching.",
+    "sequence": "ESC ) 0 / SO / SI"
   },
   "charsets.dec-line-drawing": {
     "name": "DEC line drawing character set",
@@ -1815,7 +1852,8 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.\n\nMultiplexer expectation: conditional mux-answered. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), so this row is decided on tmux's own cell grid: tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code>, and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The expectation holds only inside the named pane's rectangle, with qualified geometry, a stable seed and paint witness, and a target distinguishable from the seed, ignored and reference frames; outer pixels remain the outer terminal's, and the declared screenshot arm falls back to buffer-state readback for qualified text cells. What the acceptor recorded for this row, in its own words: DEC jklmqx maps to ┘┐┌└─│; trailing ASCII j control stays. UTF-8 reference qualification and designation cleanup required. Minimum measured grid 3x9; sampled region 1:1–1:7 (rows x columns unless the row states a cell address; region addresses are one-based).",
-    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured."
+    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured.",
+    "sequence": "ESC ( 0"
   },
   "device.primary-da": {
     "tier1": "included",
@@ -1902,7 +1940,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTVERSION (CSI > 0 q) requests the terminal's name and version string. The response is DCS > | name(version) ST. This allows applications to identify the exact terminal and version at runtime, enabling precise feature detection beyond what TERM or DA responses provide. Originally an xterm extension, now supported by many modern terminals including Ghostty, WezTerm, foot, and kitty.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. <code>CSI &gt; 0 q</code> is answered locally with tmux plus its runtime version (input.c:1805-1812): local answer supported, and it reports tmux's version rather than the outer identity.",
-    "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string. A device attributes answer with no reply before it is Unsupported."
+    "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string. A device attributes answer with no reply before it is Unsupported.",
+    "sequence": "ESC [ > 0 q → ESC P > | name ST"
   },
   "device.term-features": {
     "name": "Feature Reporting (TERM_FEATURES)",
@@ -1911,7 +1950,8 @@
     "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES carries the feature string defined by iTerm2's feature-reporting specification: encoded feature values are concatenated, without semicolon separators. A terminal may also answer an OSC 1337 Capabilities query. An inherited environment value can be stale or supplied by another process, so its presence alone does not establish the current terminal's capabilities.",
-    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, presence cannot be attributed to the terminal."
+    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, presence cannot be attributed to the terminal.",
+    "sequence": "$TERM_FEATURES (environment variable)"
   },
   "device.xtwinops-14": {
     "name": "Report text-area size in pixels (CSI 14 t)",
@@ -2116,7 +2156,8 @@
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
     "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and verify the terminal responds with cell dimensions. A device attributes answer with no reply before it is Unsupported.",
-    "url": "https://iterm2.com/documentation-escape-codes.html"
+    "url": "https://iterm2.com/documentation-escape-codes.html",
+    "sequence": "ESC ] 1337 ; ReportCellSize BEL → ESC ] 1337 ; ReportCellSize=height ; width BEL"
   },
   "extensions.osc1337-capabilities": {
     "tier1": "included",
@@ -2126,7 +2167,8 @@
     "baseline": "rich",
     "body": "OSC 1337 ; Capabilities asks the terminal to report its supported features. The response is OSC 1337 ; Capabilities=... ST with the vendor-defined feature string. This reports the capability-query facility; it does not exercise every advertised feature.",
     "probe": "Send <code>OSC 1337 ; Capabilities BEL</code> and check for a complete <code>OSC 1337 ; Capabilities=... ST</code> reply. A device attributes answer with no reply before it is Unsupported.",
-    "url": "https://iterm2.com/feature-reporting/#publication"
+    "url": "https://iterm2.com/feature-reporting/#publication",
+    "sequence": "ESC ] 1337 ; Capabilities BEL → ESC ] 1337 ; Capabilities=… BEL"
   },
   "extensions.sixel-da1": {
     "tier1": "included",
@@ -2136,7 +2178,8 @@
     "tags": ["sixel"],
     "body": "DA1 (Primary Device Attributes) response includes attribute 4, indicating sixel graphics support. This is the standard way for applications to detect sixel capability — send CSI c, check if the response contains ;4; in the attribute list. More reliable than attempting to render a sixel image and checking if the cursor moved.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The exact <code>CSI c</code> query reaches tmux's hardcoded DA1 (input.c:1552-1566), which includes attribute 4 only under <code>ENABLE_SIXEL</code>: local answer provenance is supported, the build is conditional, and the reply is not an outer-renderer capability.",
     "probe": "Check if the DA1 response (<code>CSI ? Ps ; Ps ; ... c</code>) includes attribute 4, indicating sixel graphics support.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ c → ESC [ ? … ; 4 ; … c"
   },
   "extensions.sixel-geometry-report": {
     "tier1": "included",
@@ -2156,7 +2199,8 @@
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.\n\nOSC 9 is also iTerm2’s notification number, and that clash has garbled output in terminals that know only one of the two. A terminal may show OSC 9;4 as the <a href=\"/extensions/osc-7501-program-status-query\" class=\"hover-link\">OSC 7501</a> root record, and should stop doing so once it receives an OSC 7501 report until the next full reset.",
     "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>. Library engines with a stored OSC 9;4 report reader are measured at the engine's stored state, never progress display: a control <code>OSC 9;4;1;37</code> must read back as state 1 with value 37 before any Unsupported, then <code>OSC 9;4;3</code> must store state 3 and a final <code>OSC 9;4;0</code> must store state 0, never no report. The error state 2, the paused state 4, 100%, and the stored values for states 0 and 3 are not graded.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC ] 9 ; 4 ; state ; percent BEL"
   },
   "extensions.osc66-text-sizing": {
     "name": "OSC 66 text sizing",
@@ -2165,7 +2209,8 @@
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 66 is the Kitty text sizing protocol, allowing applications to request text at different sizes and explicitly specify character cell widths. The sequence <code>OSC 66 ; metadata ; text ST</code> carries the text to render, with <code>s=N</code> for scale factor and <code>w=N</code> for explicit cell width.\n\nThis protocol addresses character-width ambiguity by letting applications specify how many cells text occupies. Cursor advancement can measure that cell-width effect; it cannot establish the visible shape or size of the glyphs.",
     "probe": "At a known cursor origin, record CPR, print a space using OSC 66 first with <code>w=2</code>, then with <code>s=2</code>, then compare CPR column advances. This measures cursor-cell effects, not glyph appearance.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC ] 66 ; w=2 ; text BEL / ESC ] 66 ; s=2 ; text BEL"
   },
   "extensions.osc5522-clipboard": {
     "tier1": "included",
@@ -2175,7 +2220,8 @@
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. It can carry multiple MIME types, such as text/plain, text/html and image/png, in a clipboard operation.\n\nA DECRPM response for mode 5522 establishes protocol recognition. It does not establish clipboard read or write permission, MIME transfer, or paste-event behavior.",
     "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. Expected: set, reset or permanently set (Ps 1-3) is supported as protocol recognition only; permanently reset (Ps 4) is unsupported. Not recognized (Ps 0) answered before the DA1 sentinel is unsupported, while Ps 0 arriving after the sentinel is inconclusive. No complete reply in the deciding window gives no result. On an App, when no mode query in the run gets any DECRPM reply, this terminal has no report to read, and the row is Untestable, naming the silent control query. A library in that case has no result. On an App, outside that all-silent case, if one or more sibling queries are measured silent with the DA1 fence answered, the mixed reporter gives no result and names the missing clipboard observer. Mode-query silence decides nothing; the missing observer would write through OSC 5522 and read back through OSC 52, which may require clipboard-read permission. This does not read or write the clipboard.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ ? 5522 $ p → ESC [ ? 5522 ; Ps $ y"
   },
   "modes.color-scheme-reporting": {
     "name": "Mode 2031 color scheme reporting",
@@ -2184,7 +2230,8 @@
     "tags": ["xterm-extensions"],
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 996 n</code> (DECDSR 996). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe asks exactly <code>CSI ? mode $p</code>: tmux's private-mode query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641), and mutation handlers elsewhere add no query reply. The exact local handler replies 2031;2, and the app criterion measures the recognized reporting mode rather than unsolicited theme-event conformance: ownership is supported.\n\nThis library cell measures mode 2031 recognition through the engine DECRPM reply. An unsolicited scheme-change report is not tested; no host palette change is inferred.",
     "probe": "Library mode-state criterion: DECSET private mode 2031, query DECRPM and read getMode, then DECRST, query and read again. Supported requires Ps 1 after set, Ps 2 after reset and getMode true then false. Ps 0, 2 or 4 after DECSET is Unsupported. No reply, a null or disagreeing getMode, and every other reply pair, including Ps 3, give no result. scheme-change report (CSI ? 997 ; Ps n, unsolicited) unmeasured; recognition measured. App protocol criterion: snapshot DECRPM mode 2031. Ps 1 or 3 is Supported without mutation; Ps 0 or 4 is Unsupported without mutation. Ps 2 sends DECSET, queries again, then restores DECRST: Ps 1 or 3 is Supported; still Ps 2 is Unsupported (recognized but DECSET refused (mode kept reset)). Without a DECRPM reply there is no result. Requires existing disposable-terminal authority. presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
-    "baseline": "modern"
+    "baseline": "modern",
+    "sequence": "ESC [ ? 2031 h"
   },
   "modes.xtpushsgr": {
     "name": "XTPUSHSGR — push SGR stack (CSI # {)",
@@ -2253,7 +2300,8 @@
     "tags": ["xterm-extensions"],
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. tmux selects mode 2 for parameter 2, or mode 1 for parameter 1 and the always policy, and has no mode-3 selection, while the encoder writes an unmodified printable directly: that undermines an unchanged-relay expectation without deciding any run's capability.",
     "probe": "Confirm XTEST delivery with plain a, then enable modifyOtherKeys 3 (CSI > 4 ; 3 m) and inject unmodified i. CSI 27;1;105~ or CSI 105;1u is supported; bare i means the mode was ignored (unsupported). Without the OS XTEST adapter, no attempt runs and there is no result. Reset with CSI > 4 ; 0 m.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 4 ; 3 m"
   },
   "input.xtest-click": {
     "appOnly": { "reason": "OS input reaches only an app window; a library gets no OS keys or clicks." },
@@ -2293,7 +2341,8 @@
     "tags": ["kitty-extensions"],
     "body": "Flag 1 of the Kitty keyboard protocol's progressive enhancement. When set, the terminal uses CSI u encoding for keys that would otherwise be ambiguous — e.g., Escape vs Alt, Tab vs Ctrl+I, Enter vs Ctrl+M. This is the minimum flag most applications need. Without it, decades-old terminal ambiguities persist. All terminals claiming kitty keyboard support must implement this flag.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
     "probe": "Push keyboard mode with flag 1 (<code>CSI > 1 u</code>), query flags (<code>CSI ? u</code>), verify bit 1 is set in response, then pop (<code>CSI < u</code>). After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 1 u"
   },
   "extensions.kitty-keyboard.report-events": {
     "tier1": "included",
@@ -2303,7 +2352,8 @@
     "tags": ["kitty-extensions"],
     "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. Release events for Enter, Tab and Backspace also require flag 8 (report all keys as escape codes); text-producing keys require that mode for repeat and release reporting. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
     "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 3 u"
   },
   "extensions.kitty-keyboard.report-alternate": {
     "tier1": "included",
@@ -2313,7 +2363,8 @@
     "tags": ["kitty-extensions"],
     "body": "Flag 4 reports alternate key representations. When set, the terminal includes a shifted_key sub-parameter showing what key the user intended (e.g., Shift+1 reports both '1' and '!'). Without this flag, applications receive only the base key and must guess the shifted result based on keyboard layout — which varies by locale.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
     "probe": "Push keyboard mode with flags 1+4 (<code>CSI > 5 u</code>), query flags, verify bit 4 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 5 u"
   },
   "extensions.kitty-keyboard.report-all-keys": {
     "tier1": "included",
@@ -2323,7 +2374,8 @@
     "tags": ["kitty-extensions"],
     "body": "Flag 8 makes ALL keypresses generate escape sequences, including unmodified printable characters that would normally be sent as plain text. This gives applications complete, unambiguous key identification but changes fundamental terminal behavior — plain typing no longer produces direct output. Applications must explicitly handle every key. Known gotcha: enabling this flag can break mouse hover/tracking in some implementations if not handled carefully.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
     "probe": "Push keyboard mode with flags 1+8 (<code>CSI > 9 u</code>), query flags, verify bit 8 is set. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 9 u"
   },
   "extensions.kitty-keyboard.report-text": {
     "tier1": "included",
@@ -2333,7 +2385,8 @@
     "tags": ["kitty-extensions"],
     "body": "Flag 16 adds associated text codepoints to key events. When a key press would produce text (after input method processing, dead keys, compose sequences), the terminal includes the resulting text as an additional parameter. This is critical for international input — compose sequences, CJK input methods, and dead key combinations produce text that can't be derived from the key code alone.\n\nUnder tmux 3.6 the probe runs inside a tmux pane, and tmux's CSI dispatch table carries no <code>?u</code>, <code>&gt;u</code> or <code>&lt;u</code> entry (input.c:302-344), so a <code>CSI ? u</code> flag query is not negotiated with the outer terminal: the deciding basis is a qualified local DA1 necessary-condition negative (input.c:1552-1566), never a positive Kitty flags reply. The manual's extended-keys and csi-u text describes xterm modifyOtherKeys and key-event formatting, which does not establish a flags answer.",
     "probe": "Push keyboard mode with flags 1+8+16 (<code>CSI > 25 u</code>), query flags, verify bits 8 and 16 are set, then pop the mode. Key-event behavior is not tested; this probe checks mode flags only. After the push, a primary device attributes reply with no keyboard-flags reply before it is Unsupported, the detection the Kitty keyboard protocol documents.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ > 25 u"
   },
   "extensions.kitty-graphics.transmit": {
     "tier1": "included",
@@ -2343,7 +2396,8 @@
     "tags": ["kitty-extensions"],
     "body": "The transmit action (<code>a=t</code>) sends image data to the terminal for storage without displaying it. The terminal assigns an image ID and acknowledges receipt. This is the foundation of the kitty graphics protocol — images are transmitted once and can be displayed multiple times at different positions.",
     "probe": "Transmit one 1x1 raw-RGB pixel with <code>a=t,f=24</code> and a fresh image number. Verify the reply allocates an image ID and echoes that number; display behavior is not tested; this probe checks image-ID allocation only.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC _ G a=t,f=24,s=1,v=1,t=d,I=N ; base64 ST → ESC _ G i=id,I=N ; OK ST"
   },
   "extensions.kitty-graphics.display": {
     "tier1": "included",
@@ -2353,7 +2407,8 @@
     "tags": ["kitty-extensions"],
     "body": "The display/placement action (<code>a=p</code>) places a previously transmitted image at a screen position. Supports specifying rows/columns, z-index, and cropping. This separation of transmit and display enables efficient re-use — transmit once, place many times. If Kitty graphics transmit is Unsupported in the same run because the run read its effect and saw it fail, this reads Unsupported too, because an image must be transmitted before it can be displayed. If Kitty graphics transmit is Unsupported only because its query went unanswered, this keeps its own result.",
     "probe": "Transmit a test image, then place it with <code>a=p</code>. Check for acknowledgment. App: when the placement gets neither an acknowledgement nor an error before its DA1 control, and the run captures pixels, the same allocated image is placed over a cell block with the cursor parked outside it, the block is captured twice with a delay and no write between, and only then is the same block painted independently with SGR in the image's colour. Supported: both captures are identical and equal that SGR reference, and the reference differs from the blank block captured before the placement. A mismatch, a missing capture, an unstable pair or a reference equal to blank stays open; silence is never Unsupported, and only the image this row allocated is freed.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC _ G a=p,i=id,c=2,r=1,C=1 ST"
   },
   "extensions.kitty-graphics.animation": {
     "name": "Kitty graphics: animation",
@@ -2362,7 +2417,8 @@
     "tags": ["kitty-extensions"],
     "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.\n\nAnimation is one of the least portable parts of the Kitty graphics protocol. It assumes the terminal stores image state, composes frames, and schedules timing rather than just painting cells. Applications should detect support and provide a static-image fallback, especially through multiplexers or remote sessions. If Kitty graphics transmit is Unsupported in the same run because the run read its effect and saw it fail, this reads Unsupported too, because an animation's frames are transmitted images. If Kitty graphics transmit is Unsupported only because its query went unanswered, this keeps its own result.",
     "probe": "App: place a one-frame image; it must match an independently SGR-painted opaque reference that differs from blank and hold still over the timed pair. A cursor move inside the capture must leave the rectangle unchanged and one glyph outside it must change the screen. Then place a two-frame image. Supported: the rectangle changes between two captures with no write between them, at the gap or at twice the gap, and selecting frame 2 by hand also changes it. Unsupported: the two-frame image paints exactly as the one-frame image, playback leaves the rectangle unchanged at twice the gap, and the terminal refuses this image's second-frame transfer, root-frame timing or playback-start command. A refusal is the terminal's own error reply carrying this image's identifier; an OK or no reply is not a refusal. A failed control gives no result and never establishes Unsupported; unchanged pixels without that refusal give no result, naming the replies seen. A refusal only from later stop or hand-selection controls cannot establish Unsupported. A terminal silent to both an image transmit and the canonical a=q query has no image to animate, and the row is Untestable. Libraries: Untestable (no rendered images).",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC _ G a=f,i=id,z=gap ; base64 ST / ESC _ G a=a,i=id,s=3,v=1 ST"
   },
   "extensions.kitty-graphics.unicode-placeholders": {
     "name": "Kitty graphics: Unicode placeholders",
@@ -2371,7 +2427,8 @@
     "tags": ["kitty-extensions"],
     "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates. If Kitty graphics transmit is Unsupported in the same run because the run read its effect and saw it fail, this reads Unsupported too, because a placeholder shows a transmitted image. If Kitty graphics transmit is Unsupported only because its query went unanswered, this keeps its own result.",
     "probe": "App: place an image through placeholder cells and capture it twice, then capture the same characters with the image deleted. An ordinary placement of the same pixels in the same rectangle must match an independently SGR-painted opaque reference there, and that reference must differ from blank. Supported: the placeholder rectangle differs from the image-deleted state and matches the ordinary placement. Unsupported: the two states are identical while the ordinary placement qualifies and the terminal refuses the tested a=T,U=1 virtual placement. A refusal is the terminal's own error reply carrying this image's identifier; an OK or no reply is not a refusal. The virtual placement and its continuation chunks use q=0, and retain the complete success or refusal readback. Text beside the placeholder grid and on the row below it is captured in both states as a layout guard: it holds when the two crops are identical, or when they have the same size, alpha is exact, no RGB channel differs by more than 1, and every pixel keeps its background or ink class under the background colours this run saw in calibration; a guard that does not hold gives no result, because the two states may not show the same layout. Unchanged pixels without that refusal give no result, naming the replies seen. A changed rectangle alone is not evidence of image rendering; a failed qualification gives no result and never establishes Unsupported. A terminal silent to both an image transmit and the canonical a=q query has no image to place, and the row is Untestable. Libraries: Untestable (no rendered placeholder images).",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC _ G a=T,U=1,i=id,c=2,r=2 ; base64 ST"
   },
   "extensions.osc52-write": {
     "tier1": "excluded",
@@ -2383,7 +2440,8 @@
     "probe": "In an isolated headless backend with clipboard-state readback, write a known OSC 52 c control and confirm that exact selector and encoded payload in the same clipboard readback. Write a fresh distinct probe nonce and require its exact selector and encoded payload as a new retained write. If the control is not recorded, there is no result, because no control on that same path was seen. If the control is recorded but the probe write is missing, there is no result: the control OSC 52 c write was recorded but the probe write was not, so the readings in this run disagree. A different retained write is inconclusive. A headless backend without clipboard readback writes a fresh nonce and reads it back through a complete OSC 52 reply. In an owned disposable Linux display, a real key event precedes the write, as on any used terminal; then write a fresh OSC 52 nonce and check the clipboard independently with X11, then restore and verify the baseline. Without the owned fixture, live collection sends no clipboard traffic; the site shows no result because no clipboard operation is attempted.",
     "baseline": "modern",
     "probeStatus": "partial",
-    "probeStatusReason": "partial: fixture-gated; the contract reads back only a round-trip against the owned clipboard fixture (27832 section F2), so the standard run does not measure it"
+    "probeStatusReason": "partial: fixture-gated; the contract reads back only a round-trip against the owned clipboard fixture (27832 section F2), so the standard run does not measure it",
+    "sequence": "ESC ] 52 ; c ; base64 BEL"
   },
   "extensions.osc52-read": {
     "tier1": "excluded",
@@ -2395,7 +2453,8 @@
     "probe": "In an isolated headless backend, write a fresh nonce and require the exact decoded value in a complete OSC 52 reply. In an owned disposable Linux display, seed the clipboard independently with X11, query using OSC 52, require a complete canonical reply with that nonce, then restore and verify the baseline. Without the owned fixture, live collection sends no clipboard traffic; the site shows no result because no clipboard operation is attempted.",
     "baseline": "rich",
     "probeStatus": "partial",
-    "probeStatusReason": "partial: fixture-gated; the contract reads back only a round-trip against the owned clipboard fixture (27832 section F2), so the standard run does not measure it"
+    "probeStatusReason": "partial: fixture-gated; the contract reads back only a round-trip against the owned clipboard fixture (27832 section F2), so the standard run does not measure it",
+    "sequence": "ESC ] 52 ; c ; ? BEL → ESC ] 52 ; c ; base64 BEL"
   },
   "extensions.osc1-icon": {
     "name": "Icon name (OSC 1)",
@@ -2793,7 +2852,8 @@
     "tags": ["kitty-extensions"],
     "body": "Kitty shell integration can request clickable prompts with <code>OSC 133;A;click_events=1</code> for absolute Y coordinates or <code>click_events=2</code> for coordinates relative to the prompt. The resulting click events use xterm SGR mouse encoding. This is separate from Kitty keyboard-protocol flags and CSI u key events.\n\nMultiplexer expectation: conditional pass-through; the transport chain is unproven. Under tmux 3.6 the probe's daemon runs inside a detached tmux pane (packages/admin/src/mux.ts:53,139,153), so input would have to travel injector to tmux's key decoder and bindings to the pane PTY to the daemon. Matched input can be decoded, re-encoded or filtered on the way: tmux chooses its outgoing encoding from the pane mode and <code>extended-keys-format</code> and rebuilds mouse reports from pane coordinates, so byte-exact transport is not expected and never was promised. The attached client, the upstream decoder and the binding chain are unproven, OS injection is optional (Linux XTEST against an owned outer window), and the app compares a matched string after arming a listener rather than the complete byte stream. The target phase deliberately runs with mouse modes off, and tmux returns early when the pane has no mouse mode, so a prompt-generated SGR event can be blocked even without a key binding or paste-time reinterpretation; OSC 133 prompt forwarding and upstream input classification were not inspected, and no global Kitty or tmux capability result follows.",
     "probe": "Not tested yet: enable shell-integration click events, perform a click, and record the resulting SGR mouse event.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC ] 133 ; A ; click_events=1 BEL"
   },
   "modes.decsscls": {
     "name": "DECSSCLS — set scroll speed",
@@ -2802,7 +2862,8 @@
     "tags": ["vt510"],
     "body": "DECSSCLS (Set Scroll Speed) controls scrolling presentation. The sequence is <code>CSI Ps SP p</code>, with a space intermediate before the final <code>p</code>. The VT510 reference manual defines default or 0–3 as 9 lines per second, 4–8 as 18 lines per second, and 9 as jump scrolling as fast as lines are received. User Features Locked can inhibit changes.\n\nThese values describe presentation timing, so accepting the bytes without an error does not establish support. A measurement needs a controlled line burst, timed observations of the target terminal's scrolling, and controls for the default rate and jump scrolling.\n\nMultiplexer expectation: conditional mux-answered; the timing branch stays unproven until it is attributed to the mux layer. Under tmux 3.6 the probe's daemon runs inside the tmux pane (packages/admin/src/mux.ts:53,131-142,153), while tmux's format list exposes <code>cursor_x</code>, <code>cursor_y</code>, <code>alternate_on</code>, <code>pane_in_mode</code> and <code>history_size</code> - and <code>pane_in_mode</code> counts active modes rather than naming a DEC mode table. The route alone is a routing intent: it attaches no outer client, installs no capture and measures no rectangle mapping, so it cannot by itself decide this row. What the acceptor recorded for this row, in its own words: Measures presentation speed, not static cells: force smooth mode, compare settled jump control with 9-lines/s timed target; band must move into its settled row inside a computed capture window. Text-cells throw at :967–970. Actual predicate includes wall-clock timing and outer raster motion. The row therefore stays declared alongside the other 43 conditional grid rows, and only its timing branch is unproven; nothing here upgrades it to an unconditional answer. Minimum measured grid 10x1 plus measured pixel geometry (rows x columns unless the row states a cell address; region addresses are one-based).",
     "probe": "Term probe: time the presentation of a fixed line burst at the requested DECSSCLS rate, with a jump-scroll control. Expected: the marker band reaches its settled row between the two target frames and text moves through the watched region, while the jump control stays identical and the band's first capture lands inside the throttled window, whose length the probe computes at run time. The headless parser paints no frames, so it is not tested. DECSSCLS is CSI Ps SP p, not a DEC mode. Lib review reason: presentation speed: headless engines paint no frames and expose no scroll-speed state; Untestable requires an independently bound per-capture decision.",
-    "baseline": "legacy"
+    "baseline": "legacy",
+    "sequence": "ESC [ N SP p"
   },
   "modes.decsclm": {
     "name": "DECSCLM — smooth scroll mode",
@@ -2811,7 +2872,8 @@
     "tags": ["vt510", "dec-private-modes"],
     "body": "DECSCLM (Scrolling Mode) toggles between smooth and jump scrolling via <code>CSI ? 4 h</code> (smooth) and <code>CSI ? 4 l</code> (jump). On the original VT100, smooth scrolling animated text line-by-line at a visible speed, while jump scrolling snapped instantly — a noticeable difference on 1978 CRT hardware.\n\nOn modern terminals this distinction is largely cosmetic. Most terminals either ignore DECSCLM entirely or treat it as a no-op since rendering is already instantaneous. Contour implements it for completeness. xterm supports it and actually does render line-by-line in smooth mode, creating a retro scrolling effect.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and this probe asks exactly <code>CSI ? mode $p</code>: tmux's private-mode query switch answers only 12, 2004, 1004, 1006 and 2031 (input.c:1608-1641), and mutation handlers elsewhere add no query reply. No exact local query answer exists, and a library presentation-timing review is not the app callback.",
     "probe": "Library mode-state criterion: DECSET private mode 4, query DECRPM and read getMode, then DECRST, query and read again. Supported requires Ps 1 after set, Ps 2 after reset and getMode true then false. Ps 0, 2 or 4 after DECSET is Unsupported. No reply, a null or disagreeing getMode, and every other reply pair, including Ps 3, give no result. Read insertMode before and after DECSET: a flip is Unsupported, because the engine lets private mode 4 change ANSI insert mode; on a Ps 1 then Ps 2 pair, either missing reading gives no result until the library adapter can read insertMode. smooth-scroll presentation unmeasured in lib arm. App protocol criterion: snapshot DECRPM mode 4. Ps 1 or 3 is Supported without mutation; Ps 0 or 4 is Unsupported without mutation. Ps 2 sends DECSET, queries again, then restores DECRST: Ps 1 or 3 is Supported; still Ps 2 is Unsupported (recognized but DECSET refused (mode kept reset)). Without a DECRPM reply there is no result. Requires existing disposable-terminal authority. presentation (tearing, scroll cadence, inverted frame) unmeasured; protocol measured",
-    "baseline": "legacy"
+    "baseline": "legacy",
+    "sequence": "ESC [ ? 4 h"
   },
   "device.dsr-996-color-scheme": {
     "tier1": "included",
@@ -2821,6 +2883,7 @@
     "tags": ["dec-private-modes"],
     "body": "DSR ?996 queries the terminal's current color scheme (dark or light). The query is <code>CSI ? 996 n</code> and the response is <code>CSI ? 997 ; Ps n</code> where Ps is 1 for dark and 2 for light.\n\nThis is Contour's approach to color scheme detection, related to but distinct from Mode 2031 (which uses DECRPM to report and unsolicited DSR to notify of changes). DSR ?996 is a one-shot query that returns the current state, while Mode 2031 enables ongoing notifications when the scheme changes.\n\nUnder tmux 3.6 the probe's daemon runs inside the tmux pane, and these replies are not all composed from a tty entry: ten of the fifteen exact queries reach a local handler and five reach none in the complete unwrapped CSI/DCS dispatch, with neither a local handler nor a dropped query being a runtime support result. The colour-scheme reply is a local theme answer only when the pane theme is known (input.c:1602-1605, 3358-3370): a conditional local answer, with no unconditional reply asserted.",
     "probe": "Send CSI ? 996 n and verify response matches CSI ? 997 ; Ps n format. A device attributes answer with no reply before it is Unsupported.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "sequence": "ESC [ ? 996 n → ESC [ ? 997 ; Ps n"
   }
 }
