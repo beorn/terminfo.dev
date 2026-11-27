@@ -241,6 +241,12 @@ export function hasAuditedOscInterfaceAbsence(
         (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
           identity.loadedBinary.sha256 === "ff7d2eb1021ac1a5629a151ea4b2b6f510312af36245377dc92ffb56508ca746" &&
           identity.provenance.sourceCommit === "17d0ee52ebdfdfc4589d453cd6bed8a8af96fa2e" &&
+          auditedAdapterSources(identity, "weztermPixelMouse")) ||
+        // CTO c4c00007: a same-source rebuild of the 17d0ee52 build. packages/wezterm/native is tree f49f22f6 at
+        // both 17d0ee52 and 3ace861, and the lock is unchanged (c692daca), so the audited code is identical.
+        (identity.provenance.lockSha256 === "c692daca661c77d06ab3c864317b15b6ea56226019a97e4e523ee4309e9ea886" &&
+          identity.loadedBinary.sha256 === "067bbc8ffe35b6ec9a6e7be047ae8aa68ffba8940e1d01b0821b882ab24d9130" &&
+          identity.provenance.sourceCommit === "3ace861dbc73a6db51e3a8fe88ba47a0c268d62b" &&
           auditedAdapterSources(identity, "weztermPixelMouse")))
     )
   }
