@@ -939,6 +939,68 @@ describe("TTY transaction replies", () => {
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
+  // #39055: a conforming lone selector (U+FE0F with no base) advances nothing, so a settled report of 1;1 IS the
+  // measurement. Refusing it made the VS16 control unpassable everywhere and blanked text.wide.emoji-vs16 on every app.
+  it("reads a zero-column sample as zero once a second report confirms it settled", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else if (lastControl === "A") reply("\x1b[1;2R")
+        else reply("\x1b[1;1R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("\uFE0F"), out)).toBe(0)
+    expect(writes).toEqual([
+      "\x1b7",
+      "\x1b[2;1H",
+      "\x1b[6n",
+      "\x1b[1;1HA",
+      "\x1b[6n",
+      "\x1b[1;1H\uFE0F",
+      "\x1b[6n",
+      "\x1b[6n",
+      "A",
+      "\x1b[6n",
+      "\x1b8",
+    ])
+  })
+
+  // A zero reading is only evidence when it stays put: a stale or overtaking reply shows up as the confirmation read
+  // disagreeing, which is refused rather than published as a zero-width sample.
+  it("declines a home-cell report that a second report contradicts", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    let sampleReads = 0
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else {
+          sampleReads += 1
+          reply(sampleReads === 1 ? "\x1b[1;1R" : "\x1b[1;2R")
+        }
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("\uFE0F"), out)).toEqual({
+      kind: "control-mismatch",
+      step: "sample",
+      observed: { row: 1, col: 2 },
+    })
+    expect(writes).not.toContain("A")
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
   it("restores cursor and declines a width when the setup grid cannot be verified", async () => {
     const writes: string[] = []
     const out = {
