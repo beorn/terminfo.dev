@@ -41,6 +41,7 @@ A terminal may have one run per permission setting (clipboard access, for exampl
 - Multiplexers such as tmux and GNU Screen, remote sessions, non-default configurations or fonts.
 - Features that need a person: text reflow on resize, font ligatures, a paste you start yourself.
 - Resuming a program after a restart (OSC 7577). Deciding it needs a restart harness that ends a real session and relaunches the program, and a way to read the terminal's own resume record back; the lab has neither, so the resume and verification checks are deferred rather than measured.
+- Whether the OSC 7577 token is new for each pane and each terminal start. Deciding it means comparing the tokens of two panes, and of two launches, without keeping either; the lab has not set that comparison up, so this check is deferred too. The token row measures only that a token is present and well formed.
 - Program status a terminal keeps (OSC 7501). The record is the terminal's own, so reading it needs that terminal's reader on an adopter, and the visible status needs a screenshot on an adopter; neither exists yet, so those checks are deferred.
 
 For those, see [Contribute a run](/how-it-works/contribute-a-run).
