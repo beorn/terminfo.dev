@@ -65,6 +65,15 @@ test("Vterm 0.14.0 keeps the shared identity cohort exact", () => {
   const matches = (runtimeIdentity: unknown) =>
     hasAuditedOscInterfaceAbsence({ ...library("vterm"), runtimeIdentity } as LibProbeSource, "vterm-d2")
   expect(matches(identity)).toBe(true)
+  // #38970: 0.15.0 joins at its own tree only; the 0.14.0 tree under the new version stays out.
+  expect(
+    matches({
+      ...identity,
+      engineVersion: "0.15.0",
+      integrity: { ...identity.integrity, treeOid: "077db6829a322150b5ec197eec028b7ec6f01791" },
+    }),
+  ).toBe(true)
+  expect(matches({ ...identity, engineVersion: "0.15.0" })).toBe(false)
   expect(matches({ ...identity, engineVersion: "0.13.2" })).toBe(false)
   expect(matches({ ...identity, integrity: { ...identity.integrity, treeOid: "f".repeat(40) } })).toBe(false)
   expect(matches({ ...identity, integrity: { ...identity.integrity, cleanTree: false } })).toBe(false)
