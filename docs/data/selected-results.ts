@@ -56,6 +56,7 @@ import {
 } from "@terminfo/probe-defs"
 import { type LoadedRun, type RunTraceFacts, parseJsonStrict } from "@terminfo/run-parser"
 import { DECIDED_STATUSES } from "./app-cells.ts"
+import { cellEntryHashes, suiteEntryHashes } from "./legacy-entry-hashes.ts"
 import {
   currentIdentityRuleCheck,
   identityRuleRevision,
@@ -356,6 +357,18 @@ export interface SelectedContextCell {
    */
   held?: HeldMarker
   /**
+   * Set only when #39007's tightened-criterion rule replaced a decided verdict with the current suite's open
+   * reading (@cpo/term 2026-11-27): the feature result reads what this build's criterion gives (To do), while
+   * `result`, `run` and `origin` are the newer attempt, and this names the pass it superseded. Read by nothing
+   * that decides status; it exists so a page can say the row once read Supported under an older criterion.
+   */
+  supersededDecision?: {
+    runId: string
+    suiteId: string | null
+    measuredAt: string
+    status: FeatureResultStatus
+  }
+  /**
    * Set only when the mux-input demotion (mux-outer-demotion.ts, #33665) read this cell: the mux measured Unsupported on
    * an input row the placed outer terminal of the same version also reads Unsupported, so the feature result reads
    * untestable while `result`, `run` and `origin` stay the measured original.
@@ -570,6 +583,11 @@ export function projectResults(
     derived?: readonly DerivedRow[]
     /** App only rows (#38772); absent means the catalogue's own declarations, content/features.json `appOnly`. */
     appOnly?: ReadonlyMap<string, AppOnlyDeclaration>
+    /**
+     * Each suite's per-row catalogue entry hashes (#39007): the test for "this build's criterion for the row
+     * changed". Absent means no suite can say a criterion changed, so no decided cell is ever superseded.
+     */
+    entryHashes?: (suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined
     onProgress?: (completed: number, total: number) => void
   },
   archivedExclusions: readonly SelectedExclusion[],
@@ -730,6 +748,7 @@ export function projectResults(
       policy.declared ?? [],
       policy.onProgress,
       policy.appOnly ?? catalogAppOnly(),
+      policy.entryHashes,
     ),
   }
 }
@@ -802,6 +821,75 @@ function applyReopened(
     }
     applied.add(row)
   }
+}
+
+/**
+ * #39007 (@cpo/term 2026-11-27): a pass graded under a criterion this build has since tightened is not a decided
+ * result. When a newer attempt on the cell did not decide it, the row's catalogue entry differs between the two
+ * suites, and the versions match, the verdict no longer publishes: the feature result reads To do and the superseded
+ * verdict is kept as history. Every other unfinished attempt leaves the decided cell alone.
+ */
+function tightenedSupersedes(
+  run: ProjectionRun,
+  featureId: string,
+  cell: SelectedContextCell,
+  entryHashes: ((suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined) | undefined,
+): SelectedContextCell | null {
+  const featureResult = cell.featureResult
+  if (!entryHashes || !featureResult) return null
+  const status = featureResult.status
+  if (!DECIDED_STATUSES.has(status)) return null
+  if (cell.run.subject.version !== run.subject.version) return null
+  const priorSuite = cell.run.probeHash
+  if (!priorSuite || !run.probeHash || priorSuite === run.probeHash) return null
+  if (Date.parse(run.measuredAt) <= Date.parse(cell.run.measuredAt)) return null
+  const before = entryHashes(priorSuite, cell.run.runId)?.[featureId]
+  const after = entryHashes(run.probeHash, run.runId)?.[featureId]
+  // A suite that records no entry hash cannot say the criterion changed: the decided cell stands.
+  if (!before || !after || before === after) return null
+  return {
+    ...cell,
+    featureResult: { ...featureResult, status: "probe-todo", strength: null },
+    supersededDecision: {
+      runId: cell.origin.runId,
+      suiteId: cell.run.suiteId,
+      measuredAt: cell.run.measuredAt,
+      status,
+    },
+  }
+}
+
+/**
+ * #39007 (@cpo/term 2026-11-27): a pass graded under a criterion this build has since tightened is not a decided
+ * result. When a newer attempt on the cell ran the row and recorded no emitted result (`noOutputIds`), the row's
+ * catalogue entry differs between that run's suite and the suite the verdict came from, and the versions match, the
+ * verdict no longer publishes: the feature result reads To do and the superseded verdict is kept as history. Every
+ * other unfinished attempt leaves the decided cell alone, so a crashed run still cannot knock out a decided cell.
+ */
+function applySuperseded(
+  cells: Record<string, SelectedContextCell>,
+  attempts: readonly SelectedContextAttempt[],
+  candidates: readonly ProjectionRun[],
+  entryHashes: ((suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined) | undefined,
+): string[] {
+  const said: string[] = []
+  if (!entryHashes) return said
+  const runs = new Map(candidates.map((run) => [run.runId, run]))
+  for (const attempt of attempts) {
+    const run = runs.get(attempt.runId)
+    if (!run?.probeHash) continue
+    for (const featureId of attempt.noOutputIds) {
+      const cell = cells[featureId]
+      if (!cell) continue
+      const superseded = tightenedSupersedes(run, featureId, cell, entryHashes)
+      if (!superseded) continue
+      cells[featureId] = superseded
+      said.push(
+        `superseded ${run.subject.id} ${featureId}: ${superseded.supersededDecision?.status} under suite ${String(superseded.supersededDecision?.suiteId).slice(0, 12)} no longer publishes; the criterion changed and run ${run.runId.slice(0, 8)} did not decide it`,
+      )
+    }
+  }
+  return said
 }
 
 /**
@@ -918,6 +1006,7 @@ function composeContextSummaries(
   declared: readonly DeclaredUntestableCell[] = [],
   onProgress?: (completed: number, total: number) => void,
   appOnlyRows: ReadonlyMap<string, AppOnlyDeclaration> = catalogAppOnly(),
+  entryHashes?: (suiteId: string, runId: string) => Readonly<Record<string, string>> | undefined,
 ): Record<string, SelectedContextSummary> {
   const reopenedApplied = new Set<ReopenedCell>()
   const declaredApplied = new Set<DeclaredUntestableCell>()
@@ -1152,6 +1241,9 @@ function composeContextSummaries(
       decided,
     )
     applyReopened(contextKey, cells, candidates[0]?.subject, reopened, reopenedApplied)
+    // #39007 (@cpo/term 2026-11-27): an attempt that ran the row and did not decide it supersedes a verdict graded
+    // under a criterion this build has since tightened. Runs after reopening so a withdrawn grade is not superseded.
+    for (const line of applySuperseded(cells, attempts, candidates, entryHashes)) log?.(line)
     // After reopening, so a reopened cell refuses a declaration; before derivation, so a declared parent derives nothing.
     applyDeclared(contextKey, cells, candidates[0]?.subject, declared, declaredApplied, log)
     // Before derivation, so a held child can still read its parent's refusal (#33034, @cto edab7573).
@@ -1502,6 +1594,7 @@ export function loadSelectedResults(
       log: (line) => console.error(line),
       reopened: loadReopenedCells(contentDir, features),
       declared: loadDeclaredUntestable(contentDir),
+      entryHashes: cellEntryHashes(suiteEntryHashes(contentDir), new Map()),
       onProgress: (completed, total) => options.progress?.tick(completed, total),
     },
     loadArchivedExclusions(contentDir),
