@@ -32,7 +32,8 @@ const { default: config } = (await import(CONFIG_URL)) as {
 const corpus = vi.hoisted(() => ({ published: undefined as unknown }))
 vi.mock("../docs/data/current-results.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../docs/data/current-results.ts")>()),
-  loadCurrentResults: () => ({ projection: { table: {} } }),
+  // The stored projection always carries its run history; loadFullProbes reads run observers from it (#37780).
+  loadCurrentResults: () => ({ projection: { table: {}, history: {} } }),
   compatibilitySubjects: () => new Map(),
   joinedAppCells: () => new Map(),
 }))
