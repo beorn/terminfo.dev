@@ -1156,8 +1156,16 @@ describe("card-explain #38777 — command under test, deciding values, library s
       "lib",
     ).card
     expect(osc633.received).toEqual({ words: "The library reported OSC 633 as unhandled" })
+    // The call log (#38788) also shows the control fed first: a handled OSC 2 that the unhandled report must not list.
     expect(osc633.steps).toEqual([
-      { num: 1, code: "ESC ]633;A BEL", words: "Feed to the library: Send VS Code shell mark" },
+      {
+        num: 1,
+        code: "ESC ]2;terminfo-unhandled-report-co… BEL",
+        fullCode: "ESC ]2;terminfo-unhandled-report-control BEL",
+        setup: true,
+        words: "Set window title",
+      },
+      { num: 2, code: "ESC ]633;A BEL", words: "Send VS Code shell mark" },
     ])
     for (const card of [decera, osc633]) {
       expect(JSON.stringify(card)).not.toContain("State recorded in parser buffer")
@@ -1253,6 +1261,22 @@ describe("card-explain #38777 — command under test, deciding values, library s
     ).card
     expect(scrollback.steps.map((s) => s.words)).toContain("Lines written: “line 0” to “line 33”, 34 lines")
     expect(scrollback.steps.map((s) => s.words)).not.toContain("Escape sequence")
+  })
+
+  // #38788 (@cto 0bd4d1a5). Library runs record every context.feed in rawReplies["<id>.callLog"]; the library card
+  // used to print "not recorded" or the declared syntax. It now lists what the probe fed, under-test step last.
+  it("#38788: a library card shows the bytes its probe fed, read from the run's call log", () => {
+    const LIB = "probes-libs/alacritty-0.26.0-linux-4ed8d168-4729-4426-91e1-f70165d8055e.json"
+    const combining = cardFor(LIB, "text.combining", "lib")
+    expect(combining.cell.writes).toEqual(["AB", "\x1b[1;1H\x1b[2K", "éX"])
+    expect(combining.card.steps.at(-1)).toEqual({ num: 4, code: "éX", words: "Text written: e + U+0301 + X" })
+    expect(combining.card.steps.slice(0, -1).every((s) => s.setup)).toBe(true)
+    const tab = cardFor(LIB, "text.tab", "lib").card
+    expect(tab.steps.map((s) => s.code)).toContain("ESC H ×9")
+    expect(new Set(tab.steps.map((s) => s.code)).size).toBe(tab.steps.length)
+    const fill = cardFor(LIB, "editing.decfra", "lib").card.steps.at(-1)
+    expect(fill?.words).toBe("Fill rows 1–3, cols 1–5 with “X” (DECFRA)")
+    for (const card of [combining.card, tab]) expect(JSON.stringify(card.steps)).not.toContain("not recorded")
   })
 
   // Pattern 6. Alacritty never answered the OSC 13 starting-color query; no color was set.

@@ -327,6 +327,33 @@ function storedRecord(raw: Readonly<Record<string, string>>, key: string, where:
   return text === undefined ? undefined : storedJson(text, `${where}.${key}`)?.value
 }
 
+/** The probe context calls that hand the library bytes; the first argument is what was fed. */
+const FED_CALL_PATHS: ReadonlySet<string> = new Set([
+  "context.feed",
+  "context.feedCapture",
+  "context.queryWithSentinelOutcome",
+])
+
+/**
+ * The bytes a headless probe fed its library, in call order, read from the run's call log (#38788, @cto 0bd4d1a5).
+ * Undefined when the run has no call log for this feature (it predates the log); a present log whose fed call
+ * carries no string fails the build, since the card would otherwise show fewer bytes than were fed.
+ */
+function libraryFedWrites(raw: Readonly<Record<string, string>>, featureId: string, where: string): string[] | undefined {
+  const key = `${featureId}.callLog`
+  const log = storedRecord(raw, key, where)
+  if (log === undefined) return undefined
+  const calls = (log as { calls?: unknown }).calls
+  if (!Array.isArray(calls)) throw new Error(`${where}.${key}: the call log has no calls array`)
+  return calls.flatMap((call: unknown, index) => {
+    const { path, args } = (call ?? {}) as { path?: unknown; args?: unknown }
+    if (typeof path !== "string" || !FED_CALL_PATHS.has(path)) return []
+    const fed = Array.isArray(args) ? args[0] : undefined
+    if (typeof fed !== "string") throw new Error(`${where}.${key}.calls[${index}]: ${path} carries no fed string`)
+    return fed.length > 0 ? [fed] : []
+  })
+}
+
 function isPixelFrame(frame: NonNullable<ProbeResult["frames"]>[number]): frame is PixelObservationFrame {
   return frame.kind !== "text-cells" && typeof frame.ref === "string" && frame.ref.startsWith("sha256:")
 }
@@ -710,6 +737,9 @@ function traceRecord(
       ...(published && { observed: publishedText(assertion.observed, `${where}.assertions[${index}].observed`) }),
     }
   })
+  // A library cell publishes what the probe fed it, from the call log, as its writes (#38788).
+  const fedWrites =
+    headless && DECIDED.has(result.status) ? libraryFedWrites(raw.rawReplies, featureId, where) : undefined
   const captures = DECIDED.has(result.status) ? extractCellCaptures(version, result, captureImages) : undefined
   const logLine = DECIDED.has(result.status) ? extractAppLogLine(assertions, featureId) : undefined
   const clipboardRead =
@@ -730,6 +760,7 @@ function traceRecord(
           (sentences !== undefined || REPLY_SHAPES[featureId] !== undefined) && replyPublishable(evidence, reply),
       )),
     ...(parserState !== undefined && { parserState }),
+    ...(fedWrites !== undefined && fedWrites.length > 0 && { writes: fedWrites }),
     ...(logLine !== undefined && { logLine }),
     ...(clipboardRead !== undefined && { clipboardRead }),
     ...(untestableCause !== undefined && { untestableCause }),

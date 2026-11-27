@@ -721,6 +721,9 @@ export function explainSentCommand(
   if (rectOp) {
     const params = (rectOp[1] ?? "").split(";")
     const op = rectOp[2] ?? ""
+    // DECFRA leads with the fill character (CSI Pch ; Pt ; Pl ; Pb ; Pr $ x); the rectangle follows it.
+    const fillCode = op === "x" ? Number(params.shift()) : undefined
+    const fillChar = fillCode && fillCode >= 0x20 && fillCode < 0x7f ? ` with “${String.fromCharCode(fillCode)}”` : ""
     const [pt, pl, pb, pr, ...rest] = params
     const rectDesc = pt && pl && pb && pr ? `rows ${pt}–${pb}, cols ${pl}–${pr}` : "rectangle"
     if (op === "r" || op === "t") {
@@ -745,7 +748,7 @@ export function explainSentCommand(
     }
     const names: Record<string, string> = {
       v: "Copy rectangular area (DECCRA)",
-      x: `Fill ${rectDesc} (DECFRA)`,
+      x: `Fill ${rectDesc}${fillChar} (DECFRA)`,
       z: `Erase ${rectDesc} (DECERA)`,
       "{": `Selectively erase ${rectDesc} (DECSERA)`,
     }
@@ -1160,6 +1163,74 @@ function libraryFedBytes(assertions: readonly TraceAssertion[] | undefined, pars
     }
   }
   return undefined
+}
+
+/**
+ * A library card's steps from the bytes its probe fed, read from the run's call log (#38788): one row per command
+ * in feed order. The declared command, or a no-command text feature's sample ("Text written: e + U+0301"), is the
+ * step under test; what comes before it is setup. A run of the same command reads once with its count, and a card
+ * over six rows keeps the steps under test first, then the setup nearest before them.
+ */
+function libraryFedSteps(
+  fed: readonly string[],
+  featureId: string,
+  declaredSequence: string | undefined,
+  trimCode: (code: string) => { code: string; fullCode?: string },
+): CardStepRow[] {
+  const pattern = declaredCommandPattern(declaredSequence)
+  const commands = fed.flatMap((write) => splitRawCommands(write)).filter((c) => !c.isText || c.raw.trim() !== "")
+  const testsText = !declaredSequence && /^(?:text\.|unicode\.|charsets\.utf8$)/.test(featureId)
+  const nonAscii = (c: { raw: string; isText: boolean }) => c.isText && /[^\x00-\x7f]/.test(c.raw)
+  const sampleIsNonAscii = testsText && commands.some(nonAscii)
+  const rows: Array<{ code: string; words: string; underTest: boolean; count: number }> = []
+  // A repeat of the command under test folds into its run across plain cursor placements, as on app cards (#38818).
+  let runHead: (typeof rows)[number] | undefined
+  let heldPlacements: Array<(typeof rows)[number]> = []
+  const push = (row: (typeof rows)[number]) => {
+    const last = rows[rows.length - 1]
+    if (last && last.code === row.code && last.words === row.words) last.count += row.count
+    else rows.push(row)
+  }
+  for (const c of commands) {
+    const underTest = c.isText ? testsText && (!sampleIsNonAscii || nonAscii(c)) : Boolean(pattern?.test(c.raw))
+    const code = c.isText ? c.raw : formatControlBytes(c.raw)
+    const words = c.isText && underTest ? textWrittenWords(c.raw) : explainSentCommand(c.raw, c.isText).words
+    if (runHead && !c.isText && !underTest && /^\x1b\[\d*(?:;\d*)?[Hf]$/.test(c.raw)) {
+      heldPlacements.push({ code, words, underTest, count: 1 })
+      continue
+    }
+    if (runHead && runHead.code === code && runHead.words === words) {
+      runHead.count++
+      heldPlacements = []
+      continue
+    }
+    for (const held of heldPlacements) push(held)
+    heldPlacements = []
+    push({ code, words, underTest, count: 1 })
+    runHead = underTest ? rows[rows.length - 1] : undefined
+  }
+  for (const held of heldPlacements) push(held)
+  let kept = rows.map((_, i) => i)
+  if (rows.length > 6) {
+    const keep = new Set<number>()
+    rows.forEach((r, i) => {
+      if (r.underTest && keep.size < 6) keep.add(i)
+    })
+    const first = rows.findIndex((r) => r.underTest)
+    for (let i = (first >= 0 ? first : rows.length) - 1; i >= 0 && keep.size < 6; i--) keep.add(i)
+    for (let i = 0; i < rows.length && keep.size < 6; i++) keep.add(i)
+    kept = [...keep].sort((a, b) => a - b)
+  }
+  const firstKeptUnderTest = kept.findIndex((i) => rows[i]?.underTest)
+  return kept.flatMap((rowIndex, n) => {
+    const r = rows[rowIndex]
+    if (!r) return []
+    const t = trimCode(r.count > 1 ? `${r.code} ×${r.count}` : r.code)
+    const setup = firstKeptUnderTest >= 0 && n < firstKeptUnderTest
+    return [
+      { num: n + 1, code: t.code, ...(t.fullCode ? { fullCode: t.fullCode } : {}), ...(setup ? { setup: true } : {}), words: r.words },
+    ]
+  })
 }
 
 function readbackSourceLabel(featureId: string, assertionType?: string): string {
@@ -2663,7 +2734,10 @@ export function buildCardModel(input: {
       fed && fedCommands.length === 1 && fedCommands[0]
         ? `Feed to the library: ${explainSentCommand(fedCommands[0].raw, false).words}`
         : "Feed sequence to library parser"
-    const libSteps: CardStepRow[] = seqTrim
+    const fedWrites = exchange?.writes?.length ? exchange.writes : undefined
+    const libSteps: CardStepRow[] = fedWrites
+      ? libraryFedSteps(fedWrites, featureId, declaredSequence, trimCode)
+      : seqTrim
       ? [
           {
             num: 1,
