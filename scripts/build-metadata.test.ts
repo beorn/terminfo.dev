@@ -53,11 +53,12 @@ describe("website build identity", () => {
       ],
       // Hang protection only, never a performance budget: resolving the config loads the whole catalog,
       // measured at 11-19 s on CI (30632) and 52-90 s successes on a loaded shared host (load 25-59,
-      // 2026-11-18, 34904), where 60 s misfired. @cto 40d94c25: 180 s for this test alone.
-      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 180_000 },
+      // 2026-11-18, 34904), where 60 s misfired, and 183 s at load 60 after herdr placement (#38850).
+      // Matches the 300 s loadFullProbes hang-protection bound in build-metadata.slow.test.ts (#34112).
+      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 300_000 },
     )
     expect(JSON.parse(stdout)).toEqual({ root: join(siteRoot, "docs") })
-  }, 185_000)
+  }, 305_000)
 
   it("accepts only the exact validated clean CI build from the deployed HTTP endpoint", async () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
