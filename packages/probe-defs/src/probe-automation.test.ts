@@ -2826,7 +2826,7 @@ describe("Kitty protocol detection", () => {
           assertionType: "query_reply",
           note: REPLY_AFTER_SENTINEL_NOTE,
         })
-        expect(result.pass).toBe(kind === "positive")
+        expect(result.pass).toBe(false)
         if (kind === null) {
           expect(result.observation?.reason).toBe("insufficient-evidence")
           expect(result.assertions).toBeUndefined()
