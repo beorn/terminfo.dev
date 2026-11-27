@@ -2372,9 +2372,10 @@ describe("Kitty protocol detection", () => {
 
   test.each([
     [0, false, "unsupported", undefined, "not recognized (Ps 0)"],
-    [1, true, "supported", undefined, "set (Ps 1)"],
-    [2, true, "supported", undefined, "reset (Ps 2)"],
-    [3, true, "supported", undefined, "permanently set (Ps 3)"],
+    // #38800 (@cto 0bd4d1a5): Ps 1-3 is recognition, never Supported; the clipboard effect is not read.
+    [1, false, "recognized", undefined, "set (Ps 1)"],
+    [2, false, "recognized", undefined, "reset (Ps 2)"],
+    [3, false, "recognized", undefined, "permanently set (Ps 3)"],
     [4, false, "unsupported", undefined, "permanently reset (Ps 4)"],
     [null, false, "inconclusive", "no-response", undefined],
   ] as const)("OSC 5522 Ps %s decides protocol detection on both arms", async (ps, pass, outcome, reason, reading) => {
@@ -2428,6 +2429,16 @@ describe("Kitty protocol detection", () => {
         expect(result.tests).toMatchObject([
           expect.objectContaining({ status: "probe-invalid", reason: expect.any(String) }),
         ])
+      } else if (outcome === "recognized") {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toEqual([
+          expect.objectContaining({
+            status: "untestable",
+            reason: `Recognized; effect not tested: DECRPM mode 5522 returned ${reading}, and the clipboard effect needs an OSC 5522 write read back through OSC 52`,
+          }),
+        ])
+        continue
       } else {
         expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
         expect(result.observation?.reason).toBe(reason)
@@ -2513,7 +2524,7 @@ describe("Kitty protocol detection", () => {
       ]) {
         expect(run(runtimeIdentity, da1, raw).result.criterionBranch).not.toBe(SOURCE_NEGATIVE_REVIEW)
       }
-      expect(run(runtimeIdentity, "\x1b[?5522;1$y" + da1).result.observation?.outcome).toBe("supported")
+      expect(run(runtimeIdentity, "\x1b[?5522;1$y" + da1).result.tests?.[0]?.status).toBe("untestable")
       expect(run(runtimeIdentity, "\x1b[?5522;4$y" + da1).result.observation?.outcome).toBe("unsupported")
       expect(run(runtimeIdentity, da1 + "\x1b[?5522;0$y").result.observation?.outcome).toBe("inconclusive")
     },
@@ -2781,9 +2792,10 @@ describe("Kitty protocol detection", () => {
   // The earlier positive-only case missed the distinct Ps0 inconclusive and Ps4 negative branches.
   test.each([
     [0, "inconclusive", null],
-    [1, "supported", "positive"],
-    [2, "supported", "positive"],
-    [3, "supported", "positive"],
+    // #38800 (@cto 0bd4d1a5): a late Ps 1-3 is still recognition only, never Supported.
+    [1, "recognized", null],
+    [2, "recognized", null],
+    [3, "recognized", null],
     [4, "unsupported", "negative"],
   ] as const)(
     "OSC 5522 measured-late Ps%s grades its content with the ordering note",
@@ -2803,6 +2815,12 @@ describe("Kitty protocol detection", () => {
         terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
       )
       for (const result of [headless, term]) {
+        if (outcomeName === "recognized") {
+          expect(result.pass).toBe(false)
+          expect(result.observation).toBeUndefined()
+          expect(result.tests).toEqual([expect.objectContaining({ status: "untestable" })])
+          continue
+        }
         expect(result.observation).toMatchObject({
           outcome: outcomeName,
           assertionType: "query_reply",

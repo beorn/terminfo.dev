@@ -48,6 +48,7 @@ import {
   withCleanupDetail,
   reviewResult,
   declaredUntestableResult,
+  noEffectRoute,
   isDeclaredUntestable,
   completeFramePair,
   productViewportAbsenceResult,
@@ -343,6 +344,14 @@ function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentine
     const note = "OSC5522 detection has no complete matching reply in the deciding window"
     if (raw === "") return replyFailure(note)
     return { pass: false, note, tests: [{ id: "criterion", status: "probe-invalid", reason: note }] }
+  }
+  // #38800 (ruling 56269cef, @cto 0bd4d1a5): a reply alone is not the effect. Set, reset or permanently set is
+  // recognition; the clipboard effect needs an OSC 5522 write read back through OSC 52.
+  if (ps === 1 || ps === 2 || ps === 3) {
+    return {
+      ...noEffectRoute(ps, 5522, "the clipboard effect needs an OSC 5522 write read back through OSC 52"),
+      response: decrpmReading(ps),
+    }
   }
   // Only an on-time detector reply makes Ps0 negative; measured-late replies use the shared criterion.
   if (ps !== 0 || afterSentinel) {
