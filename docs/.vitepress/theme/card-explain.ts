@@ -1721,6 +1721,27 @@ function plainAssertionSentence(text: string | undefined): string | undefined {
 
 const CPR_FORMAT_CODE = "ESC [ <row>;<col> R"
 
+const COLUMN_COUNT_WORDS: Readonly<Record<string, number>> = { one: 1, two: 2, three: 3, four: 4 }
+
+/**
+ * A cursor check decided by a move rather than a fixed cell (#38818): the sample takes N columns on the same row, or
+ * reverse wrap lands on the last column of the row above. EXPECTED names that move, never the bare reply format.
+ * Undefined when the criterion names no relative move.
+ */
+function relativeCursorExpectation(text: string): { code: string; words: string } | undefined {
+  const width =
+    /\b(?:occupies|advances)\s+(one|two|three|four|\d+)\s+columns?\b/i.exec(text)?.[1] ??
+    /^\s*(\d+)\s*$/.exec(text)?.[1]
+  if (width) {
+    const n = COLUMN_COUNT_WORDS[width.toLowerCase()] ?? Number(width)
+    const columns = `${n} column${n === 1 ? "" : "s"}`
+    return { code: `ESC [ row;col+${n} R`, words: `The cursor moves ${columns} right, on the same row` }
+  }
+  const wrap = /\bto the last column of row (\d+)\b/i.exec(text)?.[1]
+  if (wrap) return { code: `ESC [ ${wrap};<last column> R`, words: `Back to the last column of row ${wrap}` }
+  return undefined
+}
+
 /**
  * EXPECTED names the value that decides the row, not a reply format (#38777): the cursor target a position check
  * waits for, the DA1 attribute or keyboard flag the probe looks for, the color a reset must bring back. Read from the
@@ -1782,6 +1803,8 @@ function decidingReplyExpectation(opts: {
     if (status === "supported" && decisiveCpr) {
       return apply(decisiveCpr.code, sentence ?? `“${decisiveCpr.words.replace(/[“”]/g, "")}”`)
     }
+    const relative = relativeCursorExpectation(text)
+    if (relative) return apply(relative.code, sentence ?? relative.words)
     if (sentence) return { ...base, words: sentence }
   }
   // A reply whose value is free (any pixel size, any version string): the probe's own criterion names what decides it.
@@ -3077,7 +3100,44 @@ export function buildCardModel(input: {
   // A screenshot-graded row is decided by the screen: a mode or style question asked along the way is not part of
   // the result, so it is not shown at all, never beside a green pass as "No reply" or "Not recognized" (#38777).
   // An acknowledged command (a Kitty graphics transmit) is a command, not a question, and stays.
-  const shownPool = screenGraded ? orderedSteps.filter((r) => !r.isContext) : orderedSteps
+  const visiblePool = screenGraded ? orderedSteps.filter((r) => !r.isContext) : orderedSteps
+  // On a card with more steps than fit, a command under test the probe sends several times in a row, byte for byte,
+  // reads once with its count ("ESC H ×16"), so the run never fills the card and pushes out the steps around it
+  // (#38818, @cpo/term de466ce4). A card that fits keeps every step.
+  // A run is the same write again with at most plain cursor placements between (a tab-stop reset places the cursor,
+  // then sets a stop, sixteen times); any other step ends it, because a repeat after other steps is part of the order
+  // the card tells. A query is never folded: each one carries its own answer.
+  const isCursorPlacement = (r: StepRow): boolean =>
+    !r.isQuery && !r.underTest && /^\x1b\[\d*(?:;\d*)?[Hf]$/.test(r.raw)
+  const isFoldable = (r: StepRow): boolean => r.underTest && !r.isQuery
+  const foldRepeatedRuns = (rows: readonly StepRow[]): StepRow[] => {
+    const folded: StepRow[] = []
+    let pendingPlacements: StepRow[] = []
+    let runCount = 0
+    for (const r of rows) {
+      const runHead = folded[folded.length - 1]
+      if (runCount > 0 && isCursorPlacement(r)) {
+        pendingPlacements.push(r)
+        continue
+      }
+      if (runCount > 0 && runHead && isFoldable(r) && runHead.raw === r.raw && runHead.words === r.words) {
+        runCount++
+        pendingPlacements = []
+        folded[folded.length - 1] = {
+          ...runHead,
+          code: `${r.code} ×${runCount}`,
+          ...(r.fullCode ? { fullCode: `${r.fullCode} ×${runCount}` } : {}),
+        }
+        continue
+      }
+      folded.push(...pendingPlacements, r)
+      pendingPlacements = []
+      runCount = isFoldable(r) ? 1 : 0
+    }
+    folded.push(...pendingPlacements)
+    return folded
+  }
+  const shownPool = visiblePool.length > 6 ? foldRepeatedRuns(visiblePool) : visiblePool
 
   let keptOrdered = shownPool
   if (shownPool.length > 6) {

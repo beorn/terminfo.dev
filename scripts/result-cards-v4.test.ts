@@ -1180,6 +1180,46 @@ describe("card-explain #38777 — command under test, deciding values, library s
     expect(validateMeasuredCard(card, "ghostty-cpl", { featureId: "cursor.cpl" })).toEqual([])
   })
 
+  // #38818. A width probe is decided by a move, not a fixed cell: xterm 411 fails VS16 and the ZWJ grapheme sample.
+  // Expected used to print the reply format ESC [ <row>;<col> R with "Expected cursor position".
+  it("#38818: a relative cursor check prints the deciding move as Expected, not the reply format", () => {
+    const XTERM = "probes-apps/xterm-411-linux-9905a004f5250013a413d73fb7e5011a.json"
+    for (const featureId of ["text.wide.emoji-vs16", "unicode.grapheme-cursor"]) {
+      const { card } = cardFor(XTERM, featureId)
+      expect(card.expected).toEqual({
+        code: "ESC [ row;col+2 R",
+        words: "The cursor moves 2 columns right, on the same row",
+      })
+      expect(JSON.stringify(card.expected)).not.toContain("<row>")
+    }
+    const wrap = cardFor(
+      "probes-apps/warp-v0.2026.10.14.08.27.stable_01-macos-e7aee4ffac1c955b40efd2dd84b34f25.json",
+      "cursor.reverse-wrap",
+    ).card
+    expect(wrap.expected).toEqual({
+      code: "ESC [ 1;<last column> R",
+      words: "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1",
+    })
+  })
+
+  // #38818 (@cpo/term de466ce4). VS Code 1.142's text.tab cleanup restores the default stops as sixteen cursor
+  // placements each followed by ESC H, the command under test. The six card rows used to be six identical ESC H.
+  it("#38818: a run of the command under test reads once with its count, leaving room for the steps before it", () => {
+    const { card } = cardFor(
+      "probes-apps/com.microsoft.VSCode-1.142.0-macos-cde4ac6b9c6463b5248a8dfa3d92bf22.json",
+      "text.tab",
+    )
+    expect(card.steps.map((s) => s.code)).toEqual([
+      "ESC [ 1;1 H",
+      "ESC [ 6 n",
+      "ESC [ 1;9 H",
+      "ESC H",
+      "ESC H",
+      "ESC H ×16",
+    ])
+    expect(card.steps.at(-1)).toEqual({ num: 6, code: "ESC H ×16", words: "Set a tab stop here" })
+  })
+
   // Pattern 6. Alacritty never answered the OSC 13 starting-color query; no color was set.
   it("6: an Untestable reason is true: the unanswered starting-color query, not 'setting the base color did not take effect'", () => {
     const { card, cell } = cardFor(ALACRITTY, "extensions.osc113-reset-pointer-fg")
