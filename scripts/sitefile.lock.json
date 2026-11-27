@@ -1,7 +1,7 @@
 {
   "$comment": "Generated inventory of declared sources and reviewed current measurements; not an upstream source-check receipt.",
-  "generated": "2026-10-27T07:04:04.917Z",
-  "totalFeatures": 273,
+  "generated": "2026-11-27T05:14:51.655Z",
+  "totalFeatures": 278,
   "featureFamilies": {
     "sgr": 32,
     "cursor": 22,
@@ -10,7 +10,7 @@
     "input": 11,
     "modes": 30,
     "scrollback": 10,
-    "extensions": 79,
+    "extensions": 84,
     "text": 20,
     "unicode": 4,
     "reset": 5,
@@ -51,43 +51,43 @@
     {
       "sourceId": "xterm-ctlseqs",
       "lastChecked": null,
-      "catalogFeatureCount": 202,
+      "catalogFeatureCount": 207,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "kitty-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 122,
+      "catalogFeatureCount": 127,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "iterm2-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "conemu-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "mintty-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "foot-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "vte-docs",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
@@ -99,13 +99,13 @@
     {
       "sourceId": "osc8-hyperlinks",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
       "sourceId": "osc133-semantic-prompts",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
@@ -129,7 +129,25 @@
     {
       "sourceId": "vscode-osc633",
       "lastChecked": null,
-      "catalogFeatureCount": 79,
+      "catalogFeatureCount": 84,
+      "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
+    },
+    {
+      "sourceId": "osc-7577-program-resume",
+      "lastChecked": null,
+      "catalogFeatureCount": 84,
+      "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
+    },
+    {
+      "sourceId": "osc-7501-program-status",
+      "lastChecked": null,
+      "catalogFeatureCount": 84,
+      "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
+    },
+    {
+      "sourceId": "osc-88-terminal-resume",
+      "lastChecked": null,
+      "catalogFeatureCount": 84,
       "notes": "Manifest generation does not fetch or verify this source; catalog count is declared family membership"
     },
     {
@@ -185,142 +203,508 @@
     {
       "terminalId": "ghostty",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:ghostty@[\"term\",\"ghostty\",\"linux\",\"7.0.0-43-generic\",null,null,\"nice -n 10 /nix/store/<hash>-ghostty-1.4.0/bin/ghostty --font-family=JetBrains\\\\ Mono --font-size=16 --window-decoration=none --freetype-load-flags=monochrome --window-padding-x=2 --window-padding-y=2 --window-padding-balance=false -e bun --no-env-file <terminfo-linux-runner> test --serve \",null]",
+      "contributingRunIds": [
+        "ae8dfd2fdc04b5aae4ddbf220049a4c3",
+        "fe267bddcf0aafc396bfdf9e28bf06ad",
+        "63ac83f29710546ae7d8b66cf458f60b",
+        "f3f39f3aeb7223811c81e115c6b4c811",
+        "91b4a9f83ade34f6796384ff3515d1e6"
+      ],
+      "sources": [
+        {
+          "runId": "ae8dfd2fdc04b5aae4ddbf220049a4c3",
+          "sha256": "a91455ff7d9e75ca5f43d88c6c009c337c9de2691f7bc0d23b22b0883ca2f02c",
+          "version": "1.4.0",
+          "measuredAt": "2026-11-25T06:11:11.338Z",
+          "suiteId": "d1dfc188ec70"
+        },
+        {
+          "runId": "fe267bddcf0aafc396bfdf9e28bf06ad",
+          "sha256": "02bc4fa1d10fbb93df4d2560a176e124d5e8de5ff96dfbad210b87a878729ddd",
+          "version": "1.4.0",
+          "measuredAt": "2026-11-26T11:11:49.649Z",
+          "suiteId": "42147b5e8364"
+        },
+        {
+          "runId": "63ac83f29710546ae7d8b66cf458f60b",
+          "sha256": "8087c8cea8f96791feb0af8db2bc7b7ae11f2a310232f06ec6737764e15eaed3",
+          "version": "1.4.0",
+          "measuredAt": "2026-11-26T18:34:46.053Z",
+          "suiteId": "b5e6af1728e8"
+        },
+        {
+          "runId": "f3f39f3aeb7223811c81e115c6b4c811",
+          "sha256": "0d3c963040e06fba366a59f073b77f167c055a77fb72865252c18e8f00875b98",
+          "version": "1.4.0",
+          "measuredAt": "2026-11-26T23:19:28.125Z",
+          "suiteId": "d8263c417943"
+        },
+        {
+          "runId": "91b4a9f83ade34f6796384ff3515d1e6",
+          "sha256": "08f4e79d3a5215f99d8e87d7024cb9c8078444c4cd48a866d0e79c455c278595",
+          "version": "1.4.0",
+          "measuredAt": "2026-11-25T06:11:50.718Z",
+          "suiteId": "d1dfc188ec70"
+        }
+      ],
+      "lastProbedVersions": [
+        "1.4.0"
+      ],
+      "featureCount": 278
     },
     {
       "terminalId": "kitty",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:kitty@[\"term\",\"kitty\",\"linux\",\"7.0.0-43-generic\",null,null,\"nice -n 10 /nix/store/<hash>-kitty-official-binary-0.51.1/bin/kitty --config NONE --class terminfo-kitty-container-daemon -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 -o font_family=JetBrains\\\\ Mono -o font_size=16 -o allow_remote_control=socket-only --listen-on unix:<socket> bun --no-env-file <terminfo-linux-runner> test --serve \",null]",
+      "contributingRunIds": [
+        "8ab7e181f64bafd912fd9b36f041e478",
+        "1003146b88f1c6634de79e528ce368df",
+        "1f56aba727124118098b866f04b597fc",
+        "938d8147d8df12447f2d8ce668da552f"
+      ],
+      "sources": [
+        {
+          "runId": "8ab7e181f64bafd912fd9b36f041e478",
+          "sha256": "2401be924d35141b795a3f78767d464e0d8c4662776e9ad4280b6b392b3f1236",
+          "version": "0.51.1",
+          "measuredAt": "2026-11-25T05:16:37.087Z",
+          "suiteId": "d1dfc188ec70"
+        },
+        {
+          "runId": "1003146b88f1c6634de79e528ce368df",
+          "sha256": "d33fe735950fef5488b989407784bea405ec27cd1c5a6e258ab2251cded75c54",
+          "version": "0.51.1",
+          "measuredAt": "2026-11-26T18:32:17.575Z",
+          "suiteId": "b5e6af1728e8"
+        },
+        {
+          "runId": "1f56aba727124118098b866f04b597fc",
+          "sha256": "da969524699aebd713890cc6cde201aef03a04de616e19cdbb8b87cce323d91e",
+          "version": "0.51.1",
+          "measuredAt": "2026-11-26T23:30:16.801Z",
+          "suiteId": "d8263c417943"
+        },
+        {
+          "runId": "938d8147d8df12447f2d8ce668da552f",
+          "sha256": "349241d71c051cdaacb2d6c54480d7922c5bfecd918a3a716c203ebc05183384",
+          "version": "0.51.1",
+          "measuredAt": "2026-11-25T05:29:09.172Z",
+          "suiteId": "d1dfc188ec70"
+        }
+      ],
+      "lastProbedVersions": [
+        "0.51.1"
+      ],
+      "featureCount": 278
     },
     {
       "terminalId": "iterm2",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:iterm2@[\"term\",\"iterm2\",\"macos\",\"26.7.3\",null,null,null,null]",
+      "contributingRunIds": [
+        "086b26983a06db66e6ff9a1351a8bc54",
+        "7d24ee678c91285ea9315bb9650c7843"
+      ],
+      "sources": [
+        {
+          "runId": "086b26983a06db66e6ff9a1351a8bc54",
+          "sha256": "99c7a8ff97cab71455b97cb88b4bda3e4f86fe369537f9d5fdec4b400415b2e9",
+          "version": "3.7.9",
+          "measuredAt": "2026-11-24T09:44:30.521Z",
+          "suiteId": "8c4bbc38ab81"
+        },
+        {
+          "runId": "7d24ee678c91285ea9315bb9650c7843",
+          "sha256": "8896d1c620a996387efee7d8627c2738292a19a314af424fe5604fa1039bdcc2",
+          "version": "3.7.9",
+          "measuredAt": "2026-11-24T18:07:48.623Z",
+          "suiteId": "9b0f2f201b11"
+        }
+      ],
+      "lastProbedVersions": [
+        "3.7.9"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "terminal-app",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:terminal-app@[\"term\",\"terminal-app\",\"macos\",\"26.7.3\",null,null,null,null]",
+      "contributingRunIds": [
+        "8d3f270da62b731c35cbe8dd7120e552",
+        "38ef25c8d2e30b47b7607b23e608878c"
+      ],
+      "sources": [
+        {
+          "runId": "8d3f270da62b731c35cbe8dd7120e552",
+          "sha256": "5dbe053d78d45e6c1aa8170d104d054de46381bbdc37b44feb066285a4b62151",
+          "version": "2.15",
+          "measuredAt": "2026-11-24T08:58:18.430Z",
+          "suiteId": "8c4bbc38ab81"
+        },
+        {
+          "runId": "38ef25c8d2e30b47b7607b23e608878c",
+          "sha256": "e7dd6d24a688911e0786bbf7eab7889e8ed4396635309930abd2527686f70fec",
+          "version": "2.15",
+          "measuredAt": "2026-11-24T15:18:04.955Z",
+          "suiteId": "c3d8b241efc7"
+        }
+      ],
+      "lastProbedVersions": [
+        "2.15"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "warp",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:warp@[\"term\",\"warp\",\"macos\",\"26.7.2\",null,null,null,null]",
+      "contributingRunIds": [
+        "70c9b987db24a7ce69b4e85b9077df39",
+        "a975f203999d956a66e1cd54eaaf0ecd",
+        "eda716279c63875fa485a514487a9bd1",
+        "50b591a243bcad41cec7d258595ce0d5"
+      ],
+      "sources": [
+        {
+          "runId": "70c9b987db24a7ce69b4e85b9077df39",
+          "sha256": "967e6287727a3f84e8dbb54e69d6a7c53e517b4537a8e50d707e56a6f55d9e7a",
+          "version": "v0.2026.10.14.08.27.stable_01",
+          "measuredAt": "2026-11-10T05:26:42.108Z",
+          "suiteId": "deaf0025c623"
+        },
+        {
+          "runId": "a975f203999d956a66e1cd54eaaf0ecd",
+          "sha256": "7c48c1727c16b2fa3b98056a7370c017d3b5a3936ab004fd3d4bffbd605e36fa",
+          "version": "v0.2026.11.18.08.17.stable_05",
+          "measuredAt": "2026-11-25T02:27:05.104Z",
+          "suiteId": "33d157ab5e0a"
+        },
+        {
+          "runId": "eda716279c63875fa485a514487a9bd1",
+          "sha256": "bf8c626758de02e759f0c42089f98072c287eb73a84d09d2d8e43622a8d34d46",
+          "version": "v0.2026.11.18.08.17.stable_05",
+          "measuredAt": "2026-11-25T03:42:46.762Z",
+          "suiteId": "395e4d84cc6d"
+        },
+        {
+          "runId": "50b591a243bcad41cec7d258595ce0d5",
+          "sha256": "214eafa164a1078284e34ab8d628b3ed0234aa1b18dfd693ac00ad83a6efd1cf",
+          "version": "v0.2026.11.18.08.17.stable_05",
+          "measuredAt": "2026-11-26T01:29:51.314Z",
+          "suiteId": "50f67c1a25de"
+        }
+      ],
+      "lastProbedVersions": [
+        "v0.2026.10.14.08.27.stable_01",
+        "v0.2026.11.18.08.17.stable_05"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "cursor",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:cursor",
+      "contributingRunIds": [
+        "5594a6515b0f10904faafb1ac92b27cf",
+        "6fa1e44797bfbfe9855ce079ea7ff530",
+        "c6c0f748e8395fb62ef120bfcbd95d7d"
+      ],
+      "sources": [
+        {
+          "runId": "5594a6515b0f10904faafb1ac92b27cf",
+          "sha256": "ff4cfe9884d8a0b0072268fc93e5ee1d942b363bc4a123af932e742d34c60dfe",
+          "version": "3.25.9",
+          "measuredAt": "2026-11-12T20:37:38.064Z",
+          "suiteId": "a09688a36b13"
+        },
+        {
+          "runId": "6fa1e44797bfbfe9855ce079ea7ff530",
+          "sha256": "d7a93757abe5cc78b432c1264c3a10bf5608b7d65b798d71c1339458e0ebbcb1",
+          "version": "3.32.4",
+          "measuredAt": "2026-11-25T02:42:43.497Z",
+          "suiteId": "33d157ab5e0a"
+        },
+        {
+          "runId": "c6c0f748e8395fb62ef120bfcbd95d7d",
+          "sha256": "3a972cde7bbe5eff88fbf23d560d8ca56cb89d3daac05855cbae36698942afa1",
+          "version": "3.32.4",
+          "measuredAt": "2026-11-25T03:40:14.632Z",
+          "suiteId": "395e4d84cc6d"
+        }
+      ],
+      "lastProbedVersions": [
+        "3.25.9",
+        "3.32.4"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "com.microsoft.VSCode",
       "kind": "term",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "term:com.microsoft.VSCode",
+      "contributingRunIds": [
+        "b628803434bf6d32890e6a80baad6517",
+        "37ae8909e2b411e452df0d8284c7ff96"
+      ],
+      "sources": [
+        {
+          "runId": "b628803434bf6d32890e6a80baad6517",
+          "sha256": "86fb1befbae93541dfc160748f30dd633c22bd6c71d2c9b26ba3c3f92534dace",
+          "version": "1.142.0",
+          "measuredAt": "2026-11-12T20:42:07.621Z",
+          "suiteId": "a09688a36b13"
+        },
+        {
+          "runId": "37ae8909e2b411e452df0d8284c7ff96",
+          "sha256": "a59e5870f52d7bfa740b76d755af7cc5fca0d56dd8f6870ccee16547fafd583e",
+          "version": "1.147.0",
+          "measuredAt": "2026-11-25T17:47:15.260Z",
+          "suiteId": "463b6af7a56d"
+        }
+      ],
+      "lastProbedVersions": [
+        "1.142.0",
+        "1.147.0"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "alacritty",
       "kind": "lib",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "lib:alacritty@[\"lib\",\"alacritty\",\"linux\",\"7.0.0-43-generic\",null,null,\"80x24 default Termless backend\",null]",
+      "contributingRunIds": [
+        "4ed8d168-4729-4426-91e1-f70165d8055e"
+      ],
+      "sources": [
+        {
+          "runId": "4ed8d168-4729-4426-91e1-f70165d8055e",
+          "sha256": "5e60d0c2c016bbe3d572d3378aeee9fb472b84d7a19e18d5fed4957a1083d0f7",
+          "version": "0.26.0",
+          "measuredAt": "2026-11-26T23:20:22.749Z",
+          "suiteId": "d8263c417943"
+        }
+      ],
+      "lastProbedVersions": [
+        "0.26.0"
+      ],
+      "featureCount": 276
     },
     {
       "terminalId": "wezterm",
       "kind": "lib",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "lib:wezterm",
+      "contributingRunIds": [
+        "13d0ae95-3484-4ade-b9a0-045583a8941b",
+        "5602b03f-535a-45f4-becf-91a0961cff52"
+      ],
+      "sources": [
+        {
+          "runId": "13d0ae95-3484-4ade-b9a0-045583a8941b",
+          "sha256": "4915021e41407e3b4697b13e8b4c6eedd9afa3b196017d57f41e562c37e5b793",
+          "version": "0.1.0-fork.5",
+          "measuredAt": "2026-11-25T22:43:19.851Z",
+          "suiteId": "7c14a210ba78"
+        },
+        {
+          "runId": "5602b03f-535a-45f4-becf-91a0961cff52",
+          "sha256": "f97fa85615ed005645c5fb7cb4496e40c2f8cebf70e0d666d10483d31217d3b1",
+          "version": "0.1.0-fork.5",
+          "measuredAt": "2026-11-26T23:33:56.622Z",
+          "suiteId": "d8263c417943"
+        }
+      ],
+      "lastProbedVersions": [
+        "0.1.0-fork.5"
+      ],
+      "featureCount": 276
     },
     {
       "terminalId": "xtermjs",
       "kind": "lib",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "lib:xtermjs@[\"lib\",\"xtermjs\",\"linux\",\"7.0.0-43-generic\",null,null,\"80x24 default Termless backend\",null]",
+      "contributingRunIds": [
+        "3b98a09c-b8ff-4bfd-8ad6-ebe919a37306",
+        "e5b66060-3287-4785-a427-e1fb2c4a468d",
+        "0238006e-0632-4415-b03e-e2761c035599"
+      ],
+      "sources": [
+        {
+          "runId": "3b98a09c-b8ff-4bfd-8ad6-ebe919a37306",
+          "sha256": "7debff87419cc9033c7c2d68fd5ecf769746ba45b617f40f79e1c6896b602e3a",
+          "version": "6.0.0",
+          "measuredAt": "2026-11-17T13:35:29.397Z",
+          "suiteId": "58c0d9b8f628"
+        },
+        {
+          "runId": "e5b66060-3287-4785-a427-e1fb2c4a468d",
+          "sha256": "47a4a307fd2ae643ebbffc021c9a228b510b023c33ab17bdc27b978ee2cdafce",
+          "version": "6.0.0",
+          "measuredAt": "2026-11-26T18:46:00.339Z",
+          "suiteId": "b5e6af1728e8"
+        },
+        {
+          "runId": "0238006e-0632-4415-b03e-e2761c035599",
+          "sha256": "bdbb3a751f0001f811d50dca9d99e97b5c60837fa792af2b86a506de241f0127",
+          "version": "6.0.0",
+          "measuredAt": "2026-11-26T23:35:00.678Z",
+          "suiteId": "d8263c417943"
+        }
+      ],
+      "lastProbedVersions": [
+        "6.0.0"
+      ],
+      "featureCount": 278
     },
     {
       "terminalId": "vterm",
       "kind": "lib",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "lib:vterm@[\"lib\",\"vterm\",\"linux\",\"7.0.0-43-generic\",null,null,\"80x24 default Termless backend\",null]",
+      "contributingRunIds": [
+        "bc88db1d-a303-4872-86c5-adbc5fd8fb58",
+        "ac932986-41ed-4ef2-9982-dbd9ca60c6fa"
+      ],
+      "sources": [
+        {
+          "runId": "bc88db1d-a303-4872-86c5-adbc5fd8fb58",
+          "sha256": "1f621ca7fb039bc37c6244f70f2c3fa27f36a7ce62f3f112b164c3ff17a70bca",
+          "version": "0.14.0",
+          "measuredAt": "2026-11-25T01:37:24.545Z",
+          "suiteId": "33d157ab5e0a"
+        },
+        {
+          "runId": "ac932986-41ed-4ef2-9982-dbd9ca60c6fa",
+          "sha256": "1b6b6e9a09ddfbb98f4212e0108e3565f0a865e28e0e49bef2e7508559ec11a8",
+          "version": "0.14.0",
+          "measuredAt": "2026-11-26T20:37:45.217Z",
+          "suiteId": "fe54d1d1f3d3"
+        }
+      ],
+      "lastProbedVersions": [
+        "0.14.0"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "vt100",
       "kind": "lib",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "lib:vt100",
+      "contributingRunIds": [
+        "1f2bd952-5961-41ce-8657-a62e7c8c9b6f"
+      ],
+      "sources": [
+        {
+          "runId": "1f2bd952-5961-41ce-8657-a62e7c8c9b6f",
+          "sha256": "57ea236a88e6b64e19338fd16f2b71d5a54a0f18b72a048a85294abdd81be1ce",
+          "version": "0.14.0",
+          "measuredAt": "2026-11-11T05:34:33.137Z",
+          "suiteId": "4f6ae11671a5"
+        }
+      ],
+      "lastProbedVersions": [
+        "0.14.0"
+      ],
+      "featureCount": 273
     },
     {
       "terminalId": "tmux",
       "kind": "mux",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "mux:tmux@[\"mux\",\"tmux\",\"linux\",\"7.0.0-43-generic\",\"kitty\",\"tmux\",\"tmux: focus-events on\",null]",
+      "contributingRunIds": [
+        "c787edaf23b4e007a0fd3b1044fc70a4",
+        "1631a59cf7f9b63a7a9702dc485a19d5",
+        "bed8ee2e9a24500e19d5aa7969c72b22",
+        "5b7d27a5d11594e4d60ff76dfd0831e6",
+        "22e0da7822f4f17b89f806e41f5b1c7e"
+      ],
+      "sources": [
+        {
+          "runId": "c787edaf23b4e007a0fd3b1044fc70a4",
+          "sha256": "df8a497a8ca99abf85fe7eafae9992b0bdad1c9ca44da031162d41b43ac1a528",
+          "version": "3.8",
+          "measuredAt": "2026-11-20T04:38:37.262Z",
+          "suiteId": "8f56dc2970a6"
+        },
+        {
+          "runId": "1631a59cf7f9b63a7a9702dc485a19d5",
+          "sha256": "83e30f292293a7eb239e9c9f17daedca849673234fc2ce55d7511678b97999f3",
+          "version": "3.8",
+          "measuredAt": "2026-11-20T17:52:04.384Z",
+          "suiteId": "b9579e53d31b"
+        },
+        {
+          "runId": "bed8ee2e9a24500e19d5aa7969c72b22",
+          "sha256": "83c7566675df5a97d86e2f6db4fa832573cbfa7d1a072bb3a5f8c30e42aa6fa6",
+          "version": "3.8",
+          "measuredAt": "2026-11-26T18:43:17.918Z",
+          "suiteId": "b5e6af1728e8"
+        },
+        {
+          "runId": "5b7d27a5d11594e4d60ff76dfd0831e6",
+          "sha256": "44b10738fd323ea2c7f1b416221679ccd86837d1564816b15ce8fff934fa9bf3",
+          "version": "3.8",
+          "measuredAt": "2026-11-26T23:33:05.207Z",
+          "suiteId": "d8263c417943"
+        },
+        {
+          "runId": "22e0da7822f4f17b89f806e41f5b1c7e",
+          "sha256": "95c8018d830e4209ea7deddebb7113a369d9e647c982d2019aa29d5b0643bc13",
+          "version": "3.8",
+          "measuredAt": "2026-11-20T04:39:47.602Z",
+          "suiteId": "8f56dc2970a6"
+        }
+      ],
+      "lastProbedVersions": [
+        "3.8"
+      ],
+      "featureCount": 278
     },
     {
       "terminalId": "screen",
       "kind": "mux",
-      "contextKey": null,
-      "runId": null,
-      "runSha256": null,
-      "lastProbedVersion": null,
-      "lastProbedDate": "never",
-      "featureCount": 0
+      "contextKey": "mux:screen@[\"mux\",\"screen\",\"linux\",\"7.0.0-43-generic\",\"kitty\",\"screen\",\"/out/mux-empty.conf\",null]",
+      "contributingRunIds": [
+        "e159c42598652ce4cefbebff6e88653c",
+        "15c2a3928f393ea215e267d977beaf86",
+        "6eba35a1f4b7fcd409772118d6732544",
+        "e113b768db9509bf981cf99a2e39ec16"
+      ],
+      "sources": [
+        {
+          "runId": "e159c42598652ce4cefbebff6e88653c",
+          "sha256": "45f118740c2bd3e6f06a21c22560e1ca20308c5a120256324bfe06c7086096f5",
+          "version": "5.0.2",
+          "measuredAt": "2026-11-17T07:12:43.294Z",
+          "suiteId": "49a4149e52e5"
+        },
+        {
+          "runId": "15c2a3928f393ea215e267d977beaf86",
+          "sha256": "fabb7cbf167c7b7eb9cc690a2670cd8b3b7626ebc3f917a69090d7ce530be64a",
+          "version": "5.0.3",
+          "measuredAt": "2026-11-25T05:26:04.371Z",
+          "suiteId": "d1dfc188ec70"
+        },
+        {
+          "runId": "6eba35a1f4b7fcd409772118d6732544",
+          "sha256": "c95bdebb816d9e44d48445ae1fb4f85bf5f64aef2b3cac03afe935dfcf9f09e4",
+          "version": "5.0.3",
+          "measuredAt": "2026-11-26T18:45:34.568Z",
+          "suiteId": "b5e6af1728e8"
+        },
+        {
+          "runId": "e113b768db9509bf981cf99a2e39ec16",
+          "sha256": "68a854856f37d7c4eef340d031e88665f4089874a782f005adaf8cac145cbf06",
+          "version": "5.0.3",
+          "measuredAt": "2026-11-26T23:35:35.731Z",
+          "suiteId": "d8263c417943"
+        }
+      ],
+      "lastProbedVersions": [
+        "5.0.2",
+        "5.0.3"
+      ],
+      "featureCount": 278
     }
   ]
 }
