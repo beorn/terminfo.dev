@@ -774,8 +774,8 @@ describe("in-run pixel probe results", () => {
     expect(() => parse(run)).toThrow(/invalid frame regionDigest 3/)
   })
 
-  // Walks the whole committed corpus, which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133).
-  it("still parses every committed run", { timeout: 30_000 }, () => {
+  // Walks the whole committed corpus (236+ runs), which grows with every run; 5 s default was 4 s on CI by Nov 10 (33133) and 30 s timed out at 236 runs under load (#38759).
+  it("still parses every committed run", { timeout: 120_000 }, () => {
     const manifests = readdirSync(join(ROOT, "content", "suites"))
       .filter((f) => f.endsWith(".json"))
       .map((f) => parseSuiteManifest(f, readFileSync(join(ROOT, "content", "suites", f), "utf8")))
