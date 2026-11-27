@@ -1676,6 +1676,13 @@ export type ProgramResumeTokenReading =
       tty: string
       /** As for TERM_FEATURES (#32569): inside a multiplexer a present token may be the outer terminal's. */
       mux?: "tmux" | "screen" | "herdr" | "zellij"
+      /**
+       * Comparison in memory against the test-only sentinel planted in the multiplexer's launch environment
+       * (#38754, @cto 953d6a6c): "equal" means the mux passed the outer sentinel on (breaks R7577-059); "different"
+       * means the mux replaced it with its own token (R7577-060); "absent" means the mux did not pass it on and did
+       * not set one. Absent when no sentinel was planted.
+       */
+      sentinel?: "equal" | "different" | "absent"
     }
   | { status: "unavailable"; reason: string }
   | { status: "invalid"; reason: string }
