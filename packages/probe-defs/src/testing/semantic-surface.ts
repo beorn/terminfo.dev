@@ -1628,8 +1628,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return
     }
     if (payload.toLowerCase() === "+q736176654c696e6573") {
+      // #39012: the negative control answers with a complete status-1 value that is not a saveLines count, so the
+      // probe's value binding is proved by a contradiction rather than by a status-0 frame (which now reads To do).
       replies += mutations.has("xtgetxres-noop")
-        ? "\x1bP0+R736176654c696e6573\x1b\\"
+        ? "\x1bP1+R736176654c696e6573=787465726d\x1b\\"
         : "\x1bP1+R736176654c696e6573=31303234\x1b\\"
     }
   }

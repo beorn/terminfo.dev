@@ -1319,7 +1319,7 @@ describe("device contracts without prior coverage", () => {
   // #38772, the audit of build c73de477: xterm 411/412 answered termName with status 0 because termName is a string
   // resource left unset by default (charproc.c vt100ResourceToString returns NULL for it), so xterm was graded
   // Unsupported. saveLines is an integer resource, and xterm answers every integer resource with its value.
-  test("XTGETXRES asks saveLines, binds a status-1 decimal value and reads status 0 as a refusal", async () => {
+  test("XTGETXRES asks saveLines, binds a status-1 decimal value, contradicts a wrong value and reads status 0 as To do", async () => {
     const probe = callback("device.xtgetxres")
     const asked: string[] = []
     const asking = (raw: string): TermProbeSource => {
@@ -1339,20 +1339,26 @@ describe("device contracts without prior coverage", () => {
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     }
     expect(asked).toEqual(["\x1bP+Q736176654c696e6573\x1b\\"])
-    // The contract asks exactly one name, so a status-0 refusal is this probe's measured negative
-    // (27914) — unlike the shared refusal branch, which stays inconclusive for multi-subject probes.
-    const refusal = "\x1bP0+R736176654c696e6573\x1b\\"
-    for (const result of [probe.headless(headless(refusal)), await probe.terminal(app(refusal))]) {
-      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-      expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
+    // #39012 (@cpo/term 2026-11-27): a well-formed status-0 answer shows the terminal speaks XTGETXRES, so
+    // "resource not set" is unproven and the cell reads To do with that reason, never a capability negative.
+    const notSet = "\x1bP0+R736176654c696e6573\x1b\\"
+    for (const result of [probe.headless(headless(notSet)), await probe.terminal(app(notSet))]) {
+      expect(result.observation).toBeUndefined()
+      expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "Answered; resource not set" })
+      expect(result.assertions).toBeUndefined()
     }
-    // Two hex digits per character, and the value is xterm's %d: missing ST, empty, odd-length and non-decimal
-    // values are malformed.
+    // A status-1 reply carrying a complete value that is not the decimal count is the measured negative.
+    const contradicted = "\x1bP1+R736176654c696e6573=787465726d\x1b\\"
+    for (const result of [probe.headless(headless(contradicted)), await probe.terminal(app(contradicted))]) {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: contradicted }])
+    }
+    // Two hex digits per character, and the value is xterm's %d: missing ST, empty and odd-length values are
+    // malformed, while a complete value that is not the decimal count is the contradiction graded above.
     for (const raw of [
       "\x1bP1+R736176654c696e6573",
       "\x1bP1+R736176654c696e6573=\x1b\\",
       "\x1bP1+R736176654c696e6573=3\x1b\\",
-      "\x1bP1+R736176654c696e6573=787465726d\x1b\\",
     ]) {
       for (const result of [probe.headless(headless(raw)), await probe.terminal(app(raw))]) {
         expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
