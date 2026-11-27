@@ -144,12 +144,13 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
   },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
-  "sgr.underline-color-reset": row(
-    "\x1b[4m\x1b[58:2::255:0:128m",
-    "\x1b[59m",
-    "\x1b[4m",
-    "\x1b[58:2::255:0:128m\x1b[4m",
-  ),
+  "sgr.underline-color-reset": {
+    ...row("\x1b[4m\x1b[58:2::255:0:128m", "\x1b[59m", "\x1b[4m", "\x1b[58:2::255:0:128m\x1b[4m"),
+    // #39009 (@cpo/term 2026-11-27): a terminal that ignores SGR 58 paints the seed exactly as the plain underline, so
+    // SGR 59 has no colour to reset. Read from the child's own run, universal, and reversible when the colour appears.
+    setupAbsentReason:
+      "Underline colour is not applied here (SGR 58 left the plain underline), so there is no colour for SGR 59 to reset",
+  },
   "sgr.selective-reset.bold": {
     ...SAVED_SGR0_CAPTURE,
     seed: "\x1b[1;2;3m" + SAVED_SGR0_CAPTURE.expected,
