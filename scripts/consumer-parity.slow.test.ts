@@ -517,10 +517,11 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       }
       for (const [key,{selected,routeKey,contextKey}] of compatibility) {
         // Each consumer shows the number for ITS subject (@cto 921916bc, d321729a rule 5). Per app: the site
-        // matrix and the page header show the joined summary's count. Per context: the API shows that
-        // context's own count, which compatibilitySubjects selected. With one context the two are the same.
+        // matrix and the page header fold over the live public catalogue (#38806), while selected/API/analysis
+        // keep the catalogue the run recorded (D132 B). Per context: the API shows that context's own count,
+        // which compatibilitySubjects selected. With one context the two are the same.
         const app = site.selectedByBackend[key].selected;
-        assert.deepEqual(matrix.stats[key].score,app.score);
+        assert.deepEqual(matrix.stats[key].score,{supported:app.score.supported,all:site.releaseBars[key].denominator});
         assert.deepEqual(v3.contexts[contextKey].score,selected.score);
         if ((app.contexts?.length ?? 1) < 2) assert.deepEqual(app.score,selected.score);
         // 33994/34533: the app's analysis sits under that page header, so it quotes the joined count and cites
@@ -541,8 +542,8 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         // A shared route retains its legacy primary params; its other OS columns read the
         // same matrix checked above. They must not create duplicate public routes.
         if (page.params.backendId===key) {
-          assert.equal(page.params.total,String(app.score.all));
-          assert.equal(page.params.yes,String(app.score.supported));
+          assert.equal(page.params.total,String(matrix.stats[key].score.all));
+          assert.equal(page.params.yes,String(matrix.stats[key].score.supported));
         }
       }
       if (!v3.contextCount) {
