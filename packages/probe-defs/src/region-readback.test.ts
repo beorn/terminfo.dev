@@ -699,6 +699,25 @@ test("a degenerate run whose seed frame reads as its expected frame is inconclus
   expect(result.observation.note).toContain("seed frame and the expected frame read the same cells")
 })
 
+// #39009 (@cpo/term 2026-11-27): a row whose setup IS the attribute under test reads a seed equal to its expected frame
+// as a measured absence, not an unseparable fixture. The declaration is the row's, so it reverses when the seed shows
+// the attribute again, and it never becomes a per-app row.
+test("a seed that reads as its expected frame declares Untestable for the underline-colour reset", async () => {
+  const reason =
+    "Underline colour is not applied here (SGR 58 left the plain underline), so there is no colour for SGR 59 to reset"
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "same" })
+  const result = await captureRegionReadbackDecision(
+    fake.ctx,
+    "sgr.underline-color-reset",
+    spec({ ...PLANE_SPEC, setupAbsentReason: reason }),
+    fake.read,
+  )
+  expect(result?.observation).toBeUndefined()
+  expect(result?.criterionBranch).toBe("headless-observable-review")
+  expect(result?.tests).toMatchObject([{ id: "declared-untestable", status: "untestable", reason }])
+  expect(result?.notTested).toMatchObject({ reason: "no-semantic-observable", noObservable: reason })
+})
+
 test("an unstable capture refuses before the first glyph is written", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }), unstable: true })
   const result = await decide(fake)
