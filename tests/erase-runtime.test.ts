@@ -164,7 +164,10 @@ test.for(["success", "deciding", "precondition", "replay-failure", "painted-seed
       for (const [runIndex, run] of record.assertions.entries()) {
         expect(run).not.toHaveProperty("sealedAt")
         expect(run.source).toMatchObject({ kind: "trace", captureRunId: record.captureRunId })
-        expect(run.results).toHaveLength(273)
+        // One result per catalogue id, so derive the total: it grew from 273 to 276 with the OSC 7577
+        // and OSC 88 rows (#38699) and to 278 with #38800/#38801, and a pinned count only lags.
+        expect(run.results).toHaveLength(suite.catalogIds!.length)
+        expect(new Set(run.results.map(({ featureId }) => featureId)).size).toBe(suite.catalogIds!.length)
         const selected = run.results.filter(({ attempt }) => attempt.scope !== "none")
         expect(selected).toHaveLength(11)
         expect(
