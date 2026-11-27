@@ -860,11 +860,11 @@ function tightenedSupersedes(
 }
 
 /**
- * #39007 (@cpo/term 2026-11-27): a pass graded under a criterion this build has since tightened is not a decided
- * result. When a newer attempt on the cell ran the row and recorded no emitted result (`noOutputIds`), the row's
- * catalogue entry differs between that run's suite and the suite the verdict came from, and the versions match, the
- * verdict no longer publishes: the feature result reads To do and the superseded verdict is kept as history. Every
- * other unfinished attempt leaves the decided cell alone, so a crashed run still cannot knock out a decided cell.
+ * #39007: withdraw every decided cell a newer attempt left undecided, using the rule on `tightenedSupersedes`. The
+ * attempt sets are `noOutputIds`: rows the run selected and emitted no result for, which includes a run that started
+ * and crashed partway, and a recorded selection with no recorded attempt. Such a run withdraws the decided cells of
+ * the rows it selected; a row it never selected, an unchanged entry hash, a version mismatch, or an attempt older
+ * than the verdict leaves the decided cell alone.
  */
 function applySuperseded(
   cells: Record<string, SelectedContextCell>,
