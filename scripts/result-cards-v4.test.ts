@@ -1224,7 +1224,7 @@ describe("card-explain #38777 — command under test, deciding values, library s
   // probe compares: the cell region against this run's expected frame, or the criterion's own plain words.
   it("#38790: a screen card's Expected names the region or the criterion, never 'Screen shows <title>'", () => {
     const XTERM = "probes-apps/xterm-411-linux-9905a004f5250013a413d73fb7e5011a.json"
-    const expectedWords = (featureId: string) => cardFor(XTERM, featureId).card.expected.words
+    const expectedWords = (featureId: string) => cardFor(XTERM, featureId).card.expected?.words
     expect(expectedWords("editing.decfra")).toBe("Rows 1–3, columns 1–6 match this run's expected frame")
     expect(expectedWords("modes.xtpushcolors")).toBe(
       "After set index 1 magenta, push, set index 1 green, pop, magenta is restored",
@@ -1233,6 +1233,26 @@ describe("card-explain #38777 — command under test, deciding values, library s
     for (const featureId of ["editing.decfra", "modes.xtpushcolors", "sgr.reset"]) {
       expect(expectedWords(featureId)).not.toMatch(/^Screen shows\b/)
     }
+  })
+
+  // #38790 (@cpo/term de466ce4). A feature with no declared command still says what it tested. xterm's combining
+  // card used to list eight identical "Ask where the cursor is" rows and never showed e + U+0301; Ghostty's injected
+  // key read "Send test key press"; WezTerm's scrollback card read "CR LF | Escape sequence" per line.
+  it("#38790: no-command cards name the text written, the injected event and the lines written", () => {
+    const combining = cardFor(
+      "probes-apps/xterm-411-linux-9905a004f5250013a413d73fb7e5011a.json",
+      "text.combining",
+    ).card
+    expect(combining.steps).toContainEqual({ num: 5, code: "é", words: "Text written: e + U+0301" })
+    const GHOSTTY = "probes-apps/ghostty-1.3.1-linux-633c90aa4d9d9915dbfa8bbb0e1bc68e.json"
+    expect(cardFor(GHOSTTY, "input.xtest-key").card.steps.at(-1)?.words).toBe("Key ctrl+a, injected by the OS")
+    expect(cardFor(GHOSTTY, "input.xtest-wheel").card.steps.at(-1)?.words).toBe("Mouse wheel up, injected by the OS")
+    const scrollback = cardFor(
+      "probes-apps/wezterm-0-unstable-2026-10-10-linux-1b5b35ecb719d1e0ea0ea426f63a92e1.json",
+      "scrollback.accumulate",
+    ).card
+    expect(scrollback.steps.map((s) => s.words)).toContain("Lines written: “line 0” to “line 33”, 34 lines")
+    expect(scrollback.steps.map((s) => s.words)).not.toContain("Escape sequence")
   })
 
   // Pattern 6. Alacritty never answered the OSC 13 starting-color query; no color was set.
