@@ -57,9 +57,9 @@ async function tokenAppResult(ctx: TermProbeSource): Promise<ProbeCallbackResult
       ? `${reading.mux} replaced the outer sentinel and minted its own well-formed OSC7577_TOKEN (${PROGRAM_RESUME_SPEC})`
       : !pass059
         ? `${reading.mux} passed the outer sentinel OSC7577_TOKEN on to the pane instead of replacing it (${PROGRAM_RESUME_SPEC})`
-        : reading.sentinel === "absent"
-          ? `OSC7577_TOKEN absent inside ${reading.mux}; outer sentinel was not passed on, and ${reading.mux} did not mint its own (${PROGRAM_RESUME_SPEC})`
-          : `${reading.mux} minted a malformed OSC7577_TOKEN: ${MALFORMED_RULE[reading.malformed!]} (${PROGRAM_RESUME_SPEC})`
+        : reading.malformed
+          ? `${reading.mux} minted a malformed OSC7577_TOKEN: ${MALFORMED_RULE[reading.malformed]} (${PROGRAM_RESUME_SPEC})`
+          : `OSC7577_TOKEN absent inside ${reading.mux}; outer sentinel was not passed on, and ${reading.mux} did not mint its own (${PROGRAM_RESUME_SPEC})`
     const observed =
       reading.sentinel === "absent"
         ? "absent (sentinel not passed on)"
