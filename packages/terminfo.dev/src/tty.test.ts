@@ -1001,6 +1001,49 @@ describe("TTY transaction replies", () => {
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
+  // Replay of kitty-0.49.2's recorded replies (run 539844bd99c5080400e866d488ea4923, #39042): the lone selector
+  // answered 1;1, which the old guard took for a failed control, while the sample answered 1;3 — two columns.
+  it("reads kitty's recorded selector and sample reports as a zero selector and a two-column sample", async () => {
+    const replies = [
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[1;4R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;1R",
+      // The recorded run stopped after the selector's home report; a cursor left at 1 then "A" is 1;2.
+      "\x1b[1;1R",
+      "\x1b[1;2R",
+      "\x1b[2;1R",
+      "\x1b[1;2R",
+      "\x1b[1;3R",
+      "\x1b[1;4R",
+    ]
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        if (chunk === "\x1b[6n") reply(replies.shift() ?? "")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    const measured = await withTTYOperation(
+      async () => ({
+        ascii: await measureRenderedWidth("AA"),
+        base: await measureRenderedWidth("\u263A"),
+        selector: await measureRenderedWidth("\uFE0F"),
+        sample: await measureRenderedWidth("\u263A\uFE0F"),
+      }),
+      out,
+    )
+    expect(measured).toEqual({ ascii: 2, base: 1, selector: 0, sample: 2 })
+    expect(replies).toEqual([])
+  })
+
   it("restores cursor and declines a width when the setup grid cannot be verified", async () => {
     const writes: string[] = []
     const out = {
