@@ -71,6 +71,7 @@ import {
   UNHANDLED_OSC_CONTROL_TITLE,
   type StackReading,
   heldViewportReadTodo,
+  NO_INPUT_ROUTE,
 } from "./helpers.ts"
 import { measureAlternateReflow } from "./modes.ts"
 import { sgrTermReadback } from "./sgr.ts"
@@ -5738,7 +5739,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) {
-    return declaredUntestableResult("real-surface input injection (XTEST/CGEvent)", { input: false })
+    return notTestedResult(NO_INPUT_ROUTE, { input: false })
   }
   if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
   return ctx.withClipboardFixture(async (fixture) => {

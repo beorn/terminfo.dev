@@ -15,7 +15,7 @@ import {
   type ProbeCallbackResult,
   type TermProbeSource,
 } from "./index.ts"
-import { recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
+import { NO_INPUT_ROUTE, recordExecutedProbe, withReplyFailureEvidence } from "./helpers.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 // routes-16 row 1 (32472): vt100 0.16.2 keeps no clipboard and hands the read to paste_from_clipboard,
@@ -742,7 +742,7 @@ test("extensions.clipboard-paste keeps missing native paste encoding PROBE TODO 
   expect(writes).toEqual([])
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level|paste/i),
+    noObservable: NO_INPUT_ROUTE,
   })
   expect(result.observation).toBeUndefined()
 })

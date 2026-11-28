@@ -4,6 +4,7 @@
  * @consumer App collector OS-level key/click/wheel injection, prompt click events and modifyOtherKeys observations.
  * @testonly none
  */
+import { NO_INPUT_ROUTE } from "./helpers.ts"
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
@@ -326,7 +327,7 @@ test.each([
   "extensions.clipboard-paste",
   "modes.application-keypad",
   "modes.alt-scroll-1007",
-])("%s names real-surface injection only when the input path is missing", async (id) => {
+])("%s is the named PROBE TODO, never Untestable, only when the input path is missing", async (id) => {
   const definition = [...inputProbes, ...extensionsProbes, ...modesProbes].find((entry) => entry.id === id)!
   for (const missing of ["input", "readInput"] as const) {
     const context = term({
@@ -336,14 +337,11 @@ test.each([
     context[missing] = undefined
     const result = await definition.term!(context)
     expect(result.observation).toBeUndefined()
-    expect(result.notTested?.noObservable).toBe("real-surface input injection (XTEST/CGEvent)")
-    expect(result.tests).toEqual([
-      {
-        id: "declared-untestable",
-        status: "untestable",
-        reason: "real-surface input injection (XTEST/CGEvent)",
-      },
-    ])
+    // @cto 1870a1b3 (#30723 r2 correction 4): a missing route is our gap, not the terminal's, so the cell is the
+    // named PROBE TODO, never a declared Untestable; a per-app declaration still wins where one exists.
+    expect(result.notTested?.noObservable).toBe(NO_INPUT_ROUTE)
+    expect(result.tests).toBeUndefined()
+    expect(result.criterionBranch).toBeUndefined()
   }
 })
 
@@ -506,10 +504,7 @@ test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) =
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -636,10 +631,7 @@ test("input.modify-other-keys is not tested without an OS XTEST adapter", async 
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -750,10 +742,7 @@ test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", asyn
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -810,10 +799,7 @@ test("modes.application-keypad is not tested without an OS XTEST adapter", async
   const writes: string[] = []
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -962,7 +948,7 @@ test("modes.alt-scroll-1007 is not tested without an OS XTEST adapter", async ()
   expect(writes).toEqual([])
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level|wheel/i),
+    noObservable: NO_INPUT_ROUTE,
   })
   expect(result.observation).toBeUndefined()
 })
@@ -1078,10 +1064,7 @@ test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => 
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -1292,10 +1275,7 @@ test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => 
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -1391,10 +1371,7 @@ test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 
@@ -1506,10 +1483,7 @@ test("input.button-event-mouse is not tested without an OS XTEST adapter", async
 
   const result = await definition.term!(term({ write: (text) => writes.push(text) }))
   expect(writes).toEqual([])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/XTEST|OS-level/i),
-  })
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: NO_INPUT_ROUTE })
   expect(result.observation).toBeUndefined()
 })
 

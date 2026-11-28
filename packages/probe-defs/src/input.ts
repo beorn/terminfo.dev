@@ -24,6 +24,7 @@ import {
   methodUnavailable,
   validSize,
   withUnhandledModeReport,
+  NO_INPUT_ROUTE,
 } from "./helpers.ts"
 import { hasAuditedOscInterfaceAbsence, kittyKeyboardFlagProbe, unhandledOscReportResult } from "./extensions.ts"
 import { queryPixelGeometry, type PixelGeometry } from "./region-readback.ts"
@@ -125,11 +126,8 @@ const SGR_MOTION_OR_RELEASE =
 const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
 function xtestCoverage(kind?: string, mechanism = "XTEST"): ProbeCallbackResult {
-  if (!kind) {
-    // @chief ab9fa8aa / 5950cb6b forbid a second capture system, not injection through the existing input
-    // helpers (#30723: CGEvent on macOS, SendInput on Windows, both behind input-fixture.ts's one mechanism port).
-    return declaredUntestableResult("real-surface input injection (XTEST/CGEvent)", { input: false })
-  }
+  // No installed route is the named PROBE TODO (NO_INPUT_ROUTE), never a declared Untestable.
+  if (!kind) return notTestedResult(NO_INPUT_ROUTE, { input: false })
   return notTestedResult(`OS-level ${mechanism} ${kind}`, { input: false })
 }
 
