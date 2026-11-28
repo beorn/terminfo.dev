@@ -4,7 +4,7 @@
  * @level l1
  * @consumer packages/viprobe/package.json and packages/viprobe/src/*.ts; every collector writing canonical
  * viprobe.call-log v1 artifacts.
- * @reach package-only: inspects packages/viprobe manifest and source files on disk
+ * @reach fs-walk vendor/terminfo.dev/packages/viprobe/package.json vendor/terminfo.dev/packages/viprobe/src/**
  * @testonly none
  */
 import { readdirSync, readFileSync } from "node:fs"
