@@ -91,7 +91,7 @@ const CSI_DECSCUSR = /^\x1b\[[0-6]? q$/
 // The reset probes' made-up control (extensions.ts `\x1b]7110;rgb:12/34/56`): an OSC no terminal defines,
 // written to prove the colour under test does not move on an unknown code. Only this exact form.
 const OSC_UNKNOWN_COLOUR_CONTROL = /^\x1b\]7110;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)$/i
-const COLOUR_KINDS: ReadonlySet<LedgerAttribute["kind"]> = new Set([
+const COLOUR_KINDS: ReadonlySet<LedgerAttribute["kind"]> = new Set<LedgerAttribute["kind"]>([
   "palette",
   "foreground",
   "background",
