@@ -26,11 +26,14 @@ import { dirname, join } from "node:path"
 import { TERM_FOOTPRINTS } from "../packages/probe-defs/src/term-footprints.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "../packages/terminfo.dev/src/probes/window-basis-rulings.ts"
 import {
+  RESTORE_TO_PRE_READ,
   classifyWrite,
   attributeKey,
+  restoresToPreRead,
   type LedgerAttribute,
 } from "../packages/terminfo.dev/src/probes/attribute-ledger.ts"
 import { classifyWindowWrite } from "../packages/terminfo.dev/src/probes/window-basis-writes.ts"
+import { selectWindowTraces, type FreezeRun } from "../packages/terminfo.dev/src/probes/window-basis-freeze.ts"
 
 const ROOT = join(import.meta.dir, "..")
 const TRACES = "content/probes-apps"
@@ -83,9 +86,10 @@ function entryWrites(raw: string): string[] | { readonly unreadable: string } {
 }
 
 /**
- * The deliberate re-freeze: read content/probes-apps as committed at `revision` and keep every
- * window-cell entry that carries writes, in file order — the same selection the generator made when
- * it read the directory live. A file that is not JSON holds no entry and is counted out loud.
+ * The deliberate re-freeze: read content/probes-apps as committed at `revision` and keep, per
+ * (subject, window cell), the entries of the newest run whose result for that cell completed
+ * (window-basis-freeze.ts, #39207, @cto 313ea37a); older runs stay on disk and are counted as
+ * superseded. A file that is not JSON holds no entry and is counted out loud.
  */
 function freeze(revision: string): FrozenInputs {
   const git = (...args: string[]): Buffer => {
@@ -99,21 +103,23 @@ function freeze(revision: string): FrozenInputs {
     .split("\n")
     .filter((path) => path.endsWith(".json"))
     .sort()
-  const sources: FrozenSource[] = []
+  const read: Array<{ path: string; bytes: Buffer; entries: FrozenEntry[]; run: FreezeRun }> = []
   let notJson = 0
   let notWrites = 0
   for (const path of files) {
     const bytes = git("show", `${commit}:${path}`)
-    let data: { rawReplies?: Record<string, unknown> }
+    let data: { rawReplies?: Record<string, unknown>; subject?: unknown; measuredAt?: unknown; results?: unknown }
     try {
-      data = JSON.parse(bytes.toString("utf8")) as { rawReplies?: Record<string, unknown> }
+      data = JSON.parse(bytes.toString("utf8")) as typeof data
     } catch {
       notJson++
       continue
     }
     const entries: FrozenEntry[] = []
+    const cells = new Map<string, string[]>()
     for (const [key, raw] of Object.entries(data.rawReplies ?? {})) {
-      if (!windowCells.includes(key.replace(TRACE_KEY_SUFFIX, "")) || typeof raw !== "string") continue
+      const cell = key.replace(TRACE_KEY_SUFFIX, "")
+      if (!windowCells.includes(cell) || typeof raw !== "string") continue
       if (!Array.isArray(entryWrites(raw))) {
         // Such an entry contributed nothing when the generator read the directory live, so freezing
         // keeps that selection; the count is printed below.
@@ -121,11 +127,29 @@ function freeze(revision: string): FrozenInputs {
         continue
       }
       entries.push({ key, sha256: sha256(raw), raw })
+      cells.set(cell, [...(cells.get(cell) ?? []), key])
     }
-    if (entries.length > 0) sources.push({ path, sha256: sha256(bytes), entries })
+    if (entries.length === 0) continue
+    read.push({
+      path,
+      bytes,
+      entries,
+      run: { path, subject: data.subject, measuredAt: data.measuredAt, results: data.results, cells },
+    })
+  }
+  // The newest completed run per (subject, cell) decides that cell's trace (#39207, @cto 313ea37a).
+  const { keep } = selectWindowTraces(read.map((file) => file.run))
+  const sources: FrozenSource[] = []
+  let superseded = 0
+  for (const file of read) {
+    const kept = keep.get(file.path)
+    const entries = file.entries.filter((entry) => kept?.has(entry.key) === true)
+    superseded += file.entries.length - entries.length
+    if (entries.length > 0) sources.push({ path: file.path, sha256: sha256(file.bytes), entries })
   }
   console.log(
     `froze ${sources.length} of ${files.length} trace files at ${commit}` +
+      `; ${superseded} window-cell entr(ies) superseded by a newer completed run of the same subject` +
       (notJson > 0 ? `; ${notJson} file(s) were not JSON and hold no entry` : "") +
       (notWrites > 0 ? `; ${notWrites} window-cell entr(ies) held no readable writes and were left out` : ""),
   )
@@ -181,7 +205,10 @@ const frozen = loadFrozen()
 
 /** Every write event the frozen traces hold for each cell, in file order. */
 const writes = new Map<string, string[]>()
+/** The same writes kept per source, so a restore target is read off each source's own last write (#39207). */
+const sourceWrites = new Map<string, string[][]>()
 for (const source of frozen.sources) {
+  const perCell = new Map<string, string[]>()
   for (const entry of source.entries) {
     const cell = entry.key.replace(TRACE_KEY_SUFFIX, "")
     const read = entryWrites(entry.raw)
@@ -190,7 +217,9 @@ for (const source of frozen.sources) {
     const list = writes.get(cell) ?? []
     list.push(...read)
     writes.set(cell, list)
+    perCell.set(cell, [...(perCell.get(cell) ?? []), ...read])
   }
+  for (const [cell, list] of perCell) sourceWrites.set(cell, [...(sourceWrites.get(cell) ?? []), list])
 }
 
 /** Render one attribute as the object literal the generated table stores. */
@@ -234,7 +263,18 @@ for (const cell of windowCells) {
     noTrace.push(cell)
     continue
   }
-  const classified = cellWrites.map((write) => classifyWindowWrite(write))
+  // Classification context: every attribute the cell's writes name on their own. Admission pre-reads all
+  // of them, so a union entry (OSC 7110, DECSTR) may name one before a trace's own write touches it; the
+  // runtime ledger classifies with the cell's pre-seed as the same context (#39207).
+  const context: LedgerAttribute[] = []
+  for (const write of cellWrites) {
+    const own = classifyWindowWrite(write)
+    if ("unclassified" in own) continue
+    for (const attribute of own.attributes) {
+      if (!context.some((existing) => attributeKey(existing) === attributeKey(attribute))) context.push(attribute)
+    }
+  }
+  const classified = cellWrites.map((write) => classifyWindowWrite(write, context))
   const refusedCount = classified.filter((entry) => "unclassified" in entry).length
   if (refusedCount > 0) {
     const first = classified.find((entry) => "unclassified" in entry)
@@ -258,34 +298,50 @@ for (const cell of windowCells) {
   // state it found, so a terminal that starts non-default would make pre differ from post and the ledger
   // would stop the whole run. Admission therefore carries the target, and the caller refuses the cell by
   // name before its first byte when the terminal is not in that state (@dev/brain e1b6910e1 review 1).
+  // A colour, the pointer shape or the cursor style restores to the value the cell read before its first
+  // write: the probes put back what they read and prove it, and the ledger compares post with pre (#39207,
+  // @cto 5034aa6f). Every other attribute takes the value each source's LAST write to it names, and the
+  // sources must agree; earlier writes do not decide the post-state, so they need no name.
   const restoresTo: Record<string, string> = {}
-  let derivable = true
-  for (const entry of classified) {
-    if ("unclassified" in entry) continue
-    for (const sequence of entry.attributeSequences) {
-      const target = restoreTargetOf(sequence)
-      const inner = classifyWrite(sequence)
-      if ("unclassified" in inner) {
-        derivable = false
+  let refusal: string | undefined
+  for (const attribute of attributes) {
+    const key = attributeKey(attribute)
+    if (restoresToPreRead(attribute)) {
+      restoresTo[key] = RESTORE_TO_PRE_READ
+      continue
+    }
+    const targets = new Set<string>()
+    for (const list of sourceWrites.get(cell) ?? []) {
+      let last: string | undefined
+      for (const write of list) {
+        const entry = classifyWindowWrite(write, context)
+        if ("unclassified" in entry) continue
+        for (const sequence of entry.attributeSequences) {
+          const inner = classifyWrite(sequence, context)
+          if (!("unclassified" in inner) && inner.attributes.some((named) => attributeKey(named) === key)) {
+            last = sequence
+          }
+        }
+      }
+      if (last === undefined) continue
+      const target = restoreTargetOf(last)
+      if (target === undefined) {
+        refusal = `cleanup target not derivable: the cell's last write to ${key} leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared`
         break
       }
-      for (const attribute of inner.attributes) {
-        if (target === undefined) {
-          unclassifiable.set(
-            cell,
-            `cleanup target not derivable: the cell's last write to ${attributeKey(attribute)} leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared`,
-          )
-          admitted.delete(cell)
-          derivable = false
-          break
-        }
-        restoresTo[attributeKey(attribute)] = target
-      }
-      if (!derivable) break
+      targets.add(target)
     }
-    if (!derivable) break
+    if (refusal === undefined && targets.size > 1) {
+      refusal = `cleanup target not derivable: the retained traces' last writes to ${key} leave different states (${[...targets].sort().join(", ")})`
+    }
+    if (refusal !== undefined) break
+    const only = [...targets][0]
+    if (only !== undefined) restoresTo[key] = only
   }
-  if (!derivable) continue
+  if (refusal !== undefined) {
+    unclassifiable.set(cell, refusal)
+    continue
+  }
   admitted.set(cell, {
     preSeed: [...attributes].sort((a, b) => attributeKey(a).localeCompare(attributeKey(b))),
     restoresTo: Object.fromEntries(Object.entries(restoresTo).sort(([a], [b]) => a.localeCompare(b))),
@@ -300,6 +356,16 @@ if (noTrace.length > 0) {
 
 const sortedAdmitted = [...admitted].sort(([a], [b]) => a.localeCompare(b))
 const sortedUnclassifiable = [...unclassifiable].sort(([a], [b]) => a.localeCompare(b))
+/** Per cell, the retained runs whose frozen traces decided it, so a reader can see which trace did (#39207). */
+const traceRuns = new Map<string, Set<string>>()
+for (const source of frozen.sources) {
+  const runId = /-([0-9a-f]{32})\.json$/.exec(source.path)?.[1] ?? source.path
+  for (const entry of source.entries) {
+    const cell = entry.key.replace(TRACE_KEY_SUFFIX, "")
+    traceRuns.set(cell, (traceRuns.get(cell) ?? new Set<string>()).add(runId))
+  }
+}
+const sortedTraceRuns = [...traceRuns].sort(([a], [b]) => a.localeCompare(b))
 
 const lines = [
   "/**",
@@ -312,6 +378,7 @@ const lines = [
   " * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes still refuse @cto's closed",
   " * lists after tokenization, with the exact cause (@cto: no hand-written splitter, and a run-time",
   " * unclassifiable write is run-fatal, so the decision has to happen here).",
+  " * `WINDOW_BASIS_TRACE_RUNS` names, per cell, the retained runs whose frozen traces decided it (#39207).",
   " */",
   "",
   'import type { LedgerAttribute } from "./attribute-ledger.ts"',
@@ -335,6 +402,16 @@ const lines = [
   "export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {",
   // Key and sentence on separate lines, which is the shape the formatter leaves for a long entry.
   ...sortedUnclassifiable.flatMap(([cell, reason]) => [`  ${JSON.stringify(cell)}:`, `    ${JSON.stringify(reason)},`]),
+  "}",
+  "",
+  "export const WINDOW_BASIS_TRACE_RUNS: Readonly<Record<string, readonly string[]>> = {",
+  ...sortedTraceRuns.map(
+    ([cell, runs]) =>
+      `  ${JSON.stringify(cell)}: [${[...runs]
+        .sort()
+        .map((run) => JSON.stringify(run))
+        .join(", ")}],`,
+  ),
   "}",
   "",
 ]

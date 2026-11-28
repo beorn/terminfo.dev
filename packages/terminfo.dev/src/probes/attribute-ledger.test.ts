@@ -12,6 +12,7 @@ import {
   classifyWrite,
   ledgerOmega,
   readbackFor,
+  restoresToPreRead,
   touchedAttributes,
 } from "./attribute-ledger"
 import { windowBasisAdmission } from "./window-basis-admission.ts"
@@ -141,6 +142,130 @@ describe("ledgerOmega", () => {
     })
     expect(refusal.name).toBe("MutationRestoreRefused")
     expect(refusal.message).toContain("dec:7 (diverged)")
+  })
+})
+
+// #39207, @cto 5034aa6f: two closed-list entries, each with a terminal that breaks its claim and must
+// fail the cell by name, or the entry could pass everything.
+describe("DECSCUSR and the reset probes' made-up OSC 7110 (#39207)", () => {
+  const OSC112 = "extensions.osc112-reset-cursor"
+  const decscusrReply = (ps: string) => `${ESC}P1$r${ps} q${ESC}\\`
+
+  it("names CSI Ps SP q as the cursor style, read back through DECRQSS SP q", () => {
+    expect(keys(`${ESC}[2 q`)).toEqual(["decscusr"])
+    expect(keys(`${ESC}[0 q`)).toEqual(["decscusr"])
+    expect(keys(`${ESC}[6 q`)).toEqual(["decscusr"])
+    const readback = readbackFor({ kind: "cursor-style" })
+    if ("unprovable" in readback) throw new Error("DECSCUSR must be readable through DECRQSS SP q")
+    expect(readback.query).toBe(`${ESC}P$q q${ESC}\\`)
+    expect(readback.read(decscusrReply("2"))).toBe("2")
+    expect(readback.read(`${ESC}P0$r${ESC}\\`)).toBeNull()
+    expect(readback.read(`${ESC}[?1;2c`)).toBeNull()
+  })
+
+  it("admits the osc112 capture fixture's whole write, DECSCUSR included", () => {
+    const write = `${ESC}[0m${ESC}[2J${ESC}[2;1HL  R${ESC}[2;3H${ESC}[2 q${ESC}[?25h`
+    expect(touchedAttributes([write])).toEqual({
+      attributes: [{ kind: "sgr" }, { kind: "cursor-style" }, { kind: "dec-mode", mode: 25 }],
+      unclassified: [],
+    })
+  })
+
+  it("fails the cell by name when the terminal does not put the cursor style back", () => {
+    const omega = ledgerOmega({
+      writes: [`${ESC}[2 q`, `${ESC}[0 q`],
+      reads: new Map([["decscusr", { before: decscusrReply("1"), after: decscusrReply("2") }]]),
+    })
+    expect(omega).toEqual({
+      status: "refused",
+      touched: ["decscusr"],
+      failures: [{ attribute: "decscusr", reason: "diverged", before: "1", after: "2" }],
+    })
+    if (omega.status !== "refused") throw new Error("unreachable")
+    const refusal = new MutationRestoreRefused(OSC112, omega)
+    expect(refusal.message).toContain(OSC112)
+    expect(refusal.message).toContain("decscusr (diverged)")
+  })
+
+  it("folds OSC 7110 onto the colours the cell reads back, and refuses it with none to read", () => {
+    const cursor = classified(`${ESC}]112\x07`).attributes
+    expect(keys(`${ESC}]7110;rgb:12/34/56\x07`, cursor)).toEqual(["osc:12"])
+    expect(keys(`${ESC}]7110;rgb:12/34/56${ESC}\\`, [{ kind: "palette", index: 0 }])).toEqual(["osc:4:0"])
+    expect(classifyWrite(`${ESC}]7110;rgb:12/34/56\x07`)).toMatchObject({
+      unclassified: expect.stringContaining("OSC 7110"),
+    })
+    expect(classifyWrite(`${ESC}]7110;rgb:12/34/56\x07`, [{ kind: "dec-mode", mode: 25 }])).toMatchObject({
+      unclassified: expect.stringContaining("OSC 7110"),
+    })
+    // Only the probes' own control form is on the list; any other unknown OSC still refuses.
+    expect(classifyWrite(`${ESC}]7111;rgb:12/34/56\x07`, cursor)).toMatchObject({
+      unclassified: expect.stringContaining("no attribute class"),
+    })
+  })
+
+  it("fails the cell by name when the terminal changes the seed colour on OSC 7110", () => {
+    const omega = ledgerOmega({
+      writes: [`${ESC}]112\x07`, `${ESC}]7110;rgb:12/34/56\x07`],
+      reads: new Map([
+        ["osc:12", { before: `${ESC}]12;rgb:9282/9282/9282\x07`, after: `${ESC}]12;rgb:1212/3434/5656\x07` }],
+      ]),
+    })
+    expect(omega).toEqual({
+      status: "refused",
+      touched: ["osc:12"],
+      failures: [
+        { attribute: "osc:12", reason: "diverged", before: "rgb:9282/9282/9282", after: "rgb:1212/3434/5656" },
+      ],
+    })
+    if (omega.status !== "refused") throw new Error("unreachable")
+    expect(new MutationRestoreRefused(OSC112, omega).message).toContain(`${OSC112}`)
+  })
+})
+
+// #39207: the cell's admission pre-reads its whole pre-seed, so a union entry may name any of those
+// attributes even before this run's own writes touch them; nothing outside the context is added.
+describe("classification context: the attributes the cell pre-reads (#39207)", () => {
+  const CONTROL = `${ESC}]7110;rgb:12/34/56\x07`
+  const context = [{ kind: "dec-mode", mode: 25 }, { kind: "cursor-colour" }] as const
+
+  it("classifies the made-up control written before the cell's own colour write", () => {
+    expect(touchedAttributes([CONTROL, `${ESC}]12;rgb:12/34/56\x07`])).toMatchObject({ unclassified: [CONTROL] })
+    expect(touchedAttributes([CONTROL, `${ESC}]12;rgb:12/34/56\x07`], context)).toEqual({
+      attributes: [{ kind: "cursor-colour" }],
+      unclassified: [],
+    })
+  })
+
+  it("reads back what the writes named, never the rest of the context", () => {
+    const reply = `${ESC}]12;rgb:9282/9282/9282\x07`
+    const omega = ledgerOmega({
+      writes: [CONTROL],
+      reads: new Map([["osc:12", { before: reply, after: reply }]]),
+      context,
+    })
+    expect(omega).toEqual({ status: "restored", touched: ["osc:12"] })
+  })
+
+  it("restores colours, the pointer shape and the cursor style to the pre-read value; modes and SGR keep named targets", () => {
+    for (const attribute of [
+      { kind: "palette", index: 0 },
+      { kind: "foreground" },
+      { kind: "background" },
+      { kind: "cursor-colour" },
+      { kind: "highlight-background" },
+      { kind: "highlight-foreground" },
+      { kind: "pointer-shape" },
+      { kind: "cursor-style" },
+    ] as const) {
+      expect(restoresToPreRead(attribute), attribute.kind).toBe(true)
+    }
+    for (const attribute of [
+      { kind: "dec-mode", mode: 25 },
+      { kind: "ansi-mode", mode: 4 },
+      { kind: "sgr" },
+    ] as const) {
+      expect(restoresToPreRead(attribute), attribute.kind).toBe(false)
+    }
   })
 })
 

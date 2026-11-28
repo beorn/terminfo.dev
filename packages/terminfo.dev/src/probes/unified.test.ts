@@ -8541,6 +8541,60 @@ it("refuses by name when the pre-read went unanswered, and keeps running", async
   }
 })
 
+// @failure A reset cell whose colour cannot be named from the bytes is either refused on every app forever,
+//   or admitted on a terminal that never answered its colour query, so the restore it claims is unproven
+//   (#39207, @cto 5034aa6f).
+// @level l1
+// @consumer A window-scoped batch running extensions.osc110-reset-fg.
+it("admits a reset cell whose target is its own pre-read when the colour query answers, and refuses it by name when silent (#39207)", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(terminalOwnership, "ownedTerminalProcessBasisFor").mockReturnValue({
+    basis: "window basis under test",
+    scope: "window",
+  })
+  const cell = ALL_PROBES.find((item) => item.id === "extensions.osc110-reset-fg")!
+  const original = cell.term
+  let ran = 0
+  cell.term = async (ctx) => {
+    ran += 1
+    ctx.write("\x1b]10;rgb:aa/bb/cc\x07")
+    ctx.write("\x1b]110\x07")
+    return { pass: true, response: "ok", observation: { outcome: "supported", assertionType: "query_reply" } }
+  }
+  const run = async (answersOsc10: boolean) => {
+    process.stdout.write = ((text: string) => {
+      if (typeof text !== "string") return true
+      if (answersOsc10 && /\x1b\]10;\?\x07\x1b\[c$/.test(text)) {
+        process.stdin.emit("data", Buffer.from("\x1b]10;rgb:e6ce/e6ce/e6ce\x07\x1b[?62c"))
+      } else if (text.includes("\x1b[c")) process.stdin.emit("data", Buffer.from("\x1b[?62c"))
+      return true
+    }) as typeof process.stdout.write
+    return runProbeBatch({
+      ids: ["extensions.osc110-reset-fg"],
+      subject: { kind: "term", id: "terminal-app", os: "darwin" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      witnessWindow: { app: "terminal-app", read: async () => "2" },
+    })
+  }
+  try {
+    const answered = await run(true)
+    expect(ran, "an answered pre-read admits the cell").toBeGreaterThan(0)
+    const ranWhenAnswered = ran
+    const ledger = JSON.parse(answered.rawReplies["extensions.osc110-reset-fg.ledger"] ?? "{}") as {
+      omega?: { status?: string; touched?: string[] }
+    }
+    expect(ledger.omega).toEqual({ status: "restored", touched: ["osc:10"] })
+
+    const silent = await run(false)
+    expect(ran, "a silent colour query never lets the cell run").toBe(ranWhenAnswered)
+    const refused = silent.results.find((result) => result.featureId === "extensions.osc110-reset-fg")
+    expect(refused?.reason).toContain("did not answer the pre-read for osc:10")
+    expect(refused?.tests?.[0]?.status).toBe("probe-todo")
+  } finally {
+    cell.term = original
+  }
+})
+
 // @cto 2026-11-14 (osc104 after-merge review): the disagreement branch withdrew the colour result from the
 // observation only, while the writer grades from the explicit tests. A refused attempt vector therefore left an
 // unsupported criterion authoritative and the terminal kept a negative on evidence this row had refused. These

@@ -9,7 +9,7 @@
  * unprovable" and refuses; it is never assumed restored (@cto e6ae2880 condition 1).
  *
  * Every class here has a query: DECRQM for modes, OSC 4/10/11/12/17/19 for colours, DECRQSS `$ q m`
- * for the SGR pen state, and OSC 22's current-shape form. The SGR and OSC 22 bytes and reply patterns
+ * for the SGR pen state, DECRQSS `$ q SP q` for the DECSCUSR cursor style (#39207), and OSC 22's current-shape form. The SGR and OSC 22 bytes and reply patterns
  * are the ones probe-defs already sends (@cto 8087ba1e: same table, same mechanism, no new proof type).
  *
  * Pure: no host access, no I/O. The caller supplies the before/after replies it already collected;
@@ -20,6 +20,8 @@
  */
 
 import {
+  DECRQSS_DECSCUSR_QUERY,
+  DECRQSS_DECSCUSR_REPLY,
   DECRQSS_SGR_QUERY,
   DECRQSS_SGR_REPLY,
   OSC22_CURRENT_QUERY,
@@ -41,6 +43,7 @@ export type LedgerAttribute =
   | { readonly kind: "highlight-background" }
   | { readonly kind: "highlight-foreground" }
   | { readonly kind: "pointer-shape" }
+  | { readonly kind: "cursor-style" }
 
 export function attributeKey(attribute: LedgerAttribute): string {
   switch (attribute.kind) {
@@ -64,6 +67,8 @@ export function attributeKey(attribute: LedgerAttribute): string {
       return "osc:19"
     case "pointer-shape":
       return "osc:22"
+    case "cursor-style":
+      return "decscusr"
   }
 }
 
@@ -81,6 +86,19 @@ const OSC_PALETTE_RESET = /^\x1b\]104(?:;([0-9]+))?(?:\x07|\x1b\\)$/
 const OSC_DIRECT = /^\x1b\](10|11|12|17|19);[^\x07\x1b]*(?:\x07|\x1b\\)$/
 const OSC_DIRECT_RESET = /^\x1b\](110|111|112|117|119)(?:\x07|\x1b\\)$/
 const OSC_POINTER = /^\x1b\]22(?:;[^\x07\x1b]*)?(?:\x07|\x1b\\)$/
+// DECSCUSR, `CSI Ps SP q`: the cursor style, read back through DECRQSS `$ q SP q` (#39207, @cto 5034aa6f).
+const CSI_DECSCUSR = /^\x1b\[[0-6]? q$/
+// The reset probes' made-up control (extensions.ts `\x1b]7110;rgb:12/34/56`): an OSC no terminal defines,
+// written to prove the colour under test does not move on an unknown code. Only this exact form.
+const OSC_UNKNOWN_COLOUR_CONTROL = /^\x1b\]7110;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)$/i
+const COLOUR_KINDS: ReadonlySet<LedgerAttribute["kind"]> = new Set<LedgerAttribute["kind"]>([
+  "palette",
+  "foreground",
+  "background",
+  "cursor-colour",
+  "highlight-background",
+  "highlight-foreground",
+])
 
 /** The direct-colour OSC codes, narrowed to the attributes they name. */
 type DirectAttributeKind =
@@ -153,7 +171,34 @@ export function classifyWrite(sequence: string, touched: readonly LedgerAttribut
   const resetKind = directReset?.[1] === undefined ? undefined : DIRECT_RESET_BY_CODE[directReset[1]]
   if (resetKind !== undefined) return { attributes: [{ kind: resetKind }] }
   if (OSC_POINTER.test(sequence)) return { attributes: [{ kind: "pointer-shape" }] }
+  if (CSI_DECSCUSR.test(sequence)) return { attributes: [{ kind: "cursor-style" }] }
+  if (OSC_UNKNOWN_COLOUR_CONTROL.test(sequence)) {
+    // Its claim is that it changes nothing, and the proof is the colour the cell already reads back
+    // before and after (@cto 5034aa6f): so it names those colours, and with none it has no proof.
+    const colours = touched.filter((attribute) => COLOUR_KINDS.has(attribute.kind))
+    if (colours.length === 0) {
+      return {
+        unclassified:
+          "OSC 7110 is the reset probes' made-up control, and this cell reads back no colour that would prove it changed nothing",
+      }
+    }
+    return { attributes: colours }
+  }
   return { unclassified: `no attribute class matches ${JSON.stringify(sequence)}` }
+}
+
+/**
+ * The restore target meaning "equal to the value this cell read before its first write" (#39207,
+ * @cto 5034aa6f). A colour, the pointer shape or the cursor style cannot be named from the bytes, and
+ * the reset probes put back the value they read first and prove it; the ledger already demands that
+ * every touched attribute read back equal to its pre-read. A pre-read that is refused or empty leaves
+ * the target unprovable and the cell named, never passed.
+ */
+export const RESTORE_TO_PRE_READ = "=pre-read"
+
+/** Whether this attribute's restore target is its own pre-read value rather than a value named from bytes. */
+export function restoresToPreRead(attribute: LedgerAttribute): boolean {
+  return COLOUR_KINDS.has(attribute.kind) || attribute.kind === "pointer-shape" || attribute.kind === "cursor-style"
 }
 
 /** How to read one attribute back, or the name of why it cannot be read back at all. */
@@ -234,6 +279,14 @@ export function readbackFor(attribute: LedgerAttribute): Readback {
         pattern: OSC22_SHAPE_REPLY,
         read: (reply) => OSC22_SHAPE_REPLY.exec(reply)?.[1] ?? null,
       }
+    case "cursor-style":
+      // DECRQSS `$ q SP q`, the bytes and reply form queryCursorStyle already uses. A silent or
+      // `DCS 0 $ r ST` terminal gives null and the cell refuses (#39207, @cto 5034aa6f).
+      return {
+        query: DECRQSS_DECSCUSR_QUERY,
+        pattern: DECRQSS_DECSCUSR_REPLY,
+        read: (reply) => DECRQSS_DECSCUSR_REPLY.exec(reply)?.[1] ?? null,
+      }
   }
 }
 
@@ -285,6 +338,11 @@ export interface LedgerInput {
   readonly writes: readonly string[]
   /** Read replies keyed by `attributeKey`; the caller performs the queries from `readbackFor`. */
   readonly reads: ReadonlyMap<string, AttributeReads>
+  /**
+   * The attributes this cell's admission pre-reads (its pre-seed). A union entry may name any of them
+   * before this run's own writes touch them; only what a write names is read back (#39207).
+   */
+  readonly context?: readonly LedgerAttribute[]
 }
 
 /**
@@ -295,14 +353,17 @@ export interface LedgerInput {
  * window-size tokens touch no attribute; any token on no closed list still makes the whole write
  * unclassified (34579).
  */
-export function touchedAttributes(writes: readonly string[]): {
+export function touchedAttributes(
+  writes: readonly string[],
+  context: readonly LedgerAttribute[] = [],
+): {
   readonly attributes: readonly LedgerAttribute[]
   readonly unclassified: readonly string[]
 } {
   const attributes: LedgerAttribute[] = []
   const unclassified: string[] = []
   for (const write of writes) {
-    const classification = classifyWindowWrite(write, attributes)
+    const classification = classifyWindowWrite(write, [...context, ...attributes])
     if ("unclassified" in classification) {
       unclassified.push(write)
       continue
@@ -324,7 +385,7 @@ export function ledgerOmega(input: LedgerInput): LedgerOmega {
   const touched: LedgerAttribute[] = []
   const failures: LedgerFailure[] = []
   for (const write of input.writes) {
-    const classification = classifyWindowWrite(write, touched)
+    const classification = classifyWindowWrite(write, [...(input.context ?? []), ...touched])
     if ("unclassified" in classification) {
       failures.push({ attribute: JSON.stringify(write), reason: "unclassified", detail: classification.unclassified })
       continue

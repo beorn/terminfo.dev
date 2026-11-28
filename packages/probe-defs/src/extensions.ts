@@ -1593,8 +1593,11 @@ async function cursorColorSetupAppCapture(
     if (cursor?.row !== 2 || cursor.col !== 3) {
       return notTestedResult("Cursor-colour fixture CPR did not locate row 2 column 3", { cursor })
     }
+    // #39207: the CPR-proven cell is the restore. Without these bytes the collector's sentinel paint
+    // saves and restores the cursor with ESC 7/ESC 8, which no window-basis closed list admits.
+    const restoreAfterPaint = `\x1b[${cursor.row};${cursor.col}H`
     const capture = (label: string, role: "control" | "target" = "control") =>
-      read({ role, label: `${id}: ${label}`, region, pixelGeometry: measured.geometry })
+      read({ role, label: `${id}: ${label}`, region, pixelGeometry: measured.geometry, restoreAfterPaint })
     const pair = await captureStabilityPair(
       id,
       "screenshot",

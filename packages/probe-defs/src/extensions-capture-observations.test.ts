@@ -796,6 +796,26 @@ test.each([
   expect(result.tests?.some((entry) => entry.status === "untestable")).not.toBe(true)
 })
 
+// #39207: without restore bytes the collector's sentinel paint saves and restores the cursor with ESC 7/
+// ESC 8, which is on no window-basis closed list (48 of osc112's frozen writes). The CPR-proven cell is
+// the restore, so every read of the cursor cell carries a CUP back to it.
+test("extensions.osc112-reset-cursor's cell reads put the cursor back at its CPR cell, never by ESC 7/ESC 8 (#39207)", async () => {
+  const { context } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
+  const requests: CaptureRequest[] = []
+  const capture = context.capture!
+  context.capture = async (request) => {
+    requests.push(request)
+    return capture(request)
+  }
+  const result = await find("extensions.osc112-reset-cursor").term!(context)
+  expect(result.observation?.outcome).toBe("supported")
+  const cellReads = requests.filter((request) =>
+    /extensions\.osc112-reset-cursor: (shown|hidden|made-up|colour set|reset after)/.test(request.label),
+  )
+  expect(cellReads.length).toBeGreaterThanOrEqual(5)
+  for (const request of cellReads) expect(request.restoreAfterPaint, request.label).toBe("\x1b[2;3H")
+})
+
 test("extensions.osc112-reset-cursor reads the cursor cell after the reset, not only in cleanup", async () => {
   const { context, writes } = calibratedIterm2Arm({ colour: { applies: true }, effect: "cursor" })
   const result = await find("extensions.osc112-reset-cursor").term!(context)

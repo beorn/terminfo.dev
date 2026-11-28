@@ -12,7 +12,7 @@ import { TERM_FOOTPRINTS } from "@terminfo/probe-defs"
 import { WINDOW_BASIS_PRE_SEED, WINDOW_BASIS_UNCLASSIFIABLE } from "./window-basis-table.ts"
 import { windowBasisAdmission } from "./window-basis-admission.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "./window-basis-rulings.ts"
-import { attributeKey } from "./attribute-ledger.ts"
+import { RESTORE_TO_PRE_READ, attributeKey, restoresToPreRead } from "./attribute-ledger.ts"
 
 const WINDOW_CELLS = Object.entries(TERM_FOOTPRINTS)
   .filter(([, footprint]) => footprint === "window")
@@ -45,15 +45,16 @@ describe("window basis admission (#34148)", () => {
   test("every admitted cell names the state its own cleanup leaves, for each attribute it touches", () => {
     // The pre-read and the cleanup target are different values on purpose: a probe resets to the DEFAULT,
     // so a terminal that starts non-default has to be refused by name instead of tripping the ledger.
+    // A colour, the pointer shape and the cursor style restore to their own pre-read value (#39207).
     for (const id of Object.keys(WINDOW_BASIS_PRE_SEED)) {
       const admission = windowBasisAdmission(id)
       expect(admission.admitted, `${id} is admitted`).toBe(true)
       if (!admission.admitted) continue
       for (const attribute of admission.preSeed) {
-        expect(
-          admission.restoreTarget[attributeKey(attribute)],
-          `${id} has a target for ${attributeKey(attribute)}`,
-        ).toMatch(/^[0-9]$/)
+        const target = admission.restoreTarget[attributeKey(attribute)]
+        const name = `${id} has a target for ${attributeKey(attribute)}`
+        if (restoresToPreRead(attribute)) expect(target, name).toBe(RESTORE_TO_PRE_READ)
+        else expect(target, name).toMatch(/^[0-9]$/)
       }
     }
   })
@@ -98,14 +99,21 @@ describe("window basis admission (#34148)", () => {
     }
   })
 
-  test("a cell whose pointer-shape reset has no readable post-state refuses by name", () => {
-    // ESC ] 22 ; BEL restores the default pointer shape, but no retained readback shows what a
-    // terminal answers for the default, so the post-state cannot be named without a live capture.
-    const admission = windowBasisAdmission("extensions.osc22-pointer")
-    expect(admission.admitted).toBe(false)
-    if (!admission.admitted) {
-      expect(admission.reason).toContain("cleanup target not derivable")
-      expect(admission.reason).toContain("osc:22")
+  test("the reset cells restore colours and the pointer shape to the pre-read value (#39207, @cto 5034aa6f)", () => {
+    // The default pointer shape cannot be named from ESC ] 22 ; BEL, and a colour cannot be named in
+    // advance; the target is the value the cell read before its first write, which the ledger compares.
+    const expected: Record<string, Record<string, string>> = {
+      "extensions.osc110-reset-fg": { "osc:10": RESTORE_TO_PRE_READ },
+      "extensions.osc111-reset-bg": { "osc:11": RESTORE_TO_PRE_READ },
+      "extensions.osc22-pointer": { "dec:25": "1", "osc:22": RESTORE_TO_PRE_READ, sgr: "0" },
+    }
+    for (const [id, restoreTarget] of Object.entries(expected)) {
+      expect(windowBasisAdmission(id), id).toMatchObject({ admitted: true, restoreTarget })
+    }
+    // Until fresh traces replace the frozen ones, the only refusal left on osc104 and osc112 is the
+    // ESC 7/ESC 8 their old sentinel and layout-check paint wrote.
+    for (const id of ["extensions.osc104-reset-palette", "extensions.osc112-reset-cursor"]) {
+      expect(WINDOW_BASIS_UNCLASSIFIABLE[id], id).toContain("ESC 7/ESC 8")
     }
   })
 
