@@ -12,7 +12,12 @@ import { selectWindowTraces, type FreezeRun } from "./window-basis-freeze.ts"
 const CELL = "extensions.osc112-reset-cursor"
 const alacritty = { kind: "term", id: "alacritty", version: "0.17.0", os: "linux", osVersion: "7.0.0-34" }
 
-function run(path: string, measuredAt: string, result: Record<string, unknown> | null, subject: object = alacritty): FreezeRun {
+function run(
+  path: string,
+  measuredAt: string,
+  result: Record<string, unknown> | null,
+  subject: object = alacritty,
+): FreezeRun {
   return {
     path,
     subject,
@@ -43,23 +48,41 @@ describe("window-basis freeze selection (#39207)", () => {
   })
 
   it("takes the newest incomplete run only when no complete run exists", () => {
-    const a = run("content/probes-apps/a.json", "2026-11-17T00:00:00Z", { status: "probe-todo", harnessOutcome: "probe-exceeded" })
+    const a = run("content/probes-apps/a.json", "2026-11-17T00:00:00Z", {
+      status: "probe-todo",
+      harnessOutcome: "probe-exceeded",
+    })
     const b = run("content/probes-apps/b.json", "2026-11-28T00:00:00Z", null)
     expect(kept([a, b])).toEqual(["content/probes-apps/b.json"])
   })
 
   it("lets a newer app or OS version supersede an older one, and keeps distinct apps and launches apart", () => {
     const old = run("content/probes-apps/old.json", "2026-11-17T00:00:00Z", { status: "supported" })
-    const upgraded = run("content/probes-apps/upgraded.json", "2026-11-28T00:00:00Z", { status: "supported" }, {
-      ...alacritty,
-      version: "0.18.0",
-      osVersion: "7.0.0-43",
-    })
-    const other = run("content/probes-apps/xterm.json", "2026-11-01T00:00:00Z", { status: "supported" }, { ...alacritty, id: "xterm" })
-    const tmuxConf = run("content/probes-apps/conf.json", "2026-11-01T00:00:00Z", { status: "supported" }, {
-      ...alacritty,
-      config: "mux-empty.conf",
-    })
+    const upgraded = run(
+      "content/probes-apps/upgraded.json",
+      "2026-11-28T00:00:00Z",
+      { status: "supported" },
+      {
+        ...alacritty,
+        version: "0.18.0",
+        osVersion: "7.0.0-43",
+      },
+    )
+    const other = run(
+      "content/probes-apps/xterm.json",
+      "2026-11-01T00:00:00Z",
+      { status: "supported" },
+      { ...alacritty, id: "xterm" },
+    )
+    const tmuxConf = run(
+      "content/probes-apps/conf.json",
+      "2026-11-01T00:00:00Z",
+      { status: "supported" },
+      {
+        ...alacritty,
+        config: "mux-empty.conf",
+      },
+    )
     expect(kept([old, upgraded, other, tmuxConf])).toEqual([
       "content/probes-apps/conf.json",
       "content/probes-apps/upgraded.json",
@@ -68,8 +91,8 @@ describe("window-basis freeze selection (#39207)", () => {
   })
 
   it("refuses a run it cannot order, by path", () => {
-    expect(() => selectWindowTraces([run("content/probes-apps/x.json", "not a time", { status: "supported" })])).toThrow(
-      "content/probes-apps/x.json: measuredAt",
-    )
+    expect(() =>
+      selectWindowTraces([run("content/probes-apps/x.json", "not a time", { status: "supported" })]),
+    ).toThrow("content/probes-apps/x.json: measuredAt")
   })
 })

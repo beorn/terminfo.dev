@@ -206,12 +206,16 @@ describe("DECSCUSR and the reset probes' made-up OSC 7110 (#39207)", () => {
   it("fails the cell by name when the terminal changes the seed colour on OSC 7110", () => {
     const omega = ledgerOmega({
       writes: [`${ESC}]112\x07`, `${ESC}]7110;rgb:12/34/56\x07`],
-      reads: new Map([["osc:12", { before: `${ESC}]12;rgb:9282/9282/9282\x07`, after: `${ESC}]12;rgb:1212/3434/5656\x07` }]]),
+      reads: new Map([
+        ["osc:12", { before: `${ESC}]12;rgb:9282/9282/9282\x07`, after: `${ESC}]12;rgb:1212/3434/5656\x07` }],
+      ]),
     })
     expect(omega).toEqual({
       status: "refused",
       touched: ["osc:12"],
-      failures: [{ attribute: "osc:12", reason: "diverged", before: "rgb:9282/9282/9282", after: "rgb:1212/3434/5656" }],
+      failures: [
+        { attribute: "osc:12", reason: "diverged", before: "rgb:9282/9282/9282", after: "rgb:1212/3434/5656" },
+      ],
     })
     if (omega.status !== "refused") throw new Error("unreachable")
     expect(new MutationRestoreRefused(OSC112, omega).message).toContain(`${OSC112}`)
@@ -234,7 +238,11 @@ describe("classification context: the attributes the cell pre-reads (#39207)", (
 
   it("reads back what the writes named, never the rest of the context", () => {
     const reply = `${ESC}]12;rgb:9282/9282/9282\x07`
-    const omega = ledgerOmega({ writes: [CONTROL], reads: new Map([["osc:12", { before: reply, after: reply }]]), context })
+    const omega = ledgerOmega({
+      writes: [CONTROL],
+      reads: new Map([["osc:12", { before: reply, after: reply }]]),
+      context,
+    })
     expect(omega).toEqual({ status: "restored", touched: ["osc:12"] })
   })
 
@@ -251,7 +259,11 @@ describe("classification context: the attributes the cell pre-reads (#39207)", (
     ] as const) {
       expect(restoresToPreRead(attribute), attribute.kind).toBe(true)
     }
-    for (const attribute of [{ kind: "dec-mode", mode: 25 }, { kind: "ansi-mode", mode: 4 }, { kind: "sgr" }] as const) {
+    for (const attribute of [
+      { kind: "dec-mode", mode: 25 },
+      { kind: "ansi-mode", mode: 4 },
+      { kind: "sgr" },
+    ] as const) {
       expect(restoresToPreRead(attribute), attribute.kind).toBe(false)
     }
   })

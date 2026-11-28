@@ -33,7 +33,15 @@ export interface FreezeSelection {
 
 function subjectKey(subject: unknown): string {
   const s = (subject ?? {}) as Record<string, unknown>
-  return JSON.stringify([s.kind, s.id, s.os, s.outerTerminal ?? null, s.mux ?? null, s.config ?? null, s.permissions ?? null])
+  return JSON.stringify([
+    s.kind,
+    s.id,
+    s.os,
+    s.outerTerminal ?? null,
+    s.mux ?? null,
+    s.config ?? null,
+    s.permissions ?? null,
+  ])
 }
 
 /** Whether the run's result for this cell completed: present, and no harness outcome. */
@@ -48,7 +56,11 @@ function completed(results: unknown, cell: string): boolean {
 
 function measuredMs(run: FreezeRun): number {
   const ms = typeof run.measuredAt === "string" ? Date.parse(run.measuredAt) : Number.NaN
-  if (Number.isNaN(ms)) throw new Error(`${run.path}: measuredAt ${JSON.stringify(run.measuredAt)} is not a time, so its run cannot be ordered`)
+  if (Number.isNaN(ms)) {
+    throw new Error(
+      `${run.path}: measuredAt ${JSON.stringify(run.measuredAt)} is not a time, so its run cannot be ordered`,
+    )
+  }
   return ms
 }
 

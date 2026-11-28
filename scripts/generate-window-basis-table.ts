@@ -405,7 +405,13 @@ const lines = [
   "}",
   "",
   "export const WINDOW_BASIS_TRACE_RUNS: Readonly<Record<string, readonly string[]>> = {",
-  ...sortedTraceRuns.map(([cell, runs]) => `  ${JSON.stringify(cell)}: [${[...runs].sort().map((run) => JSON.stringify(run)).join(", ")}],`),
+  ...sortedTraceRuns.map(
+    ([cell, runs]) =>
+      `  ${JSON.stringify(cell)}: [${[...runs]
+        .sort()
+        .map((run) => JSON.stringify(run))
+        .join(", ")}],`,
+  ),
   "}",
   "",
 ]
