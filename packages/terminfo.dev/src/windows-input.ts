@@ -389,17 +389,17 @@ export function createWindowsInputMechanism(options: WindowsInputOptions): {
     }
     const client = os.clientFrame(binding.topLevel)
     if (!client) throw new WindowsInputRefused(`the client area of ${hex(binding.topLevel)} cannot be read`)
+    if (!contains(client, reading.frame)) {
+      throw new WindowsInputRefused(
+        `the TermControl ${JSON.stringify(reading.frame)} is not inside the window's client area ${JSON.stringify(client)}`,
+      )
+    }
     if (pointer) {
       const window = os.windowFrame(binding.topLevel)
       if (!window || window.width !== reading.window.width || window.height !== reading.window.height) {
         throw new WindowsInputRefused(
           `UIA reports the window as ${reading.window.width}x${reading.window.height} and GetWindowRect as ` +
             `${window ? `${window.width}x${window.height}` : "unreadable"}: UIA coordinates are scaled, so no pointer is placed`,
-        )
-      }
-      if (!contains(client, reading.frame)) {
-        throw new WindowsInputRefused(
-          `the TermControl ${JSON.stringify(reading.frame)} is not inside the window's client area ${JSON.stringify(client)}`,
         )
       }
     }
@@ -412,7 +412,13 @@ export function createWindowsInputMechanism(options: WindowsInputOptions): {
       inserted = os.sendInput(events)
     } finally {
       const owed = owedReleases(events, inserted)
-      const released = owed.length > 0 ? os.sendInput(owed) : 0
+      // The release has its own try: a fault here is reported beside the original outcome, never in place of it.
+      let released = "0"
+      try {
+        released = String(owed.length > 0 ? os.sendInput(owed) : 0)
+      } catch (releaseError) {
+        released = `none (the release threw: ${releaseError instanceof Error ? releaseError.message : String(releaseError)})`
+      }
       if (inserted !== null && inserted !== events.length) {
         throw new WindowsInputNotInserted(
           `SendInput inserted ${inserted} of ${events.length} events for ${what} (GetLastError ${os.lastError()})` +

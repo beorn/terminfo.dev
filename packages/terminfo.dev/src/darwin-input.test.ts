@@ -409,6 +409,14 @@ describe("macOS input install", () => {
     )
   })
 
+  it("refuses an access line that lacks one of its three readings", async () => {
+    await expect(
+      createDarwinInput(options({ readAccess: async () => "accessibility=true post=false" })),
+    ).rejects.toThrow(
+      'access line is not "accessibility=<bool> post=<bool> listen=<bool>": "accessibility=true post=false"',
+    )
+  })
+
   it("refuses the install when the echo is not the injected keysym", async () => {
     await expect(createDarwinInput(options({ selfTest: async () => "q" }))).rejects.toThrow(
       /input not delivered to Terminal\.app: .* echoed "q"/,
@@ -575,6 +583,7 @@ describe("macOS input, keys only, on a hosted app named by its capture (34313)",
         `printf '%s\\n' "$*" >> '${argv}'`,
         'case "$1" in',
         '  key) printf \'posted=key route=pid frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        "  access) printf 'accessibility=true post=true listen=false\\n' ;;",
         "esac",
         "",
       ].join("\n"),

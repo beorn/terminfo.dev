@@ -118,6 +118,35 @@ describe("Windows input binding (#30723 correction 1)", () => {
     )
   })
 
+  it("refuses a top-level window with no handle, or one that is not a root window", () => {
+    expect(() => build(fakeOs().os, () => reading({ topLevel: 0n }))).toThrow(
+      "the TermControl's top-level window reports no native handle",
+    )
+    expect(() => build(fakeOs({ rootOf: () => 0x99n }).os)).toThrow(
+      "UIA's top-level window 0x100a2c is not a root window",
+    )
+  })
+
+  it("refuses a key when the TermControl is outside the client area", async () => {
+    const { os, sent } = fakeOs({ clientFrame: () => ({ x: 0, y: 0, width: 300, height: 200 }) })
+    await expect(build(os).mechanism.key("a")).rejects.toThrow("is not inside the window's client area")
+    expect(sent).toEqual([])
+  })
+
+  it("reports a release that throws beside the short insert instead of hiding it", async () => {
+    let calls = 0
+    const { os } = fakeOs({
+      sendInput: () => {
+        calls++
+        if (calls === 1) return 1
+        throw new Error("release fault")
+      },
+    })
+    await expect(build(os).mechanism.key("ctrl+b")).rejects.toThrow(
+      /SendInput inserted 1 of 4 events for key "ctrl\+b".*released none \(the release threw: release fault\) of 1 owed key presses/,
+    )
+  })
+
   it("names the missing TermControl evidence before anything is posted", () => {
     const { os, sent } = fakeOs()
     expect(() =>

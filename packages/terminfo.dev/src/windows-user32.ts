@@ -7,7 +7,7 @@
  * changes. Every HANDLE (HWND, HDESK, DPI_AWARENESS_CONTEXT) is a `u64` and comes back as a BigInt;
  * every real pointer stays `ptr` (the same rule and reason as kernel32Declaration).
  *
- * The struct layouts are the x64 ones, written out here and pinned by windows-user32.test.ts, because
+ * The struct layouts are the x64 ones, written out here and pinned by windows-input.test.ts's user32 block, because
  * the hosted Windows runner is x64 and nothing can assert them on Windows until a hosted run happens.
  */
 import type { OwnedFrame } from "./input-fixture.ts"

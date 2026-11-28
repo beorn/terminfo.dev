@@ -376,6 +376,20 @@ export interface DarwinInputOptions {
   readonly readAccess?: () => Promise<string>
 }
 
+/**
+ * The helper's `access` line, checked: exactly the three readings, each true or false, so a reading the
+ * helper did not print is refused by name instead of being recorded as absent (#30723).
+ */
+export function parseHelperAccess(line: string): string {
+  const trimmed = line.trim()
+  if (!/^accessibility=(?:true|false) post=(?:true|false) listen=(?:true|false)$/.test(trimmed)) {
+    throw new Error(
+      `the macOS input helper's access line is not "accessibility=<bool> post=<bool> listen=<bool>": ${JSON.stringify(trimmed)}`,
+    )
+  }
+  return trimmed
+}
+
 function requireAppPid(appPid: number): void {
   if (!Number.isSafeInteger(appPid) || appPid < 2) {
     throw new Error(`macOS input requires the measured app PID; got ${String(appPid)}`)
@@ -614,9 +628,9 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
   const readAccess =
     options.readAccess ??
     (options.mechanism === undefined && helperPath !== undefined
-      ? async () => (await command(helperPath, ["access"])).toString().trim()
+      ? async () => (await command(helperPath, ["access"])).toString()
       : undefined)
-  const access = readAccess ? `; helper reads ${await readAccess()}` : ""
+  const access = readAccess ? `; helper reads ${parseHelperAccess(await readAccess())}` : ""
   const unicodeEcho = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYSYM))
   if (!delivered(unicodeEcho)) {
     // Second, independent probe: same key by virtual keycode with no unicode payload. Its echo moves
