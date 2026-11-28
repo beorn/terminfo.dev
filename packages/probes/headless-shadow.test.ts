@@ -240,7 +240,7 @@ it.runIf(OWNED_LAYOUT)(
       const log = JSON.parse(draft.rawReplies[key]!) as { calls: Array<{ path: string }> }
       const at = log.calls.findIndex((call) => call.path.endsWith("randomUUID"))
       expect(at).toBeGreaterThanOrEqual(0)
-      log.calls.splice(at, 1)
+      log.calls.length = at
       draft.rawReplies[key] = JSON.stringify(log)
     })
     expect(
@@ -248,7 +248,7 @@ it.runIf(OWNED_LAYOUT)(
       JSON.stringify(row(shortDraw, "extensions.osc52-read")),
     ).toMatchObject({
       outcome: "incomplete",
-      reason: expect.stringContaining("missing call"),
+      reason: expect.stringMatching(/missing call \d+: context\.randomUUID/),
     })
 
     // The icon-title declaration predicate and its callback both read getIconLabel from the logged source. Without it
@@ -317,8 +317,12 @@ it.runIf(OWNED_LAYOUT)(
         `  ${f.family} ${f.rows} rows: ${f.agree} agree, ${f.disagree} disagree, ${f.incomplete} incomplete, ${f.notComparable} not comparable`,
       )
     }
-    expect(agreeing.stdout).toContain(
-      "not comparable extensions.osc52-read: fresh-instance repeat passes regraded this row",
+    expect(agreeing.stdout).not.toContain("not comparable ")
+    const repeatCopy = join(dirname(run), `repeat-${basename(run)}`)
+    const repeatedNotComparable = reassert(repeatCopy)
+    expect([repeatedNotComparable.status, repeatedNotComparable.stderr]).toEqual([0, ""])
+    expect(repeatedNotComparable.stdout).toContain(
+      `not comparable ${agreed}: fresh-instance repeat passes regraded this row`,
     )
     expect(agreeing.stdout).toContain(`${run}: run ${stored.runId} (lib xtermjs`)
     expect(agreeing.stdout).toMatch(/Reassert: 1 input\(s\); exit 0 /)
