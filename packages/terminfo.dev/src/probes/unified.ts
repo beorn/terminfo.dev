@@ -82,7 +82,7 @@ import {
 import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipboard.ts"
 import { createNotificationObserver, sendTerminalSideControl } from "../linux-notification.ts"
 import { qualifyNotificationDefaults, qualifyOuterTerminalRecord } from "../notification-defaults.ts"
-import { createCallLog, withCallLog } from "viprobe"
+import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import { CAPTURE_BINDING_SUFFIX, captureBinding } from "@terminfo/probe-defs"
 import {
   ownedTerminalVerifiedFor,
@@ -1795,12 +1795,14 @@ async function runProbeBatchInRun(
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
-      // #30932 AC1: retain the full TermProbeSource call log for every executed probe so offline replay can
-      // re-run any callback without a live terminal. The inner TTY trace still projects all legacy transport
-      // events (queries, writes, events) for trace consumers.
+      // #30932 AC1/AC3 + #30933: record the complete ordered TermProbeSource call log for every executed probe,
+      // discard the live return value, and derive the row's domain result strictly from offline replay of the
+      // canonical log. The inner TTY trace still projects all legacy transport events (queries, writes, events).
       const sourceLog = createCallLog()
       const sourceSession = withCallLog(probeSource, { mode: "record", log: sourceLog })
-      let result: ProbeCallbackResult
+      let result: ProbeCallbackResult | undefined
+      let liveCompleted = false
+      let serializedCallLog: string | undefined
       let probeWallExceeded = false
       /** Set when the wall could not return a held viewport; thrown outside the per-probe catch (34645). */
       let viewportNotSettled: ViewportReturnRefused | undefined
@@ -1910,7 +1912,8 @@ async function runProbeBatchInRun(
             ],
           }
         } else {
-          result = raced.value
+          // #30932 AC3 + #30933: live return value is discarded; domain grading runs strictly from offline replay below.
+          liveCompleted = true
         }
       } catch (error) {
         // An unavailable Screen query before the first write is an absent apparatus, not a target negative.
@@ -1931,11 +1934,12 @@ async function runProbeBatchInRun(
           }
         } else throw error
       } finally {
-        sourceSession?.finish()
+        sourceSession.finish()
         // An abandoned log is not complete. Stringifying it throws
         // "call log recording has not completed" and replaces the probe-todo (#33047).
-        if (sourceLog && !probeWallExceeded) {
-          batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(sourceLog)
+        if (!probeWallExceeded) {
+          serializedCallLog = JSON.stringify(sourceLog)
+          batch.rawReplies[probe.id + ".callLog"] = serializedCallLog
         }
         // The wall ends the callback's hold on the terminal, not the measurement: the geometry
         // after it is what the timed-out row is judged against (#33431).
@@ -1944,6 +1948,21 @@ async function runProbeBatchInRun(
       // Outside the per-probe catch, like the window-basis refusal below: the run stops here, with this row's
       // evidence retained, and nothing after it is graded on a window that may still be held.
       if (viewportNotSettled) throw viewportNotSettled
+      if (liveCompleted) {
+        if (serializedCallLog === undefined) {
+          throw new Error(`Missing recorded call log for ${probe.id}`)
+        }
+        const replaySession = withCallLog<TermProbeSource>(null, {
+          mode: "replay",
+          log: readCallLog(JSON.parse(serializedCallLog)),
+        })
+        const replayedValue = await callback(replaySession.context)
+        replaySession.finish()
+        result = JSON.parse(JSON.stringify(replayedValue)) as ProbeCallbackResult
+      }
+      if (result === undefined) {
+        throw new Error(`No replay or harness result produced for ${probe.id}`)
+      }
       if (windowBasis) {
         // Fold 2's verdict: every attribute this cell's own writes touched is read back now and compared
         // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the

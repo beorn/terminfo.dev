@@ -49,7 +49,7 @@ import type {
   CollectorAttempt,
 } from "@terminfo/probe-defs"
 import { validateHostRecipeCauses } from "@terminfo/run-parser"
-import { createCallLog, withCallLog } from "viprobe"
+import { createCallLog, readCallLog, withCallLog } from "viprobe"
 import { headlessRuntimeIdentity, readAdapterSources, type HeadlessProbeRuntime } from "./headless-identity.ts"
 import { isDeepStrictEqual } from "node:util"
 import { HEADLESS_TERMINAL } from "./headless-terminal.ts"
@@ -941,6 +941,7 @@ async function collectPass(
     const queryFacts: QueryFact[] = []
     let retainedCaptures: HostQueryCapture[] = []
     let callLog: { log: ReturnType<typeof createCallLog>; finish: () => void } | undefined
+    let callLogFinished = false
     try {
       backend = await createBackend()
       backend.init(HEADLESS_TERMINAL)
@@ -1023,20 +1024,32 @@ async function collectPass(
           return outcome
         }
       }
-      // #30932 S3: the log holds what the declaration predicate and the callback saw, after the query wrapper,
-      // so a replay hands back these recorded returns and never rebuilds the wrapper or the backend.
-      let source: LibProbeSource = ctx
-      if (pass?.callLog) {
-        const log = createCallLog()
-        const session = withCallLog(ctx, { mode: "record", log })
-        callLog = { log, finish: () => session.finish() }
-        source = session.context
-      }
-      const declaredAssertionTypes = declaredLibAssertionTypes(probe, source)
-      const callback = withReplyFailureEvidence(probe.id, probe.lib(source), {
-        producer: "headless",
-        attempts: replyFailureAttempts(replyCaptures),
+      // #30932 AC3 + #30933: record the complete ordered LibProbeSource call log on the live backend, discard the
+      // live return values, and derive the row's domain result strictly from offline replay of the canonical log.
+      const log = createCallLog()
+      const session = withCallLog(ctx, { mode: "record", log })
+      callLog = { log, finish: () => session.finish() }
+      declaredLibAssertionTypes(probe, session.context)
+      probe.lib(session.context)
+      callLog.finish()
+      callLogFinished = true
+      const serializedCallLog = JSON.stringify(log)
+      if (pass?.callLog) batch.rawReplies[`${probe.id}.callLog`] = serializedCallLog
+      const replaySession = withCallLog<LibProbeSource>(null, {
+        mode: "replay",
+        log: readCallLog(JSON.parse(serializedCallLog)),
       })
+      const declaredAssertionTypes = declaredLibAssertionTypes(probe, replaySession.context)
+      const replayedCallback = probe.lib(replaySession.context)
+      replaySession.finish()
+      const callback = withReplyFailureEvidence(
+        probe.id,
+        JSON.parse(JSON.stringify(replayedCallback)) as ProbeCallbackResult,
+        {
+          producer: "headless",
+          attempts: replyFailureAttempts(replyCaptures),
+        },
+      )
       if (hostRecord) {
         const runId = hostRecord.runId
         const recordRef = `collector.hostRecipes.${probe.id}`
@@ -1138,7 +1151,7 @@ async function collectPass(
         captures: retainedCaptures,
       })
       if (hostRecord) batch.rawReplies[`collector.hostRecipes.${probe.id}`] = JSON.stringify(hostRecord)
-      if (callLog) {
+      if (callLog && !callLogFinished && pass?.callLog) {
         // Kept when the callback threw too: the log then ends at the throw, and a replay reproduces it. A log
         // that cannot be completed is not stored; the shadow counts its row incomplete, and stderr names why.
         try {
