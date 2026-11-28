@@ -148,6 +148,8 @@ export {
   decrpmResult,
   DECRQSS_SGR_QUERY,
   DECRQSS_SGR_REPLY,
+  DECRQSS_DECSCUSR_QUERY,
+  DECRQSS_DECSCUSR_REPLY,
   decrpmStatus,
   headlessDecrpmArm,
   queryDecrpm,
