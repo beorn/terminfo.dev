@@ -17,6 +17,7 @@ import type { LoadedRun } from "@terminfo/run-parser"
 import {
   checkCitedInIndex,
   checkDowngrades,
+  compareServedCells,
   placementCommitMessage,
   stagePlacement,
   type CellChange,
@@ -77,6 +78,60 @@ test("flips are listed, never refused, and an exact accepted count places", () =
   const flip = { featureId: "sgr.bold", was: "supported", now: "unsupported" }
   expect(() => checkDowngrades("run.json", report(0, [flip]))).not.toThrow()
   expect(() => checkDowngrades("run.json", report(74), { count: 74, reason: "suite rework" })).not.toThrow()
+})
+
+// #39206: iTerm2 3.7.9 run ba314701 (no Mac input helper) turned these five served supported cells untestable, and
+// placement only listed them as changed values. The reasons are that run's own.
+const ITERM2_LOST: Record<string, string> = {
+  "modes.application-cursor":
+    "Recognized; effect not tested: DECRPM mode 1 returned reset (Ps 2), and application cursor effect needs owned key injection and input readback",
+  "modes.bracketed-paste":
+    "Recognized; effect not tested: DECRPM mode 2004 returned reset (Ps 2), and bracketed-paste effect needs owned clipboard, key injection and input readback",
+  "modes.mouse-all":
+    "Recognized; effect not tested: DECRPM mode 1003 returned reset (Ps 2), and all-motion effect needs owned buttonless movement and input readback",
+  "modes.mouse-sgr":
+    "Recognized; effect not tested: DECRPM mode 1006 returned reset (Ps 2), and SGR mouse effect needs owned click injection and input readback",
+  "modes.mouse-tracking":
+    "Recognized; effect not tested: DECRPM mode 1000 returned reset (Ps 2), and mouse tracking effect needs owned click injection and input readback",
+}
+
+test("a served verdict replaced by untestable is a downgrade naming the run's reason; other decided changes stay flips", () => {
+  const before = new Map([
+    ...Object.keys(ITERM2_LOST).map((id) => [id, "supported"] as const),
+    ["modes.deccolm", "supported"],
+    ["text.wide.emoji-flags", "unsupported"],
+    ["modes.origin", "untestable"],
+  ])
+  const after = new Map([
+    ...Object.keys(ITERM2_LOST).map((id) => [id, "untestable"] as const),
+    ["modes.deccolm", "unsupported"],
+    ["text.wide.emoji-flags", "untestable"],
+    ["modes.origin", "untestable"],
+  ])
+  const reasons: Record<string, string> = { ...ITERM2_LOST, "text.wide.emoji-flags": "no grapheme readback" }
+  const { downgrades, flips } = compareServedCells(before, after, (id) => reasons[id])
+  expect(downgrades.map((c) => c.featureId)).toEqual([...Object.keys(ITERM2_LOST), "text.wide.emoji-flags"])
+  expect(flips).toEqual([{ featureId: "modes.deccolm", was: "supported", now: "unsupported" }])
+
+  const iterm2 = { ...report(0), subject: "term:iterm2@macos", downgrades: downgrades.slice(0, 5) }
+  const refusal = (() => {
+    try {
+      checkDowngrades("run.json", iterm2)
+    } catch (error) {
+      return (error as Error).message
+    }
+    throw new Error("five lost verdicts placed without an override")
+  })()
+  expect(refusal).toContain("would turn 5 decided cell(s) of term:iterm2@macos undecided")
+  expect(refusal).toContain("or as supported or unsupported without it and untestable with it")
+  for (const [id, reason] of Object.entries(ITERM2_LOST)) {
+    expect(refusal).toContain(`${id} supported -> untestable (${reason})`)
+  }
+  expect(refusal).toContain('terminfo place run.json --accept-downgrades 5 --reason "<why>"')
+  expect(() => checkDowngrades("run.json", iterm2, { count: 5, reason: "no Mac input helper (#39120)" })).not.toThrow()
+  expect(placementCommitMessage(placementOf(iterm2, { count: 5, reason: "no helper" }))).toContain(
+    `- modes.mouse-sgr: supported -> untestable (${ITERM2_LOST["modes.mouse-sgr"]})`,
+  )
 })
 
 function placementOf(
