@@ -42,7 +42,7 @@ function blockAt(dy: number): CaptureLocated {
  */
 function calibratedSource(
   located: Located | ((paintedCell: string) => Located),
-  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean; cprSilent?: boolean } = {},
 ) {
   const writes: string[] = []
   const locates: CaptureRequest[] = []
@@ -54,7 +54,7 @@ function calibratedSource(
     rows: 24,
     cols: 80,
     write: (sequence) => writes.push(sequence),
-    queryCursorPosition: async () => ({ row: 2, col: 1 }),
+    queryCursorPosition: async () => (fixture.cprSilent === true ? null : { row: 2, col: 1 }),
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,
     query: async () => null,
     queryWithSentinel: async () => null,
@@ -85,11 +85,11 @@ function calibratedSource(
     }
     if (request.locate) {
       locates.push(request)
-      // The cell the layout check painted, from its last DECSC-wrapped paint write.
-      const painted = writes.filter((entry) => entry.startsWith("\x1b7\x1b[") && entry.includes("\x1b[45m")).at(-1)
+      // The cell the layout check painted, from its last paint write (a CUP to the cell, then the paint).
+      const painted = writes.filter((entry) => entry.includes("\x1b[0m\x1b[45m")).at(-1)
       const cell =
         painted
-          ?.match(/^\x1b7\x1b\[(\d+);(\d+)H/)
+          ?.match(/^\x1b\[(\d+);(\d+)H/)
           ?.slice(1)
           .join(",") ?? ""
       const answer = typeof located === "function" ? located(cell) : located
@@ -124,7 +124,7 @@ function calibratedSource(
 
 async function sameCellsNote(
   located: Located | ((paintedCell: string) => Located),
-  fixture: { witnessInk?: boolean; restoreDiffers?: boolean } = {},
+  fixture: { witnessInk?: boolean; restoreDiffers?: boolean; cprSilent?: boolean } = {},
 ) {
   const source = calibratedSource(located, fixture)
   const probe = editingProbes.find((entry) => entry.id === "editing.delete-chars")!
@@ -155,10 +155,24 @@ test("a same-cells read on a window whose layout moved after calibration names t
     "window layout moved since calibration: calibration's sentinel painted at cell 3,1 landed at 17,158, 0,80 px from its calibrated crop at 17,78",
   )
   expect(locates.map((request) => request.locate)).toEqual([{ rgb: SENTINEL_RGB }])
-  // Calibration's own paint at the witness cell, then that cell restored, each inside DECSC/DECRC.
-  const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  // Calibration's own paint at the witness cell, then that cell restored, each ending with a CUP back to
+  // the cursor position CPR reported before the paint (#39207: ESC 7/ESC 8 is on no closed list).
+  const paint = writes.indexOf("\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b[2;1H")
   expect(paint).toBeGreaterThan(-1)
-  expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+  expect(writes[paint + 1]).toBe("\x1b[3;1H\x1b[0m \x1b[2;1H")
+})
+
+// #39207: ESC 7/ESC 8 is on no window-basis closed list, so a window cell that reaches this check could
+// never be admitted while it saved and restored the cursor that way.
+test("the check never writes ESC 7/ESC 8, and a terminal silent on CPR paints nothing and is named (#39207)", async () => {
+  const moved = await sameCellsNote(blockAt(WARP_SHIFT))
+  expect(moved.writes.some((entry) => entry.includes("\x1b7") || entry.includes("\x1b8"))).toBe(false)
+  const silent = await sameCellsNote(blockAt(WARP_SHIFT), { cprSilent: true })
+  expect(silent.note).toContain(
+    "layout not re-checked: the terminal did not report its cursor position, so the paint could not be put back",
+  )
+  expect(silent.writes.some((entry) => entry.includes("\x1b[45m"))).toBe(false)
+  expect(silent.locates).toEqual([])
 })
 
 test("a witness cell that already holds ink is not painted, and the reason says so (34243)", async () => {
@@ -179,8 +193,8 @@ test("a witness cell the check painted is read back after the clear and restored
   expect(cellReads.filter((label) => label.includes("witness restored"))).toHaveLength(1)
   // The check itself still says what it said about the moved window.
   expect(note).toContain("window layout moved since calibration")
-  const paint = writes.indexOf("\x1b7\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
-  expect(writes[paint + 1]).toBe("\x1b7\x1b[3;1H\x1b[0m \x1b8")
+  const paint = writes.indexOf("\x1b[3;1H\x1b[0m\x1b[45m \x1b[0m\x1b[2;1H")
+  expect(writes[paint + 1]).toBe("\x1b[3;1H\x1b[0m \x1b[2;1H")
 })
 
 test("the check writes no cursor-visibility sequence of its own: the capture lifecycle owns it (34243)", async () => {
@@ -231,9 +245,9 @@ test("a same-cells read whose witness is in view but whose compared region is co
   // One locate for the witness, then the region check polls until its timeout before saying "not in view".
   expect(locates.length).toBeGreaterThan(1)
   // The region cell is painted and restored the same way the witness cell is.
-  const paint = writes.indexOf("\x1b7\x1b[1;1H\x1b[0m\x1b[45m \x1b[0m\x1b8")
+  const paint = writes.indexOf("\x1b[1;1H\x1b[0m\x1b[45m \x1b[0m\x1b[2;1H")
   expect(paint).toBeGreaterThan(-1)
-  expect(writes[paint + 1]).toBe("\x1b7\x1b[1;1H\x1b[0m \x1b8")
+  expect(writes[paint + 1]).toBe("\x1b[1;1H\x1b[0m \x1b[2;1H")
 }, 20_000)
 
 test.each<[string, Located, string]>([
@@ -274,6 +288,7 @@ test("a run whose calibration recorded no sentinel runs no check and writes noth
   const clause = await layoutSinceCalibration({
     ctx: {
       write: (text) => writes.push(text),
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
       capture: async () => {
         throw new Error("no capture expected")
       },
@@ -300,6 +315,7 @@ test("a reverse screen layout check without a witnessed reverse sentinel names t
   const clause = await layoutSinceCalibration({
     ctx: {
       write: (text) => writes.push(text),
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
       capture: async () => {
         throw new Error("no capture expected")
       },
@@ -326,6 +342,7 @@ test("a reverse screen layout check looks for the reverse sentinel, and every fr
     ctx: {
       now: () => Date.now(),
       write: () => {},
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
       capture: async (request) => {
         requests.push(request)
         const frame = {

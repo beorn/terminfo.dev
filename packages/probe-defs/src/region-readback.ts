@@ -1107,7 +1107,7 @@ export function sentinelCellsInFrame(input: {
  * the probe still has ahead, manufacturing exactly the ink this check exists to explain (/11).
  */
 export async function layoutSinceCalibration(check: {
-  ctx: Pick<TermProbeSource, "now" | "write" | "capture" | "captureKind" | "captureGeometry">
+  ctx: Pick<TermProbeSource, "now" | "write" | "capture" | "captureKind" | "captureGeometry" | "queryCursorPosition">
   label: string
   cell: { row: number; col: number }
   /** The pixels the calibrated geometry gives `cell` on this run. */
@@ -1166,8 +1166,16 @@ export async function layoutSinceCalibration(check: {
   if (inkCount > 0) {
     return `layout not re-checked: the witness cell holds ink (${String(inkCount)} px differ from its ${before.rendering?.background ?? "unrecorded"} background) at ${where}, so calibration's sentinel was not painted there`
   }
+  // #39207: ESC 7/ESC 8 is on no window-basis closed list, so the cursor is put back by position: CPR
+  // before the paint, then a CUP to that cell after the paint and after the clear. A terminal that does
+  // not report its position is not painted at all, and the check says why.
+  const cursor = await ctx.queryCursorPosition()
+  if (cursor === null) {
+    return `layout not re-checked: the terminal did not report its cursor position, so the paint could not be put back without ESC 7/ESC 8 at ${where}`
+  }
+  const back = `\x1b[${cursor.row};${cursor.col}H`
   let located: ObservationFrame["located"]
-  ctx.write(`\x1b7${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]}\x1b[0m\x1b8`)
+  ctx.write(`${at}\x1b[0m${CALIBRATION_SOLID_PAINT[sentinel.form]}\x1b[0m${back}`)
   try {
     const deadline = sourceNow(ctx) + timeoutMs
     for (;;) {
@@ -1183,7 +1191,7 @@ export async function layoutSinceCalibration(check: {
       })
     }
   } finally {
-    ctx.write(`\x1b7${at}\x1b[0m \x1b8`)
+    ctx.write(`${at}\x1b[0m ${back}`)
   }
   if (located === undefined) {
     return `layout check unanswered: the capture arm returned no located field for calibration's sentinel at ${where}`
