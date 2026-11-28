@@ -1330,7 +1330,10 @@ async function runProbeBatchInRun(
         read && mux
           ? async () => {
               const reading = await read()
-              return reading.status === "measured" ? { ...reading, mux } : reading
+              if (reading.status !== "measured") return reading
+              // #32569 / #30932: inside a mux, a present TERM_FEATURES value may belong to the outer terminal and
+              // must not enter the call log or batch; presence + mux suffice for the probe decision.
+              return reading.present ? { ...reading, value: "", mux } : { ...reading, mux }
             }
           : read
       // #38699: the OSC7577_TOKEN reading comes from the same child read and names the mux the same way.

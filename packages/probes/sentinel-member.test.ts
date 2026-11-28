@@ -498,6 +498,7 @@ function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermProbeSour
       return next
     },
     queryMode: refused("a mode"),
+    randomUUID: () => globalThis.crypto.randomUUID(),
   }
 }
 
@@ -853,8 +854,17 @@ test("qualifies each initialized callback instance and forwards the measured run
   expect(lifecycle).toEqual(["init", "init", "measure", "init", "measure", "init", "measure", "init", "measure"])
   expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledTimes(4)
   expect(runtimeIdentityOwner.headlessRuntimeIdentity).toHaveBeenCalledWith("xtermjs", runtime.adapterPackage, "js")
-  expect(members).toEqual([true, true, true, true])
-  expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
+  expect(members).toEqual([true, true, true, true, true, true, true, true])
+  expect(identities).toEqual([
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+    runtime.identity,
+  ])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
     backend: "xtermjs",
     runtimeIdentity: runtime.identity,
@@ -1082,7 +1092,7 @@ test("same-run control grants the member without inventing a measured runtime id
       },
     },
   ])
-  expect(seen).toEqual([expect.any(Function), undefined])
+  expect(seen).toEqual([expect.any(Function), undefined, expect.any(Function), undefined])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
     backend: "xtermjs",
     decisions: {

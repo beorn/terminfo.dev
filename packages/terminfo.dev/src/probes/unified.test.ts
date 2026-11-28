@@ -1448,7 +1448,11 @@ it("gives no clipboard fixture to an OSC 52 row that does not need ownership whe
     definition.termWrites = "query"
     definition.term = async (probeSource) => {
       seen.push(probeSource.withClipboardFixture)
-      return { pass: true, observation: { outcome: "unsupported", assertionType: "query_reply" } }
+      return {
+        pass: true,
+        observation: { outcome: "unsupported", assertionType: "query_reply" },
+        assertions: [{ kind: "negative", assertionType: "query_reply", expected: "fixture", observed: "none" }],
+      }
     }
     const batch = await runProbeBatch({
       ids: ["extensions.osc52-read"],
@@ -8579,6 +8583,18 @@ describe("a colour-attempt disagreement reaches the recorded grade (osc104)", ()
           pass: false as const,
           criterionBranch: "colour-only-mismatch",
           tests: tests as never,
+          ...(outcome === "unsupported"
+            ? {
+                assertions: [
+                  {
+                    kind: "negative" as const,
+                    assertionType: "screenshot" as const,
+                    expected: "fixture",
+                    observed: "none",
+                  },
+                ],
+              }
+            : {}),
           observation: {
             featureId: probe.id,
             outcome,
