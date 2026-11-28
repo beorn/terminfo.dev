@@ -761,7 +761,7 @@ async function shadowRow(
       subject && subject.version !== undefined ? appSemanticDeclarations(subject, sessionBus) : {}
     const declaration = appDeclarations[featureId]
     const claimsMeasurement =
-      result.observation !== undefined || (Array.isArray(result.assertions) && result.assertions.length > 0)
+      result.observation !== undefined || Boolean((result as { assertions?: readonly unknown[] }).assertions?.length)
     const onlyTodoTests = !result.tests?.some((test) => test.status !== "probe-todo")
     const unresolved = result.notTested
       ? result.notTested.reason === "no-semantic-observable" &&

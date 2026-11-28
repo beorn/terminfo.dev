@@ -5096,7 +5096,7 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       await observe()
       focusError = "No owned fixture can hold the terminal unfocused"
     }
-    return { pass: false }
+    return { pass: false, tests: [] }
   })
   if (!capturedFixture) {
     throw new Error(`Notification observer did not invoke its callback for OSC ${selector}`)
