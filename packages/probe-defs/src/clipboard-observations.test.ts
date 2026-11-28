@@ -680,6 +680,7 @@ test("extensions.clipboard-paste keeps missing native paste encoding PROBE TODO 
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {

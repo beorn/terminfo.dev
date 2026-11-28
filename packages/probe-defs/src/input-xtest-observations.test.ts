@@ -466,6 +466,7 @@ test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) =
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -598,6 +599,7 @@ test("input.modify-other-keys is not tested without an OS XTEST adapter", async 
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -711,6 +713,7 @@ test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", asyn
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1038,6 +1041,7 @@ test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => 
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1251,6 +1255,7 @@ test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => 
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1349,6 +1354,7 @@ test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1463,6 +1469,7 @@ test("input.button-event-mouse is not tested without an OS XTEST adapter", async
   const headless = definition.lib!({
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture() {
@@ -1831,6 +1838,7 @@ function libMouseSource(
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed(text) {
       feeds.push(text)

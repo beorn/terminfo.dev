@@ -58,6 +58,7 @@ function viewportModel(options: {
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     capabilities: {
       truecolor: false,

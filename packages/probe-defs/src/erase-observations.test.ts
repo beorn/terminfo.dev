@@ -60,6 +60,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 24,
     feed() {},
     feedCapture: () => "",
@@ -480,6 +481,7 @@ function eraseCellsHeadless(
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed(sequence) {
       if (!ignoreCursorSetup) {

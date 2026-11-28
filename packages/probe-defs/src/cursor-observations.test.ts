@@ -172,6 +172,7 @@ function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     feed() {},
     feedCapture: () => reply,

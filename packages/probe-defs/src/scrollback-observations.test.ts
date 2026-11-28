@@ -17,6 +17,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     backendName: "scripted-model",
     kind: "live",
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 61,
     feed() {},
     feedCapture: () => "",
