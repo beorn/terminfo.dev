@@ -2268,10 +2268,10 @@ export async function createOwnedTerminal(options: {
         : clipboard && "readTitle" in clipboard
           ? clipboard.readTitle?.bind(clipboard)
           : undefined
-    // 37257 (@cto 2026-11-26): Terminal.app's protocol title is its *tab* title. The window AXTitle is only identity,
-    // so the tab element under the owned window's AXTabGroup is the read, and a tab that reports only the composite is
-    // refused by name. No fence is written: a title reader must not change the title it is reading. Built on first use
-    // because the owner object carrying the live-capture check is created below this point.
+    // 37257 (@cto 9aad8b5e): Terminal.app's protocol title is its owned tab's AppleScript dictionary `custom title`.
+    // The window title carries decorations and is checked only so a composite-only tab is refused by name. No fence
+    // is written: a title reader must not change the title it reads. Built on first use because the owner object
+    // carrying the live-capture check is created below this point.
     const terminalAppAssertion = terminalApp === undefined ? undefined : parseTerminalAppOwner(terminalApp)
     let terminalAppTitle: (() => Promise<string>) | undefined
     const readTerminalAppTabTitleOfOwner = async (): Promise<string> => {

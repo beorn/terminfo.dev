@@ -1006,8 +1006,10 @@ describe("37257 Terminal.app tab title", () => {
     expect(run).toHaveBeenCalledWith(["/dev/ttys006"])
   })
 
-  test("the script reads Terminal's own tab custom title and never writes a title of its own", () => {
+  test("the script reads Terminal's own tab custom title via batched specifiers and never writes a title of its own", () => {
     expect(TERMINAL_APP_TAB_TITLE_SCRIPT).toContain("customTitle")
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).toContain("app.windows.id()")
+    expect(TERMINAL_APP_TAB_TITLE_SCRIPT).toContain("app.windows.tabs.tty()")
     expect(TERMINAL_APP_TAB_TITLE_SCRIPT).not.toContain("]2;")
   })
 
