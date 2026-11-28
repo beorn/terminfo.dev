@@ -26,8 +26,10 @@ import { dirname, join } from "node:path"
 import { TERM_FOOTPRINTS } from "../packages/probe-defs/src/term-footprints.ts"
 import { WINDOW_BASIS_RULING_EXCLUSIONS } from "../packages/terminfo.dev/src/probes/window-basis-rulings.ts"
 import {
+  RESTORE_TO_PRE_READ,
   classifyWrite,
   attributeKey,
+  restoresToPreRead,
   type LedgerAttribute,
 } from "../packages/terminfo.dev/src/probes/attribute-ledger.ts"
 import { classifyWindowWrite } from "../packages/terminfo.dev/src/probes/window-basis-writes.ts"
@@ -181,7 +183,10 @@ const frozen = loadFrozen()
 
 /** Every write event the frozen traces hold for each cell, in file order. */
 const writes = new Map<string, string[]>()
+/** The same writes kept per source, so a restore target is read off each source's own last write (#39207). */
+const sourceWrites = new Map<string, string[][]>()
 for (const source of frozen.sources) {
+  const perCell = new Map<string, string[]>()
   for (const entry of source.entries) {
     const cell = entry.key.replace(TRACE_KEY_SUFFIX, "")
     const read = entryWrites(entry.raw)
@@ -190,7 +195,9 @@ for (const source of frozen.sources) {
     const list = writes.get(cell) ?? []
     list.push(...read)
     writes.set(cell, list)
+    perCell.set(cell, [...(perCell.get(cell) ?? []), ...read])
   }
+  for (const [cell, list] of perCell) sourceWrites.set(cell, [...(sourceWrites.get(cell) ?? []), list])
 }
 
 /** Render one attribute as the object literal the generated table stores. */
@@ -234,7 +241,18 @@ for (const cell of windowCells) {
     noTrace.push(cell)
     continue
   }
-  const classified = cellWrites.map((write) => classifyWindowWrite(write))
+  // Classification context: every attribute the cell's writes name on their own. Admission pre-reads all
+  // of them, so a union entry (OSC 7110, DECSTR) may name one before a trace's own write touches it; the
+  // runtime ledger classifies with the cell's pre-seed as the same context (#39207).
+  const context: LedgerAttribute[] = []
+  for (const write of cellWrites) {
+    const own = classifyWindowWrite(write)
+    if ("unclassified" in own) continue
+    for (const attribute of own.attributes) {
+      if (!context.some((existing) => attributeKey(existing) === attributeKey(attribute))) context.push(attribute)
+    }
+  }
+  const classified = cellWrites.map((write) => classifyWindowWrite(write, context))
   const refusedCount = classified.filter((entry) => "unclassified" in entry).length
   if (refusedCount > 0) {
     const first = classified.find((entry) => "unclassified" in entry)
@@ -258,34 +276,50 @@ for (const cell of windowCells) {
   // state it found, so a terminal that starts non-default would make pre differ from post and the ledger
   // would stop the whole run. Admission therefore carries the target, and the caller refuses the cell by
   // name before its first byte when the terminal is not in that state (@dev/brain e1b6910e1 review 1).
+  // A colour, the pointer shape or the cursor style restores to the value the cell read before its first
+  // write: the probes put back what they read and prove it, and the ledger compares post with pre (#39207,
+  // @cto 5034aa6f). Every other attribute takes the value each source's LAST write to it names, and the
+  // sources must agree; earlier writes do not decide the post-state, so they need no name.
   const restoresTo: Record<string, string> = {}
-  let derivable = true
-  for (const entry of classified) {
-    if ("unclassified" in entry) continue
-    for (const sequence of entry.attributeSequences) {
-      const target = restoreTargetOf(sequence)
-      const inner = classifyWrite(sequence)
-      if ("unclassified" in inner) {
-        derivable = false
+  let refusal: string | undefined
+  for (const attribute of attributes) {
+    const key = attributeKey(attribute)
+    if (restoresToPreRead(attribute)) {
+      restoresTo[key] = RESTORE_TO_PRE_READ
+      continue
+    }
+    const targets = new Set<string>()
+    for (const list of sourceWrites.get(cell) ?? []) {
+      let last: string | undefined
+      for (const write of list) {
+        const entry = classifyWindowWrite(write, context)
+        if ("unclassified" in entry) continue
+        for (const sequence of entry.attributeSequences) {
+          const inner = classifyWrite(sequence, context)
+          if (!("unclassified" in inner) && inner.attributes.some((named) => attributeKey(named) === key)) {
+            last = sequence
+          }
+        }
+      }
+      if (last === undefined) continue
+      const target = restoreTargetOf(last)
+      if (target === undefined) {
+        refusal = `cleanup target not derivable: the cell's last write to ${key} leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared`
         break
       }
-      for (const attribute of inner.attributes) {
-        if (target === undefined) {
-          unclassifiable.set(
-            cell,
-            `cleanup target not derivable: the cell's last write to ${attributeKey(attribute)} leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared`,
-          )
-          admitted.delete(cell)
-          derivable = false
-          break
-        }
-        restoresTo[attributeKey(attribute)] = target
-      }
-      if (!derivable) break
+      targets.add(target)
     }
-    if (!derivable) break
+    if (refusal === undefined && targets.size > 1) {
+      refusal = `cleanup target not derivable: the retained traces' last writes to ${key} leave different states (${[...targets].sort().join(", ")})`
+    }
+    if (refusal !== undefined) break
+    const only = [...targets][0]
+    if (only !== undefined) restoresTo[key] = only
   }
-  if (!derivable) continue
+  if (refusal !== undefined) {
+    unclassifiable.set(cell, refusal)
+    continue
+  }
   admitted.set(cell, {
     preSeed: [...attributes].sort((a, b) => attributeKey(a).localeCompare(attributeKey(b))),
     restoresTo: Object.fromEntries(Object.entries(restoresTo).sort(([a], [b]) => a.localeCompare(b))),

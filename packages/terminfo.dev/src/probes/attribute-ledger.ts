@@ -187,6 +187,20 @@ export function classifyWrite(sequence: string, touched: readonly LedgerAttribut
   return { unclassified: `no attribute class matches ${JSON.stringify(sequence)}` }
 }
 
+/**
+ * The restore target meaning "equal to the value this cell read before its first write" (#39207,
+ * @cto 5034aa6f). A colour, the pointer shape or the cursor style cannot be named from the bytes, and
+ * the reset probes put back the value they read first and prove it; the ledger already demands that
+ * every touched attribute read back equal to its pre-read. A pre-read that is refused or empty leaves
+ * the target unprovable and the cell named, never passed.
+ */
+export const RESTORE_TO_PRE_READ = "=pre-read"
+
+/** Whether this attribute's restore target is its own pre-read value rather than a value named from bytes. */
+export function restoresToPreRead(attribute: LedgerAttribute): boolean {
+  return COLOUR_KINDS.has(attribute.kind) || attribute.kind === "pointer-shape" || attribute.kind === "cursor-style"
+}
+
 /** How to read one attribute back, or the name of why it cannot be read back at all. */
 export type Readback =
   | {
@@ -324,6 +338,11 @@ export interface LedgerInput {
   readonly writes: readonly string[]
   /** Read replies keyed by `attributeKey`; the caller performs the queries from `readbackFor`. */
   readonly reads: ReadonlyMap<string, AttributeReads>
+  /**
+   * The attributes this cell's admission pre-reads (its pre-seed). A union entry may name any of them
+   * before this run's own writes touch them; only what a write names is read back (#39207).
+   */
+  readonly context?: readonly LedgerAttribute[]
 }
 
 /**
@@ -334,14 +353,17 @@ export interface LedgerInput {
  * window-size tokens touch no attribute; any token on no closed list still makes the whole write
  * unclassified (34579).
  */
-export function touchedAttributes(writes: readonly string[]): {
+export function touchedAttributes(
+  writes: readonly string[],
+  context: readonly LedgerAttribute[] = [],
+): {
   readonly attributes: readonly LedgerAttribute[]
   readonly unclassified: readonly string[]
 } {
   const attributes: LedgerAttribute[] = []
   const unclassified: string[] = []
   for (const write of writes) {
-    const classification = classifyWindowWrite(write, attributes)
+    const classification = classifyWindowWrite(write, [...context, ...attributes])
     if ("unclassified" in classification) {
       unclassified.push(write)
       continue
@@ -363,7 +385,7 @@ export function ledgerOmega(input: LedgerInput): LedgerOmega {
   const touched: LedgerAttribute[] = []
   const failures: LedgerFailure[] = []
   for (const write of input.writes) {
-    const classification = classifyWindowWrite(write, touched)
+    const classification = classifyWindowWrite(write, [...(input.context ?? []), ...touched])
     if ("unclassified" in classification) {
       failures.push({ attribute: JSON.stringify(write), reason: "unclassified", detail: classification.unclassified })
       continue

@@ -54,6 +54,7 @@ import {
   attributeKey,
   ledgerOmega,
   readbackFor,
+  RESTORE_TO_PRE_READ,
   touchedAttributes,
 } from "./attribute-ledger.ts"
 import { SpilloverRefused, spilloverVerdict, witnessAdmission } from "./spillover-witness.ts"
@@ -1275,6 +1276,8 @@ async function runProbeBatchInRun(
           }
           const target = windowAdmission.restoreTarget[key]
           if (target === undefined) return `${key} has no derived cleanup target, so the restore cannot be proven`
+          // The target is the value just read: the ledger proves the post-read equals it (#39207, @cto 5034aa6f).
+          if (target === RESTORE_TO_PRE_READ) return undefined
           return value === target
             ? undefined
             : `${key} is ${value} (already non-default) and this cell's cleanup writes ${target}`
@@ -1949,7 +1952,10 @@ async function runProbeBatchInRun(
         // with the state before its first write. A refusal is thrown OUTSIDE the per-probe catch, so the
         // run stops with the diff retained and nothing after it is graded (@cto e6ae2880 conditions 1, 3, 4).
         const writes = events.filter((event) => event.kind === "write").map((event) => event.sequence)
-        const { attributes, unclassified } = touchedAttributes(writes)
+        // The pre-seed is classification context only: a union entry (OSC 7110, DECSTR) may name an attribute
+        // admission already pre-read before this run's own write touches it (#39207).
+        const context = windowAdmission?.admitted === true ? windowAdmission.preSeed : []
+        const { attributes, unclassified } = touchedAttributes(writes, context)
         const reads = new Map<string, AttributeReads>()
         for (const attribute of attributes) {
           const key = attributeKey(attribute)
@@ -1962,7 +1968,7 @@ async function runProbeBatchInRun(
             ...(outcome?.reason === "reply" ? { after: outcome.raw } : {}),
           })
         }
-        const omega = ledgerOmega({ writes, reads })
+        const omega = ledgerOmega({ writes, reads, context })
         batch.rawReplies[`${probe.id}.ledger`] = JSON.stringify({
           basis: "window",
           touched: omega.touched,

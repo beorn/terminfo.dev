@@ -12,6 +12,7 @@ import {
   classifyWrite,
   ledgerOmega,
   readbackFor,
+  restoresToPreRead,
   touchedAttributes,
 } from "./attribute-ledger"
 import { windowBasisAdmission } from "./window-basis-admission.ts"
@@ -214,6 +215,45 @@ describe("DECSCUSR and the reset probes' made-up OSC 7110 (#39207)", () => {
     })
     if (omega.status !== "refused") throw new Error("unreachable")
     expect(new MutationRestoreRefused(OSC112, omega).message).toContain(`${OSC112}`)
+  })
+})
+
+// #39207: the cell's admission pre-reads its whole pre-seed, so a union entry may name any of those
+// attributes even before this run's own writes touch them; nothing outside the context is added.
+describe("classification context: the attributes the cell pre-reads (#39207)", () => {
+  const CONTROL = `${ESC}]7110;rgb:12/34/56\x07`
+  const context = [{ kind: "dec-mode", mode: 25 }, { kind: "cursor-colour" }] as const
+
+  it("classifies the made-up control written before the cell's own colour write", () => {
+    expect(touchedAttributes([CONTROL, `${ESC}]12;rgb:12/34/56\x07`])).toMatchObject({ unclassified: [CONTROL] })
+    expect(touchedAttributes([CONTROL, `${ESC}]12;rgb:12/34/56\x07`], context)).toEqual({
+      attributes: [{ kind: "cursor-colour" }],
+      unclassified: [],
+    })
+  })
+
+  it("reads back what the writes named, never the rest of the context", () => {
+    const reply = `${ESC}]12;rgb:9282/9282/9282\x07`
+    const omega = ledgerOmega({ writes: [CONTROL], reads: new Map([["osc:12", { before: reply, after: reply }]]), context })
+    expect(omega).toEqual({ status: "restored", touched: ["osc:12"] })
+  })
+
+  it("restores colours, the pointer shape and the cursor style to the pre-read value; modes and SGR keep named targets", () => {
+    for (const attribute of [
+      { kind: "palette", index: 0 },
+      { kind: "foreground" },
+      { kind: "background" },
+      { kind: "cursor-colour" },
+      { kind: "highlight-background" },
+      { kind: "highlight-foreground" },
+      { kind: "pointer-shape" },
+      { kind: "cursor-style" },
+    ] as const) {
+      expect(restoresToPreRead(attribute), attribute.kind).toBe(true)
+    }
+    for (const attribute of [{ kind: "dec-mode", mode: 25 }, { kind: "ansi-mode", mode: 4 }, { kind: "sgr" }] as const) {
+      expect(restoresToPreRead(attribute), attribute.kind).toBe(false)
+    }
   })
 })
 

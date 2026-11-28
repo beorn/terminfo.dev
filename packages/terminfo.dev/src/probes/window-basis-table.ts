@@ -13,6 +13,9 @@
 import type { LedgerAttribute } from "./attribute-ledger.ts"
 
 export const WINDOW_BASIS_PRE_SEED: Readonly<Record<string, readonly LedgerAttribute[]>> = {
+  "extensions.osc110-reset-fg": [{ kind: "foreground" }],
+  "extensions.osc111-reset-bg": [{ kind: "background" }],
+  "extensions.osc22-pointer": [{ kind: "dec-mode", mode: 25 }, { kind: "pointer-shape" }, { kind: "sgr" }],
   "modes.auto-wrap": [{ kind: "dec-mode", mode: 7 }],
   "modes.color-scheme-reporting": [{ kind: "dec-mode", mode: 2031 }],
   "modes.deccolm": [
@@ -35,6 +38,9 @@ export const WINDOW_BASIS_PRE_SEED: Readonly<Record<string, readonly LedgerAttri
 }
 
 export const WINDOW_BASIS_RESTORE_TARGET: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "extensions.osc110-reset-fg": { "osc:10": "=pre-read" },
+  "extensions.osc111-reset-bg": { "osc:11": "=pre-read" },
+  "extensions.osc22-pointer": { "dec:25": "1", "osc:22": "=pre-read", sgr: "0" },
   "modes.auto-wrap": { "dec:7": "1" },
   "modes.color-scheme-reporting": { "dec:2031": "2" },
   "modes.deccolm": { "dec:3": "2", "dec:40": "1" },
@@ -55,15 +61,9 @@ export const WINDOW_BASIS_RESTORE_TARGET: Readonly<Record<string, Readonly<Recor
 
 export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {
   "extensions.osc104-reset-palette":
-    "write not on a closed list: 6 of 209 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
-  "extensions.osc110-reset-fg":
-    "cleanup target not derivable: the cell's last write to osc:10 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
-  "extensions.osc111-reset-bg":
-    "cleanup target not derivable: the cell's last write to osc:11 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
+    "write not on a closed list: 4 of 209 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "extensions.osc112-reset-cursor":
-    'write not on a closed list: 69 of 175 retained writes refuse because CSI is on no closed list: "\\u001b[2 q"',
-  "extensions.osc22-pointer":
-    "cleanup target not derivable: the cell's last write to osc:22 leaves a post-state this table cannot name from the bytes, so it cannot be read back and compared",
+    "write not on a closed list: 48 of 175 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "extensions.reflow":
     "write not on a closed list: 192 of 392 retained writes refuse because ESC 7/ESC 8 save-restore is not on a closed list, and no retained write proves sgr plus origin plus charset",
   "modes.alt-screen.enter":
