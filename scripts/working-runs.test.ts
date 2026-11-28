@@ -771,7 +771,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // #33037: every hourly run repeated an identical status map per context, and the theme chunk crossed
   // the 26,214,400-byte Pages asset limit (2,151 maps carried, 240 distinct). Equal maps are sent once.
-  it("sends an identical historical status map once and points every context at it", () => {
+  // Reads the live store: 7.5 s at load 139 against the 5 s default (2026-11-28); 60 s is hang protection.
+  it("sends an identical historical status map once and points every context at it", { timeout: 60_000 }, () => {
     const parent = runsDir()
     collection(parent, OLD)
     collection(parent, PARTIAL)
@@ -1013,7 +1014,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Actual build hit 17.6 GB: 273 feature routes repeated 255 MB of history params.
   // The shared client loader must preserve all statuses/receipts without repeating per-cell provenance.
-  it("shares complete historical statuses with original capture receipts in the client data", () => {
+  // Reads the live store: 8.0 s at load 139 against the 5 s default (2026-11-28); 60 s is hang protection.
+  it("shares complete historical statuses with original capture receipts in the client data", { timeout: 60_000 }, () => {
     const fixture = collection()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
     const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
