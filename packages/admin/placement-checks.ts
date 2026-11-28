@@ -2,7 +2,8 @@
  * Placement's two refusals (#37245, @cto 39b625fe, ff0c53b4, a256c184):
  *
  * 1. A run may not turn a cell the site serves as decided into an undecided one unless the placer accepts that exact
- *    count with a reason. "Served" is the site's own projection (loadCurrentResults + compatibilitySubjects), read
+ *    count with a reason. A supported or unsupported verdict replaced by untestable counts the same way: a lost verdict
+ *    is lost whatever the run says caused it (#39206, @cto ce588e48). "Served" is the site's own projection (loadCurrentResults + compatibilitySubjects), read
  *    once over the corpus and once with the candidate as a working run, so the check follows the projection's
  *    selection rules and never re-derives them.
  * 2. Placement stages exactly the paths it wrote, then every artifact the run cites must be in the git index.
@@ -34,6 +35,8 @@ export interface CellChange {
   featureId: string
   was: string
   now: string
+  /** The run's own reason for its result, carried on a verdict lost to untestable so the refusal can name it. */
+  reason?: string
 }
 
 /** What placing a run would change in the cells the site serves for its subject. */
@@ -43,7 +46,10 @@ export interface DowngradeReport {
   /** The context the projection serves for the subject without the run, and with it; null when none is served. */
   before: string | null
   after: string | null
-  /** Decided before, undecided (or no longer served) after: refused unless accepted at this exact count. */
+  /**
+   * Decided before and undecided (or no longer served) after, or a supported/unsupported verdict replaced by
+   * untestable: refused unless accepted at this exact count.
+   */
   downgrades: CellChange[]
   /** Decided before, a different decided status after: listed, never refused. */
   flips: CellChange[]
@@ -57,7 +63,7 @@ export interface AcceptDowngrades {
 /** The definition every refusal states, so a reader can derive the count it prints. */
 export const DOWNGRADE_DEFINITION =
   `a downgrade is a cell the site's projection serves as decided (${[...DECIDED_STATUSES].join(", ")}) ` +
-  "without this run and as undecided with it"
+  "without this run and as undecided with it, or as supported or unsupported without it and untestable with it"
 
 function served(
   results: ReturnType<typeof loadCurrentResults>,
@@ -85,25 +91,49 @@ export function placementDowngrades(run: LoadedRun, contentDir: string = CONTENT
   // placement left it, not as the first read found it.
   const before = served(loadCurrentResults(contentDir, { workingRuns: [] }), contentDir, run)
   const after = served(loadCurrentResults(contentDir, { workingRuns: [run] }), contentDir, run)
-  const downgrades: CellChange[] = []
-  const flips: CellChange[] = []
-  for (const [featureId, was] of before?.cells ?? []) {
-    if (!DECIDED_STATUSES.has(was)) continue
-    const now = after?.cells.get(featureId) ?? "missing"
-    if (!DECIDED_STATUSES.has(now)) downgrades.push({ featureId, was, now })
-    else if (now !== was) flips.push({ featureId, was, now })
-  }
+  const reasons = new Map((run.results ?? []).map((row) => [row.featureId, row.reason]))
   return {
     subject: `${run.subject.kind}:${run.subject.id}@${run.subject.os ?? "unknown"}`,
     before: before?.key ?? null,
     after: after?.key ?? null,
-    downgrades,
-    flips,
+    ...compareServedCells(before?.cells, after?.cells, (featureId) => reasons.get(featureId)),
   }
 }
 
+/**
+ * Compare the served cells cell by cell. Decided before and undecided (or unserved) after is a downgrade, and so is a
+ * supported or unsupported verdict that became untestable: that loses the verdict whatever the run's reason text
+ * says (@cto ce588e48), so it carries the run's own reason for the refusal to name. Any other change between two
+ * decided statuses is a flip, listed and never refused.
+ */
+export function compareServedCells(
+  before: ReadonlyMap<string, string> | undefined,
+  after: ReadonlyMap<string, string> | undefined,
+  reasonFor: (featureId: string) => string | undefined,
+): Pick<DowngradeReport, "downgrades" | "flips"> {
+  const downgrades: CellChange[] = []
+  const flips: CellChange[] = []
+  for (const [featureId, was] of before ?? []) {
+    if (!DECIDED_STATUSES.has(was)) continue
+    const now = after?.get(featureId) ?? "missing"
+    if (!DECIDED_STATUSES.has(now)) {
+      downgrades.push({ featureId, was, now })
+    } else if (now === "untestable" && was !== "untestable") {
+      const reason = reasonFor(featureId)
+      downgrades.push({ featureId, was, now, ...(reason !== undefined && reason !== "" ? { reason } : {}) })
+    } else if (now !== was) {
+      flips.push({ featureId, was, now })
+    }
+  }
+  return { downgrades, flips }
+}
+
+function changeLine({ featureId, was, now, reason }: CellChange): string {
+  return `${featureId} ${was} -> ${now}` + (reason === undefined ? "" : ` (${reason})`)
+}
+
 function listed(cells: readonly CellChange[]): string {
-  const shown = cells.slice(0, LIST_LIMIT).map(({ featureId, was, now }) => `${featureId} ${was} -> ${now}`)
+  const shown = cells.slice(0, LIST_LIMIT).map(changeLine)
   const rest = cells.length - shown.length
   return shown.join("; ") + (rest > 0 ? `; and ${rest} more` : "")
 }
@@ -229,7 +259,7 @@ export function placementCommitMessage(placement: Pick<CheckedPlacement, "prepar
     lines.push(
       "",
       "Downgraded cells:",
-      ...placement.report.downgrades.map((c) => `- ${c.featureId}: ${c.was} -> ${c.now}`),
+      ...placement.report.downgrades.map((c) => `- ${changeLine(c).replace(" ", ": ")}`),
     )
   }
   if (placement.report.flips.length > 0) {
