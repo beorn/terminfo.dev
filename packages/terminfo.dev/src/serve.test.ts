@@ -17,11 +17,13 @@ import { afterEach, describe, expect, it, vi } from "vitest"
  * fake names none, no app pid, so the input adapter refuses by name on every collection and says so
  * on stderr - collector.log - exactly as a real run without either does (#33574, 33587). Those lines
  * are claimed facts, not noise: this keeps each arm's stderr assertion loud by naming the only lines
- * it may carry, so any other line still fails. Hosted arms install no input in this head.
+ * it may carry, so any other line still fails. The hosted Windows arm records that its input is off
+ * unless a qualification job opts in (#30723); every other hosted arm installs no input in this head.
  */
 const INPUT_INSTALL_REFUSALS = new Set([
   "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset and no helper path was given",
   "collector.inputInstall refused: the verified terminalApp terminal has no measured app PID",
+  "collector.inputInstall not installed: TERMINFO_WINDOWS_INPUT is not 1, so hosted Windows input stays off until a declared qualification job turns it on (#30723)",
 ])
 
 function stderrWithoutInputInstall(stderr: string): string[] {
@@ -3256,8 +3258,15 @@ describe("private finite daemon startup", () => {
           "collector.inputInstall refused: macOS input requires the built helper: TERMINFO_DARWIN_INPUT_HELPER is unset",
         )
       }
-      // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line.
-      if (arm !== "terminalApp") expect(result.stderr).not.toContain("collector.inputInstall")
+      // @cto 75732b9d P2-3: a hosted runner installs no input in this head, so it has no input line - except
+      // hosted Windows, whose SendInput route (#30723, @cto r2 PROCEED) is off without the opt-in and says so.
+      if (arm === "windowsHosted") {
+        expect(result.stderr.split("\n").filter((line) => line.includes("collector.inputInstall"))).toEqual([
+          "collector.inputInstall not installed: TERMINFO_WINDOWS_INPUT is not 1, so hosted Windows input stays off until a declared qualification job turns it on (#30723)",
+        ])
+      } else if (arm !== "terminalApp") {
+        expect(result.stderr).not.toContain("collector.inputInstall")
+      }
       if (!retained && arm === "windowsHosted") {
         expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
         expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)

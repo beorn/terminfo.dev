@@ -673,3 +673,85 @@ export function readTermControl(options: {
   }
   return { status: "read", topLevel, control, frame, window, focused: parsed.focused }
 }
+
+/** The one key posted before delivery is proven; its echo on the run's own TTY is the receiving evidence. */
+export const WINDOWS_INPUT_SELF_TEST_KEYSYM = "z"
+
+/** The opt-in a declared qualification job sets; without it the hosted Windows arm installs no input. */
+export const WINDOWS_INPUT_ENV = "TERMINFO_WINDOWS_INPUT"
+
+/**
+ * The hosted Windows limit over the mechanism (#30723 plan section 4): pointer verbs refuse until this
+ * context's hosted qualification gives a pointer witness, and until a key comes back through the run's
+ * own TTY only the self-test key may be posted. A key echo is never pointer proof.
+ */
+export function windowsKeysOnly(mechanism: InputMechanism, delivered: () => boolean): InputMechanism {
+  const refused = (verb: string): Promise<never> =>
+    Promise.reject(
+      new WindowsInputRefused(
+        `Windows ${verb} refused: pointer posts wait for this context's hosted qualification (#30723); a key echo is not pointer proof`,
+      ),
+    )
+  return {
+    focus: () => mechanism.focus(),
+    geometry: () => refused("pointer placement"),
+    moveTo: () => refused("pointer movement"),
+    click: () => refused("a click"),
+    press: () => refused("a button press"),
+    release: () => refused("a button release"),
+    key(keys: string) {
+      if (!delivered() && keys !== WINDOWS_INPUT_SELF_TEST_KEYSYM) {
+        return Promise.reject(
+          new WindowsInputRefused(
+            `Windows key ${JSON.stringify(keys)} refused: only the self-test key "${WINDOWS_INPUT_SELF_TEST_KEYSYM}" ` +
+              "may be posted until one comes back through the run's own TTY",
+          ),
+        )
+      }
+      return mechanism.key(keys)
+    },
+  }
+}
+
+export interface WindowsInputInstallOptions {
+  /** The run's proven WindowsTerminal.exe pid. */
+  readonly pid: number
+  /** Post the self-test key through the fresh adapter and return what the run's own TTY echoed, or null. */
+  readonly selfTest: (inject: () => Promise<void>) => Promise<string | null>
+  /** Records the route and self-test outcome on the run; never silent. */
+  readonly report?: (fact: string) => void
+  /** Test seams: the OS layer and the UIA read in place of user32 and powershell.exe. */
+  readonly os?: Win32InputOs
+  readonly readControl?: () => TermControlReading
+}
+
+/**
+ * Bind the run's TermControl, gate it to keys, and prove delivery by one key echoed on the run's own TTY
+ * before any probe may post. A key that does not come back refuses the install by name: SendInput's count
+ * is insertion, and only the echo is receiving evidence (@cto 30723 r2 corrections 1 and 4).
+ */
+export async function installWindowsInput(options: WindowsInputInstallOptions): Promise<InputFixture> {
+  // user32 is loaded only here, so importing this module makes no native call off Windows.
+  const os = options.os ?? (await import("./windows-user32.ts")).loadWin32InputOs()
+  const { mechanism, binding } = createWindowsInputMechanism({
+    pid: options.pid,
+    os,
+    readControl: options.readControl ?? (() => readTermControl({ pid: options.pid })),
+  })
+  let proven = false
+  const input = createWindowsInput(windowsKeysOnly(mechanism, () => proven))
+  const echoed = await options.selfTest(() => input.injectKey(WINDOWS_INPUT_SELF_TEST_KEYSYM))
+  if (echoed === null || !echoed.includes(WINDOWS_INPUT_SELF_TEST_KEYSYM)) {
+    throw new Error(
+      `input not delivered to Windows Terminal: SendInput posted keysym "${WINDOWS_INPUT_SELF_TEST_KEYSYM}" to pid ` +
+        `${options.pid} (${binding.evidence}) and the run's TTY echoed ${echoed === null ? "nothing" : JSON.stringify(echoed)}; ` +
+        "refusing to measure input rows through it",
+    )
+  }
+  proven = true
+  options.report?.(
+    `windows input installed (keys only until this context's hosted qualification gives a pointer witness): ` +
+      `pid ${options.pid}, ${binding.evidence}, self-test echoed ${JSON.stringify(echoed)}`,
+  )
+  return input
+}
