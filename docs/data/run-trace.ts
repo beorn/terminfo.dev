@@ -625,6 +625,9 @@ export function classifyUntestableCause(featureId: string, subjectKind: string, 
   if (r.includes("no mode query in this run got a decrpm reply")) return "no-decrqm-baseline"
   if (r.includes("deccara produces no attribute change")) return "prereq-deccara-absent"
   if (r.includes("kitty graphics transmit")) return "prereq-kitty-transmit-absent"
+  if (featureId === "sgr.underline-color-reset" && r.includes("sgr 58 left the plain underline")) {
+    return "prereq-color-setup-absent"
+  }
   if (
     r.includes("osc 4") &&
     (r.includes("did not change") || r.includes("did not take") || r.includes("does not apply"))

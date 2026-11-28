@@ -1289,6 +1289,17 @@ describe("card-explain #38777 — command under test, deciding values, library s
     expect(validateUntestableCard(card, "alacritty-osc113")).toEqual([])
   })
 
+  it("explains Warp's underline reset with the plain underline observed in the capture", () => {
+    const { card, cell } = cardFor(
+      "probes-apps/warp-v0.2026.11.18.08.17.stable_05-macos-82d467e9fd6219b9084018e3ab1375b3.json",
+      "sgr.underline-color-reset",
+    )
+    expect(cell.status).toBe("untestable")
+    expect(card.closing).toContain(
+      "SGR 58 left the underline plain, so there is no underline colour for SGR 59 to reset.",
+    )
+  })
+
   // Pattern 7 and the @dev/15 reword: evidence sentences say what was observed, in reader words.
   it("7: no internal jargon; screen method sentences say the observed outcome", () => {
     const push = cardFor(ALACRITTY, "modes.xtpushcolors").card
