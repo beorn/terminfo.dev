@@ -23,6 +23,7 @@ import {
   cleanupReading,
   callbackReading,
   withCleanupDetail,
+  DECRQSS_DECSCUSR_QUERY,
 } from "./helpers.ts"
 
 /**
@@ -321,7 +322,7 @@ const DECRQSS_DECSCL: DeviceReply = {
 // before the style, so take the status and the ending, not a strict digit form (@cto third-table ruling 2026-11-06).
 const DECRQSS_DECSCUSR: DeviceReply = {
   id: "device.decrqss",
-  query: "\x1bP$q q\x1b\\",
+  query: DECRQSS_DECSCUSR_QUERY,
   valid: /\x1bP1\$r[^\x1b]* q\x1b\\/,
   refusal: /\x1bP0\$r\x1b\\/,
   malformed: /\x1bP[01]\$r/,

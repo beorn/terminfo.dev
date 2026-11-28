@@ -1096,8 +1096,11 @@ export async function queryDecrpm(
  * `DCS 1 $ r <Ps> SP q ST` reply yields `<Ps>`; a timeout, a DA1 sentinel, or a `DCS 0 $ r ST`
  * "request not recognized" reply all return null. A missing readback is never a negative.
  */
+export const DECRQSS_DECSCUSR_QUERY = "\x1bP$q q\x1b\\"
+export const DECRQSS_DECSCUSR_REPLY = /\x1bP1\$r([0-9]+) q\x1b\\/
+
 export async function queryCursorStyle(ctx: TermProbeSource): Promise<number | null> {
-  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$q q\x1b\\", /\x1bP1\$r([0-9]+) q\x1b\\/)
+  const outcome = await ctx.queryWithSentinelOutcome(DECRQSS_DECSCUSR_QUERY, DECRQSS_DECSCUSR_REPLY)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
   if (payload === undefined) return null
