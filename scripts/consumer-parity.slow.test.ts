@@ -592,7 +592,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       console.log(JSON.stringify({exactContexts:keys(projection.contexts).length,sealedRunFiles,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
-      { cwd: root, encoding: "utf8", timeout: 600_000, maxBuffer: 2 * 1024 * 1024 },
+      // 1200 s: the retained corpus took 561 s at base c2e659572 and ran past 600 s twice at load 65-76 on 2026-11-28
+      // (@dev/18 f47282f1, @cto db312756); a run past this is a red, not a wait.
+      { cwd: root, encoding: "utf8", timeout: 1_200_000, maxBuffer: 2 * 1024 * 1024 },
     )
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
@@ -608,7 +610,12 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
           !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
           !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line) &&
           // A row a review declared untestable (content/declared-untestable.json, #34803) is logged by design (#35123).
-          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line),
+          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line) &&
+          // A verdict whose criterion was tightened stops publishing and says so by design (selected-results.ts,
+          // tightenedSupersedes; @dev/18 f47282f1: terminal-app OSC 113/114/117 from run 1c4e73d9).
+          !/^superseded \S+ \S+: \S+ under suite [0-9a-f]{12} no longer publishes; the criterion changed and run [0-9a-f]{8} did not decide it$/.test(
+            line,
+          ),
       )
     expect(unexpectedStderr).toEqual([])
     const receipt = JSON.parse(result.stdout) as {

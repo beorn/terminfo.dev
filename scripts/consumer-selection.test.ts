@@ -570,7 +570,12 @@ describe("consumer selection", () => {
           !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line) &&
           !/^kept \S+ \S+ \S+ refused \S+ from \S+ streak \d+( needs its own issue)?$/.test(line) &&
           // A row a review declared untestable (content/declared-untestable.json, #34803) is logged by design (#35123).
-          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line),
+          !/^declared untestable by review: \S+ \(row \S+\)$/.test(line) &&
+          // A verdict whose criterion was tightened stops publishing and says so by design (selected-results.ts,
+          // tightenedSupersedes; @dev/18 f47282f1: terminal-app OSC 113/114/117 from run 1c4e73d9).
+          !/^superseded \S+ \S+: \S+ under suite [0-9a-f]{12} no longer publishes; the criterion changed and run [0-9a-f]{8} did not decide it$/.test(
+            line,
+          ),
       )
       expect(unexpectedStderr).toEqual([])
     } finally {
