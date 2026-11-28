@@ -6921,6 +6921,9 @@ test("#30932 AC3 + #30933: collectBatch discards live return value and grades st
     }),
   ])
   expect(divergeCalls).toBe(2)
-  expect(diverged.ungradedDiagnostics["ac3.replay-diverges"]?.name).toBe("IncompleteReplay")
+  expect(diverged.ungradedDiagnostics["ac3.replay-diverges"]).toMatchObject({
+    kind: "collector-error",
+    name: "IncompleteReplay",
+  })
   expect(diverged.results).toMatchObject([{ featureId: "ac3.replay-diverges", status: "probe-invalid" }])
 })

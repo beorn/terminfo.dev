@@ -9283,7 +9283,10 @@ describe("#30932 AC3 + #30933: runProbeBatch derives domain status strictly from
       }
       const batch = await runProbeBatch({ ids: [probe.id] })
       expect(invocations).toBe(2)
-      expect(batch.ungradedDiagnostics[probe.id]?.name).toBe("IncompleteReplay")
+      expect(batch.ungradedDiagnostics[probe.id]).toMatchObject({
+        kind: "collector-error",
+        name: "IncompleteReplay",
+      })
       expect(batch.results.find((entry) => entry.featureId === probe.id)?.status).toBe("probe-invalid")
     } finally {
       probe.term = original
