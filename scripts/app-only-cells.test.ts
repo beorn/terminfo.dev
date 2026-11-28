@@ -168,9 +168,7 @@ describe("App only on library rows (#38772)", () => {
       { name: "kitty", result: "unknown" },
     ]
     expect(featurePageCounts(rows, CLICK)).toEqual({ yesCount: 1, totalCount: 1, noResultCount: 1 })
-    expect(() => featurePageCounts([{ name: "vterm", result: "probe-todo" }], CLICK)).toThrow(
-      /undecided result "probe-todo"/,
-    )
+    expect(() => featurePageCounts([{ name: "vterm", result: "probe-todo" }], CLICK)).toThrow(/undecided result "probe-todo"/)
   })
 
   it("reads the catalogue's declarations by default: the four features @cpo/term ruled (20882c8a), each with a reason", () => {

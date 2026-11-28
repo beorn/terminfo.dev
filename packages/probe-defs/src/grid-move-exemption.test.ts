@@ -217,15 +217,10 @@ describe("33982 origin follows its own box", () => {
     // is two measurements disagreeing, not a moved grid (@dev/10 note b).
     const compared = [
       frame("seed", firstOrigin),
-      frame(
-        "expected",
-        movedOrigin,
-        {},
-        {
-          a: { x: firstOrigin.x + 16, y: firstOrigin.y },
-          b: { x: firstOrigin.x, y: firstOrigin.y + cell.height },
-        },
-      ),
+      frame("expected", movedOrigin, {}, {
+        a: { x: firstOrigin.x + 16, y: firstOrigin.y },
+        b: { x: firstOrigin.x, y: firstOrigin.y + cell.height },
+      }),
     ]
     expect(gridMoveExemption(compared)).toEqual([])
     expect(refusal(compared)).not.toBeNull()
