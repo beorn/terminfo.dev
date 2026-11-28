@@ -1643,7 +1643,12 @@ export async function calibrateCaptureOrigin({
             }
           }
           const altFillets = dilateFilletMask(altShrunk.fillets, altShrunk.grid, altSolid.width)
-          const altBackground = findBackgroundPaintClass(altBlank, altShrunk.grid, altFillets, altMeasured.witnessClass)
+          const altBackground = findBackgroundPaintClass(
+            altBlank,
+            altShrunk.grid,
+            altFillets,
+            altMeasured.witnessClass,
+          )
           const [altR, altG, altB] = altMeasured.witness
           alternateTrace += `; ${altMode} origin ${altOrigin.x},${altOrigin.y} sentinel ${altForm} rgb ${altR},${altG},${altB}`
           return {

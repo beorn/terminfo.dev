@@ -236,8 +236,8 @@ describe("run-level observers field (#37780, @cto e81def55)", () => {
       "observers cannot contain duplicates",
     ],
   ])("refuses %s by name", (_label, observers, message) => {
-    expect(() =>
-      parseRun("invalid.json", JSON.stringify(buildRun("3".repeat(32), observers)), catalogIds, suites),
-    ).toThrow(message)
+    expect(() => parseRun("invalid.json", JSON.stringify(buildRun("3".repeat(32), observers)), catalogIds, suites)).toThrow(
+      message,
+    )
   })
 })
