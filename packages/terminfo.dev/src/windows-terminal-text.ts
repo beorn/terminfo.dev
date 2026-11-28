@@ -127,7 +127,8 @@ try {
 `
 }
 
-const defaultRun = (script: string, timeoutMs: number): PowerShellReply =>
+/** Run one Windows PowerShell 5.1 script with a hidden console of its own (shared by #30723's input route). */
+export const runPowerShell = (script: string, timeoutMs: number): PowerShellReply =>
   osascriptReply(
     spawnSync(
       "powershell.exe",
@@ -157,19 +158,26 @@ const unitRows = (value: unknown): readonly string[] | undefined =>
     ? (value as number[][]).map((row) => String.fromCharCode(...row))
     : undefined
 
-/** The visible rows exactly as UI Automation returned them, before any cell mapping. */
-export function readWindowsTerminalRows(options: WindowsTerminalTextOptions): WindowsTerminalRows {
-  const run = options.run ?? ((script: string) => defaultRun(script, options.timeoutMs ?? 15_000))
-  const reply = run(windowsTerminalTextScript(options.pid, options.rows))
+/**
+ * One PowerShell reply classified: a start failure, a timeout, a nonzero exit, unparsable output, a
+ * reply with no status, and the script's own refusal each come back as a named refusal; anything else
+ * is the parsed object for the caller to check. `subject` names who did not answer in each refusal.
+ */
+export function classifyPowerShellReply(
+  reply: PowerShellReply,
+  names: { readonly subject: string; readonly read: string; readonly noun: string },
+):
+  | { readonly status: "json"; readonly value: object & { status: unknown } }
+  | { readonly status: "refused"; readonly reason: string } {
   if (reply.error !== undefined && reply.error.code !== "ETIMEDOUT") {
     return {
       status: "refused",
-      reason: `Windows Terminal could not be read: ${reply.error.code ?? "powershell.exe could not start"}: ${reply.error.message}`,
+      reason: `${names.subject} could not be read: ${reply.error.code ?? "powershell.exe could not start"}: ${reply.error.message}`,
     }
   }
   if (reply.timedOut) {
     const how = reply.signal === null ? "before its timeout" : `(killed by ${reply.signal})`
-    return { status: "refused", reason: `Windows Terminal did not answer the UI Automation read ${how}` }
+    return { status: "refused", reason: `${names.subject} did not answer ${names.read} ${how}` }
   }
   if (reply.status !== 0) {
     const detail = reply.stderr.trim() || reply.stdout.trim() || "no output"
@@ -181,16 +189,29 @@ export function readWindowsTerminalRows(options: WindowsTerminalTextOptions): Wi
   } catch {
     return {
       status: "refused",
-      reason: `Windows Terminal did not return a snapshot: ${reply.stdout.trim().slice(0, 200) || "empty output"}`,
+      reason: `${names.subject} did not return a ${names.noun}: ${reply.stdout.trim().slice(0, 200) || "empty output"}`,
     }
   }
   if (typeof parsed !== "object" || parsed === null || !("status" in parsed)) {
-    return { status: "refused", reason: "Windows Terminal returned no status in its snapshot" }
+    return { status: "refused", reason: `${names.subject} returned no status in its ${names.noun}` }
   }
   if (parsed.status === "refused") {
     const reason = "reason" in parsed && typeof parsed.reason === "string" ? parsed.reason : "no reason given"
     return { status: "refused", reason }
   }
+  return { status: "json", value: parsed }
+}
+
+/** The visible rows exactly as UI Automation returned them, before any cell mapping. */
+export function readWindowsTerminalRows(options: WindowsTerminalTextOptions): WindowsTerminalRows {
+  const run = options.run ?? ((script: string) => runPowerShell(script, options.timeoutMs ?? 15_000))
+  const classified = classifyPowerShellReply(run(windowsTerminalTextScript(options.pid, options.rows)), {
+    subject: "Windows Terminal",
+    read: "the UI Automation read",
+    noun: "snapshot",
+  })
+  if (classified.status === "refused") return classified
+  const parsed = classified.value
   const rows = parsed.status === "read" && "rows" in parsed ? unitRows(parsed.rows) : undefined
   const documentEnded = "documentEnded" in parsed ? parsed.documentEnded : undefined
   if (rows === undefined || typeof documentEnded !== "boolean") {

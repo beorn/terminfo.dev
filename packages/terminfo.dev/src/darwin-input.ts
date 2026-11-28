@@ -368,6 +368,12 @@ export interface DarwinInputOptions {
   readonly keysOnly?: boolean
   /** Test seam: the platform operations, in place of the built helper. */
   readonly mechanism?: InputMechanism
+  /**
+   * The helper's `access` line (Accessibility, event posting and event listening, read separately);
+   * production runs the built helper. Recorded on install and named in a delivery refusal, so a
+   * missing posting or listening capability is never read as the terminal's behaviour (#30723).
+   */
+  readonly readAccess?: () => Promise<string>
 }
 
 function requireAppPid(appPid: number): void {
@@ -604,6 +610,13 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
   const delivered = (echoed: string | null): boolean =>
     echoed !== null && echoed.includes(DARWIN_INPUT_SELF_TEST_KEYSYM)
   const echoOf = (echoed: string | null): string => (echoed === null ? "nothing" : JSON.stringify(echoed))
+  const helperPath = options.helperPath
+  const readAccess =
+    options.readAccess ??
+    (options.mechanism === undefined && helperPath !== undefined
+      ? async () => (await command(helperPath, ["access"])).toString().trim()
+      : undefined)
+  const access = readAccess ? `; helper reads ${await readAccess()}` : ""
   const unicodeEcho = await options.selfTest(() => input.injectKey(DARWIN_INPUT_SELF_TEST_KEYSYM))
   if (!delivered(unicodeEcho)) {
     // Second, independent probe: same key by virtual keycode with no unicode payload. Its echo moves
@@ -618,7 +631,7 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
       `input not delivered to ${options.appName}: the CGEvent helper posted keysym ` +
         `"${DARWIN_INPUT_SELF_TEST_KEYSYM}" (virtual keycode 0 with a unicode payload) to pid ${options.appPid} ` +
         `and the app's TTY echoed ${echoOf(unicodeEcho)}; ${keycodeRoute}; ` +
-        `refusing to measure input rows through it`,
+        `refusing to measure input rows through it${access}`,
     )
   }
   proven = true
@@ -631,7 +644,7 @@ export async function createDarwinInput(options: DarwinInputOptions): Promise<In
           : ""
     }: ` +
       `pid ${options.appPid}, window ${options.windowId ?? "largest"}, ` +
-      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}` +
+      `tty ${options.windowTty ?? "unrecorded"}, self-test echoed ${JSON.stringify(unicodeEcho)}${access}` +
       // The permission is not ours on an owned host: it belongs to the ssh session's parent, so a
       // rebuilt machine loses it and every input row fails for a reason nothing in the app explains
       // (@cto cbc34e67). Recorded here because this string already reaches the run record.

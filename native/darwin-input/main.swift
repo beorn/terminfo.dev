@@ -3,10 +3,12 @@
 // Build (the job compiles it, nothing is committed as a binary):
 //   swiftc -O -o "$RUNNER_TEMP/darwin-input-helper" native/darwin-input/main.swift
 //
-// NOTHING HERE WRITES A TCC ROW, CALLS SUDO, OR INSTALLS ANYTHING. The hosted-runner workflow grants
-// Accessibility beside the existing Screen Recording grant and reads the row back; this helper only
-// reports what it observes and refuses by name when the grant is missing. NEVER run a TCC write from
-// this file, on a fleet host or on a person's Mac.
+// NOTHING HERE WRITES A TCC ROW, CALLS SUDO, OR INSTALLS ANYTHING. No workflow step grants Accessibility:
+// macos-measurement.yml writes Screen Recording and Apple Events rows only, and hosted runs read
+// AXIsProcessTrusted=true from rows the runner image seeds itself, with the matched identity UNKNOWN
+// (#30723). This helper only reports what it observes (`access` prints Accessibility, event posting
+// and event listening as three separate readings) and refuses by name when the grant is missing.
+// NEVER run a TCC write from this file, on a fleet host or on a person's Mac.
 //
 // Keys are posted to the measured app's pid only (CGEvent.postToPid), never to the HID or session
 // tap. What each key post proves, in the same call and immediately before the post: the process (the
@@ -54,7 +56,7 @@ func trusted() -> Bool {
 func requireTrust() {
     if !trusted() {
         fail("accessibility grant absent: AXIsProcessTrusted=false for this helper (\(CommandLine.arguments[0])); " +
-            "the hosted-runner workflow grants it beside Screen Recording and reads the row back")
+            "no workflow step grants it and this helper never writes one (#30723)")
     }
 }
 
@@ -636,6 +638,11 @@ case "signing-keychain-status":
     }
 case "trust":
     out("trusted=\(trusted())")
+case "access":
+    // Three separate readings, none inferred from another (@cto 30723 r2 correction 2): Accessibility,
+    // whether this process may post events, and whether it may listen to them. A preflight names no
+    // responsible process and no TCC database row, so none of these is a permission identity.
+    out("accessibility=\(trusted()) post=\(CGPreflightPostEventAccess()) listen=\(CGPreflightListenEventAccess())")
 case "selftest":
     // Pure: synthetic rows only. No window server read, no event, no app, no trust.
     selftest()

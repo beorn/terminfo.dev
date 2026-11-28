@@ -399,6 +399,16 @@ describe("macOS input install", () => {
     expect(probes).toEqual([DARWIN_INPUT_SELF_TEST_KEYSYM, DARWIN_INPUT_SELF_TEST_KEYCODE_KEYSYM])
   })
 
+  it("names the helper's separate posting and listening readings in a delivery refusal (#30723)", async () => {
+    await expect(
+      createDarwinInput(
+        options({ selfTest: async () => null, readAccess: async () => "accessibility=true post=false listen=true" }),
+      ),
+    ).rejects.toThrow(
+      /refusing to measure input rows through it; helper reads accessibility=true post=false listen=true$/,
+    )
+  })
+
   it("refuses the install when the echo is not the injected keysym", async () => {
     await expect(createDarwinInput(options({ selfTest: async () => "q" }))).rejects.toThrow(
       /input not delivered to Terminal\.app: .* echoed "q"/,
@@ -474,6 +484,7 @@ describe("macOS input on an owned host", () => {
         '  windows) printf \'[{"id":33,"x":40,"y":40,"width":700,"height":400}]\\n\' ;;',
         '  front) printf \'frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
         '  key) printf \'posted=key route=pid frontmost=true front-window=true key=true pid=%s window=%s\\n\' "$2" "$3" ;;',
+        "  access) printf 'accessibility=true post=false listen=false\\n' ;;",
         "esac",
         "",
       ].join("\n"),
@@ -521,6 +532,9 @@ describe("macOS input on an owned host", () => {
       expect(facts[0]).toMatch(
         /^darwin input installed \(owned host: keys and pointer addressed to the run's own window, one posting at a time\): pid 4242, window 33,/,
       )
+      // The helper's three permission readings ride on the install fact, each read on its own (#30723).
+      expect(calls).toContain("access")
+      expect(facts[0]).toContain("; helper reads accessibility=true post=false listen=false")
       // Where the permission comes from rides on the same fact: a rebuilt host must fail recognisably.
       expect(facts[0]).toMatch(
         /permission: inherited from the ssh session's \/usr\/libexec\/sshd-keygen-wrapper Accessibility grant/,

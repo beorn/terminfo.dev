@@ -125,7 +125,8 @@ const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
 function xtestCoverage(kind?: string, mechanism = "XTEST"): ProbeCallbackResult {
   if (!kind) {
-    // @chief ab9fa8aa: these cells are untestable. Do not add a CGEvent capture system.
+    // @chief ab9fa8aa / 5950cb6b forbid a second capture system, not injection through the existing input
+    // helpers (#30723: CGEvent on macOS, SendInput on Windows, both behind input-fixture.ts's one mechanism port).
     return declaredUntestableResult("real-surface input injection (XTEST/CGEvent)", { input: false })
   }
   return notTestedResult(`OS-level ${mechanism} ${kind}`, { input: false })
