@@ -69,9 +69,13 @@ struct Keysym {
 let namedKeys: [String: CGKeyCode] = [
     "Return": 36, "Tab": 48, "Space": 49, "Escape": 53, "BackSpace": 51, "Delete": 117,
     "Up": 126, "Down": 125, "Left": 123, "Right": 124,
-    "Home": 115, "End": 119, "Page_Up": 116, "Page_Down": 121,
+    "Home": 115, "End": 119, "Page_Up": 116, "Page_Down": 121, "Prior": 116, "Next": 121,
     "KP_Add": 69, "KP_Subtract": 78, "KP_Multiply": 67, "KP_Divide": 75, "KP_Enter": 76,
 ]
+
+/// X keysym names for printable characters that the probes post by name (tmux copy mode sends
+/// bracketleft); each posts its character through the printable route below.
+let namedCharacters: [String: String] = ["bracketleft": "[", "bracketright": "]"]
 
 func keysym(_ text: String) -> Keysym {
     var flags: CGEventFlags = []
@@ -94,6 +98,7 @@ func keysym(_ text: String) -> Keysym {
         let numericPad: CGEventFlags = name.hasPrefix("KP_") ? .maskNumericPad : []
         return Keysym(keyCode: keyCode, flags: flags.union(numericPad), unicode: [])
     }
+    if let character = namedCharacters[name] { name = character }
     // "code:<n>" posts virtual keycode n with NO unicode payload. The plain-character form below
     // posts virtual keycode 0 WITH one, so the two routes are separable: an app that takes the
     // keycode route and drops the unicode one is a different defect from an app that takes neither.

@@ -3,12 +3,14 @@
  * @level l2
  * @consumer macOS app collector input binding (33574)
  * @reach fake input and compiler/signing processes; real temporary files/kernel locks; no native TCC or WindowServer proof
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/*.ts vendor/terminfo.dev/native/darwin-input/main.swift
  * @testonly none
  */
 import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -858,5 +860,42 @@ describe("the viewport route over keys-only input (34313)", () => {
     // Exactly one bottom, from the wall.
     await expect(route.returnToBottom?.()).resolves.toBe("bottom-pressed")
     expect(posted).toEqual(["shift+Page_Up", "shift+End"])
+  })
+})
+
+// @failure A probe posts an X keysym name the macOS helper does not know (tmux copy mode's bracketleft and
+//   Prior), so the helper exits "unknown keysym" and the row records a collector error on every macOS run.
+// The helper is compiled only on macOS, so this reads its tables as source and checks every literal key
+// the probes post against the same rules keysym() applies.
+describe("macOS helper keysym coverage", () => {
+  const root = new URL("../../../", import.meta.url)
+  const swift = readFileSync(new URL("native/darwin-input/main.swift", root), "utf8")
+  const table = (name: string): Set<string> => {
+    const body = new RegExp(`let ${name}: \\[String: [A-Za-z]+\\] = \\[([^\\]]*)\\]`, "u").exec(swift)?.[1]
+    if (body === undefined) throw new Error(`main.swift lost its ${name} table`)
+    return new Set([...body.matchAll(/"([^"]+)":/gu)].map((match) => match[1]!))
+  }
+  const named = table("namedKeys")
+  const characters = table("namedCharacters")
+  const probeDir = new URL("packages/probe-defs/src/", root)
+  const sent = new Set<string>()
+  for (const file of readdirSync(probeDir)) {
+    if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue
+    for (const match of readFileSync(new URL(file, probeDir), "utf8").matchAll(/injectKey\("([^"]+)"\)/gu)) {
+      sent.add(match[1]!)
+    }
+  }
+  const resolves = (keys: string): boolean => {
+    const base = keys.replace(/^(?:(?:ctrl|control|shift|alt|meta|super|cmd)\+)+/iu, "")
+    return named.has(base) || characters.has(base) || /^code:[1-9]\d*$/u.test(base) || [...base].length === 1
+  }
+
+  it("finds the probes' literal keys, including the tmux copy-mode pair", () => {
+    expect(sent).toContain("bracketleft")
+    expect(sent).toContain("Prior")
+  })
+
+  it("resolves every key a probe posts", () => {
+    expect([...sent].filter((keys) => !resolves(keys))).toEqual([])
   })
 })
