@@ -116,6 +116,8 @@ test("Kitty keyboard detection marks a DA1-only capture, and the default rule re
   if (!kitty) throw new Error(`${id} has no term arm`)
   const result = await kitty({
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     rows: 24,
     write() {},
@@ -160,6 +162,8 @@ test("a multiplexer silence that may have stopped at the hop stays as it is toda
   if (!read) throw new Error("extensions.osc52-read has no term arm")
   const ctx = {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     mux: "tmux",
     cols: 80,
     rows: 24,

@@ -460,6 +460,7 @@ test.each([
 ])("%s never treats an unanswered effect readback plus DA1 as an app negative", async (id) => {
   const source = silentHostSlot(10, "", "")
   const result = await callback(id).term!({
+    randomUUID: () => globalThis.crypto.randomUUID(),
     write: source.feed,
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) =>
       source.queryWithSentinelOutcome!(sequence, pattern),
@@ -1492,6 +1493,7 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
           rawBase64: Buffer.from(raw).toString("base64"),
         }
       },
+      randomUUID: () => globalThis.crypto.randomUUID(),
       write: () => undefined,
     } as unknown as TermProbeSource)
   return { app, headless }
@@ -1517,6 +1519,7 @@ test("an answered allocation with silent placement leaves the display effect und
   // 27915: WezTerm acknowledges the transfer and places silently; DA1 answers and no a=p reply comes in the window.
   const definition = callback("extensions.kitty-graphics.display")
   const result = await definition.term!({
+    randomUUID: () => globalThis.crypto.randomUUID(),
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
       const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
       const raw = `${imageNumber === undefined ? "" : `\x1b_GI=${imageNumber},i=2;OK\x1b\\`}\x1b[?65;4;6;18;22;52c`
@@ -1563,6 +1566,7 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
   }
   const transmit = callback("extensions.kitty-graphics.transmit")
   const transmitResult = await transmit.term!({
+    randomUUID: () => globalThis.crypto.randomUUID(),
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
     write: () => undefined,
   } as unknown as TermProbeSource)
@@ -1572,6 +1576,7 @@ test("an explicit graphics refusal decides transmit and leaves display with no s
 
   const display = callback("extensions.kitty-graphics.display")
   const displayResult = await display.term!({
+    randomUUID: () => globalThis.crypto.randomUUID(),
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => refused(sequence, pattern),
     write: () => undefined,
   } as unknown as TermProbeSource)

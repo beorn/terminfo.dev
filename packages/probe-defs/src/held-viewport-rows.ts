@@ -1,4 +1,5 @@
 import { notTestedResult } from "./helpers.ts"
+import { sourceRandomUUID } from "./source-clock.ts"
 import type {
   HeldViewportCandidate,
   HeldViewportFrame,
@@ -231,7 +232,7 @@ async function heldRow(
   if (!Number.isSafeInteger(ctx.rows) || ctx.rows < HELD_ROWS_MIN || !Number.isSafeInteger(ctx.cols) || ctx.cols < 12) {
     return todo(`held-viewport fixture needs at least ${HELD_ROWS_MIN}x12, measured ${ctx.rows}x${ctx.cols}`, {})
   }
-  const fixture = new Fixture(ctx, Math.random().toString(36).slice(2, 6).padEnd(4, "0"))
+  const fixture = new Fixture(ctx, sourceRandomUUID(ctx).replaceAll("-", "").slice(0, 4))
   try {
     const bracket = async (name: string, hold: Hold, bottom?: HeldViewportFrame): Promise<Bracket> => ({
       name,

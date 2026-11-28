@@ -1,5 +1,5 @@
 export { evidenceRuntimeIdentity } from "./runtime-identity.ts"
-export { SOURCE_CLOCK_MISSING, sourceNow } from "./source-clock.ts"
+export { SOURCE_CLOCK_MISSING, SOURCE_RANDOM_MISSING, sourceNow, sourceRandomUUID } from "./source-clock.ts"
 export { sourceAnswerKey, parseSourceAnswerKey } from "./source-answers.ts"
 export {
   ALACRITTY_0_17_VIEWPORT_ROUTE,

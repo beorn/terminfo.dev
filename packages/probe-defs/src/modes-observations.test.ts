@@ -3574,6 +3574,7 @@ function decssclsSource(
   fixture: DecssclsFixture = {},
 ): TermProbeSource {
   const context = captureSource(rows, 80, writes, frames)
+  context.now = () => performance.now()
   context.captureGeometry = {
     geometry: { ...DECSSCLS_GEOMETRY },
     source: "measured by complete raster calibration",

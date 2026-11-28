@@ -50,6 +50,8 @@ function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: Ter
   }
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     write: note,
     queryCursorPosition: async () => (answers ? { row: 1, col: ++column } : null),
     measureRenderedWidth: async (text) => {

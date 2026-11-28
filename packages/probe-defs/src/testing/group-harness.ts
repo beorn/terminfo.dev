@@ -392,9 +392,11 @@ export function replayTermProbeSource(
       ...(stored.sentinel !== undefined && { sentinel: stored.sentinel }),
     }
   }
+  let draws = 0
   return {
     kind: "live",
     now: () => Date.now(),
+    randomUUID: () => `00000000-0000-4000-8000-${String(++draws).padStart(12, "0")}`,
     write: () => {},
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,

@@ -81,6 +81,7 @@ function surface(options: Surface) {
   const context: TermProbeSource = {
     kind: "live",
     now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     rows: 24,
     cols: 80,
     captureGeometry: GEOMETRY,

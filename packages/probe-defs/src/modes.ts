@@ -9,6 +9,7 @@ import type {
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { extensionsProbes, hasAuditedOscInterfaceAbsence } from "./extensions.ts"
+import { sourceNow } from "./source-clock.ts"
 import {
   activeScreenRow,
   probe,
@@ -1750,12 +1751,12 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
     settleMs: number,
   ): Promise<DecssclsPair> => {
     ctx.write(DECSSCLM_SMOOTH)
-    const startedAt = performance.now()
+    const startedAt = sourceNow(ctx)
     ctx.write("\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
-    const firstElapsedMs = performance.now() - startedAt
+    const firstElapsedMs = sourceNow(ctx) - startedAt
     const firstBand = await captureBand(role, `${label} t0 band`)
-    const firstBandElapsedMs = performance.now() - startedAt
+    const firstBandElapsedMs = sourceNow(ctx) - startedAt
     await new Promise<void>((resolve) => {
       setTimeout(resolve, settleMs)
     })
