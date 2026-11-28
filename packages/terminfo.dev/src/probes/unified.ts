@@ -161,6 +161,8 @@ export function createTermProbeSource({
     kind: "live",
     // #30932 S2: the live clock, unchanged; the source recorder keeps every value it returns.
     now: () => Date.now(),
+    // #30932 AC1: live identifier draw; the source recorder keeps every value it returns.
+    randomUUID: () => globalThis.crypto.randomUUID(),
     write(text: string) {
       onWrite?.(text)
       writeTTY(text)
@@ -1793,12 +1795,11 @@ async function runProbeBatchInRun(
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
-      // The SGR callback branches on its source's available methods. Retain that
-      // context with the existing recorder; the inner TTY log still projects all
-      // legacy transport events, while this artifact can replay the callback itself.
-      // An outer command read matches this callback's own writes, so it records them the same way.
-      const sourceLog = probe.id.startsWith("sgr.") || outerCommands ? createCallLog() : undefined
-      const sourceSession = sourceLog ? withCallLog(probeSource, { mode: "record", log: sourceLog }) : undefined
+      // #30932 AC1: retain the full TermProbeSource call log for every executed probe so offline replay can
+      // re-run any callback without a live terminal. The inner TTY trace still projects all legacy transport
+      // events (queries, writes, events) for trace consumers.
+      const sourceLog = createCallLog()
+      const sourceSession = withCallLog(probeSource, { mode: "record", log: sourceLog })
       let result: ProbeCallbackResult
       let probeWallExceeded = false
       /** Set when the wall could not return a held viewport; thrown outside the per-probe catch (34645). */
@@ -1815,14 +1816,11 @@ async function runProbeBatchInRun(
               queries,
               events,
               async () => {
-                return callback(sourceSession?.context ?? probeSource)
+                return callback(sourceSession.context)
               },
               {
                 onScope(scope) {
                   traceScope = scope
-                },
-                onLog(log) {
-                  if (!sourceLog) batch.rawReplies[probe.id + ".callLog"] = JSON.stringify(log)
                 },
               },
             ),

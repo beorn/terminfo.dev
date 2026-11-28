@@ -27,6 +27,8 @@ const ROWS = [
 function source(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     rows: 24,
     cols: 80,
     write() {},

@@ -4489,7 +4489,7 @@ function kittyImageTransferProbe(id: KittyImageRow, display: boolean): ProbeDefi
         }
       },
       async (ctx) => {
-        const imageNumber = newNumber(() => globalThis.crypto.randomUUID())
+        const imageNumber = newNumber(() => sourceRandomUUID(ctx))
         let imageId: number | null = null
         try {
           const transfer = await ctx.queryWithSentinelOutcome(

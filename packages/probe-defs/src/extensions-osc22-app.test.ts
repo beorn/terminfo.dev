@@ -65,6 +65,8 @@ function terminal(initial: string, fault: Fault = "none", terminator = "\x07") {
   }
   const source: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     cols: 80,
     rows: 24,
     write(sequence) {

@@ -1710,7 +1710,12 @@ describe("held-viewport reader handoff (34693)", () => {
   it("builds the reader for the row's own source, route and captures", async () => {
     const { batch, built, seen } = await run(false)
     expect(built.map((row) => row.featureId)).toEqual([id])
-    expect(built[0]?.source).toBe(seen.source)
+    // #30932 AC1: the callback receives the withCallLog proxy over the row's own probeSource, so the reader
+    // built from `built[0].source` is wired onto `seen.source` and logged into `<id>.callLog`.
+    expect(seen.source?.viewportScroll?.route).toBe(built[0]?.source.viewportScroll?.route)
+    expect(seen.source?.readViewportReference).toBeTypeOf("function")
+    expect(seen.source?.readHeldViewport).toBeTypeOf("function")
+    expect(typeof batch.rawReplies[id + ".callLog"]).toBe("string")
     expect([seen.reads, seen.adopted]).toEqual([1, 1])
     expect(seen.routeAtRead).toBe("hosted alacritty 0.17.0 fixture route")
     expect(batch.screenshotRefs).toContain(frameRef)
@@ -6304,6 +6309,122 @@ describe("#30932 S2 stored-run shadow (scripted recordings prove source determin
     expect(String(error.mock.calls.at(-1)?.[0])).toMatch(/Shadow report for .* NOT WRITTEN to .* \(EEXIST\)/)
     expect(readFileSync(path, "utf8")).toBe("earlier report\n")
     expect(readFileSync(recorded.path).equals(before)).toBe(true)
+  }, 60_000)
+
+  it("replays non-SGR term probes from full-source call logs, flags missing logs incomplete, and retains TTY event fields (AC1+AC4)", async () => {
+    verifiedBatchFixture()
+    const da1 = "\x1b[?1;2c"
+    process.stdout.write = ((value: string) => {
+      if (value === "\x1b[?7$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?7;2$y" + da1))
+      else if (value === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+      else if (value === "\x1b[>0q\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+      else if (value.startsWith("\x1b]99;i=")) process.stdin.emit("data", Buffer.from(da1))
+      return true
+    }) as typeof process.stdout.write
+    const ids = ["device.decrpm", "device.primary-da", "device.xtversion", "extensions.osc99-kitty-notify"]
+    const batch = await runProbeBatch({
+      ids,
+      subject: { kind: "term", id: "kitty", os: "linux" },
+      ownedTerminal: geometryOwner(measured(24, 80)),
+    })
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-shadow-term-"))
+    receiptDirectories.push(directory)
+    const draft = asRun(batch)
+    if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) throw new Error("Incomplete fixture")
+    const path = saveDaemonProbeRun(
+      {
+        ...draft,
+        subject: draft.subject,
+        identity: draft.identity,
+        measuredAt: draft.measuredAt,
+        origin: draft.origin,
+      },
+      directory,
+    )
+    const suite = { manifest, sourceRevision }
+    const report = await shadowStoredRun(path, suite)
+    expect(report.runIncomplete).toBeUndefined()
+    for (const id of ids) {
+      expect(
+        report.rows.find((row) => row.featureId === id),
+        id,
+      ).toMatchObject({
+        outcome: "agree",
+        reasonsEqual: true,
+      })
+    }
+    expect(report.families).toContainEqual({
+      family: "term:device",
+      rows: 3,
+      agree: 3,
+      disagree: 0,
+      incomplete: 0,
+      notComparable: 0,
+    })
+    expect(report.families).toContainEqual({
+      family: "term:extensions",
+      rows: 1,
+      agree: 1,
+      disagree: 0,
+      incomplete: 0,
+      notComparable: 0,
+    })
+    // Full-source log holds randomUUID draw for osc99-kitty-notify.
+    const osc99Log = JSON.parse(batch.rawReplies["extensions.osc99-kitty-notify.callLog"]!) as {
+      calls: Array<{ path: string }>
+    }
+    expect(osc99Log.calls.some((call) => call.path === "context.randomUUID")).toBe(true)
+    // AC4: TTY trace retains all event fields (kind, sequence, timeoutMs, reason, raw, rawBase64, match, sentinel).
+    const decrpmTrace = JSON.parse(batch.rawReplies["device.decrpm"]!) as {
+      queries: Array<Record<string, unknown>>
+      events: Array<Record<string, unknown>>
+    }
+    expect(decrpmTrace.queries[0]).toMatchObject({
+      sequence: "\x1b[?7$p\x1b[c",
+      reason: "reply",
+      raw: expect.stringContaining("\x1b[?7;2$y"),
+      rawBase64: expect.any(String),
+      timeoutMs: expect.any(Number),
+      match: expect.any(Array),
+    })
+    expect(decrpmTrace.events[0]).toMatchObject({ kind: "query", ...decrpmTrace.queries[0] })
+    const xtversionTrace = JSON.parse(batch.rawReplies["device.xtversion.trace"]!) as {
+      queries: Array<Record<string, unknown>>
+      events: Array<Record<string, unknown>>
+    }
+    expect(xtversionTrace.queries[0]).toMatchObject({
+      sequence: "\x1b[>0q\x1b[c",
+      reason: "sentinel",
+      raw: da1,
+      rawBase64: Buffer.from(da1).toString("base64"),
+      timeoutMs: expect.any(Number),
+      match: null,
+      sentinel: { atMs: expect.any(Number), graceMs: expect.any(Number) },
+    })
+    expect(xtversionTrace.events[0]).toMatchObject({ kind: "query", ...xtversionTrace.queries[0] })
+
+    // Deleting a non-SGR log on a full-source run reports incomplete in its term family (never silently excluded).
+    rewriteStoredRun(path, (run) => {
+      delete run.rawReplies["device.decrpm.callLog"]
+    })
+    const missing = await shadowStoredRun(path, suite)
+    expect(missing.rows.find((row) => row.featureId === "device.decrpm")).toMatchObject({
+      family: "term:device",
+      outcome: "incomplete",
+    })
+
+    // Legacy host-level-only logs (matchResponse, no kind) remain excluded by name for backward compatibility.
+    const legacyLog = createCallLog()
+    const legacySession = withCallLog({ write() {}, matchResponse: () => null }, { mode: "record", log: legacyLog })
+    legacySession.finish()
+    rewriteStoredRun(path, (run) => {
+      for (const id of ids) run.rawReplies[id + ".callLog"] = JSON.stringify(legacyLog)
+    })
+    const legacy = await shadowStoredRun(path, suite)
+    expect(legacy.rows).toEqual([])
+    expect(legacy.excluded).toContainEqual(
+      expect.objectContaining({ reason: "host-level log only (device.*)", rows: 3 }),
+    )
   }, 60_000)
 })
 

@@ -371,6 +371,8 @@ it.each([
       : await definition.term!({
           rows: 24,
           cols: 80,
+          now: () => Date.now(),
+          randomUUID: () => globalThis.crypto.randomUUID(),
           write(sequence: string) {
             const frame = /\x1b\]52;c;([^\x07]+)\x07/.exec(sequence)
             if (frame) clipboard = atob(frame[1]!)

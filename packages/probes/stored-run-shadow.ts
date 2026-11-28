@@ -17,6 +17,7 @@ import {
   HARNESS_INCOMPLETE_TEST,
   finalizeVisualResult,
   recordExecutedProbe,
+  withReplyFailureEvidence,
   type AssertionType,
   type CapturedRunDraft,
   type LibProbeSource,
@@ -27,6 +28,7 @@ import {
   type ProbeSubject,
   type ProbeSuiteManifest,
   type TermProbeSource,
+  type TerminalQueryOutcome,
 } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { IncompleteReplay, readCallLog, withCallLog } from "viprobe"
@@ -106,7 +108,10 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
   const frames: ObservationFrame[] = []
   const log = readCallLog(parsed, {
     onOperation(operation) {
-      if (operation.path === "context.capture" && "value" in operation.outcome) {
+      if (
+        (operation.path === "context.capture" || operation.path === "context.cells") &&
+        "value" in operation.outcome
+      ) {
         frames.push(operation.outcome.value as ObservationFrame)
       }
     },
@@ -115,28 +120,34 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
   if (session.context.kind !== validated.source.kind) {
     throw new IncompleteReplay("Source shape does not match its live capture: " + featureId)
   }
-  // A log recorded before the source clock existed (#30932 S2) has no `now` to give. When the callback asks for
-  // it, `sourceNow` refuses; a cleanup step after that refusal can then diverge from the log and throw a later,
-  // less telling error, so the request itself is what names the cause.
+  // Logs recorded before `now` (#30932 S2) or `randomUUID` (#30932 AC1) existed have neither to give. When the
+  // callback asks for one, `sourceNow`/`sourceRandomUUID` refuses; a cleanup step after that refusal can then
+  // diverge from the log and throw a later, less telling error, so the request itself is what names the cause.
   const clockRecorded = recordedRootValue(parsed, "now").present
+  const randomRecorded = recordedRootValue(parsed, "randomUUID").present
   let clockRequested = false
-  const context = clockRecorded
-    ? session.context
-    : new Proxy(session.context, {
-        get(target, key) {
-          if (key === "now") clockRequested = true
-          return Reflect.get(target, key) as unknown
-        },
-      })
+  let randomRequested = false
+  const context =
+    clockRecorded && randomRecorded
+      ? session.context
+      : new Proxy(session.context, {
+          get(target, key) {
+            if (!clockRecorded && key === "now") clockRequested = true
+            if (!randomRecorded && key === "randomUUID") randomRequested = true
+            return Reflect.get(target, key) as unknown
+          },
+        })
   const startedAt = new Date().toISOString()
   let result: ProbeCallbackResult
   try {
     result = await definition.term(context)
   } catch (error) {
     if (clockRequested) throw new IncompleteReplay(`call log predates the recorded source clock (${featureId})`)
+    if (randomRequested) throw new IncompleteReplay(`call log predates the recorded source randomUUID (${featureId})`)
     throw error
   }
   if (clockRequested) throw new IncompleteReplay(`call log predates the recorded source clock (${featureId})`)
+  if (randomRequested) throw new IncompleteReplay(`call log predates the recorded source randomUUID (${featureId})`)
   session.finish()
   // Replay decorators must not escape into a persisted record: keep the JSON data the owner writes to disk.
   return { startedAt, result: JSON.parse(JSON.stringify(result)) as ProbeCallbackResult, frames }
@@ -205,7 +216,7 @@ export function recordReplayedRow(input: {
   })
 }
 
-export type ShadowFamily = "sgr" | "outer-command" | `headless:${string}`
+export type ShadowFamily = "sgr" | "outer-command" | `headless:${string}` | `term:${string}`
 
 export type ShadowRow = { featureId: string; family: ShadowFamily } & (
   | { outcome: "agree"; status: ProbeResult["status"]; reasonsEqual: boolean }
@@ -246,13 +257,14 @@ export interface ShadowReport {
 }
 
 const SCOPE =
-  "Every row of the stored run is counted once. sgr.* rows, and outer-command rows on a mux subject, carry a " +
-  "full-source call log and are replayed offline through the bound reader, the row's own term callback and the " +
-  "one grader, then compared with the stored status. On a headless (lib) subject every executed row with a lib " +
-  "callback is in its headless:<feature prefix> family: replayed from its own call log through the bound reader, " +
-  "its declaration predicate and lib callback and the headless collector's grader; a row without a log is " +
-  "incomplete there, never excluded. A row the library collector never sent (App only, #38801) is excluded, as is " +
-  "every other row, with its reason."
+  "Every row of the stored run is counted once. On a term or mux subject, every executed row carrying a full-source " +
+  "TermProbeSource call log (sgr.*, outer-command on mux, and term:<feature prefix> rows) is replayed offline through " +
+  "the bound reader, the row's own term callback and the one grader, then compared with the stored status; legacy " +
+  "runs whose non-SGR rows carry only a host-level TTY log stay excluded by name. On a headless (lib) subject every " +
+  "executed row with a lib callback is in its headless:<feature prefix> family: replayed from its own call log " +
+  "through the bound reader, its declaration predicate and lib callback and the headless collector's grader; a row " +
+  "without a log is incomplete there, never excluded. A row the library collector never sent (App only, #38801) is " +
+  "excluded, as is every other row, with its reason."
 
 /** #38801: the exclusion reason for a row the library collector never sent. */
 export const APP_ONLY_EXCLUSION = "App only: never sent by the library collector"
@@ -263,20 +275,65 @@ export function headlessFamily(featureId: string): `headless:${string}` {
   return `headless:${dot > 0 ? featureId.slice(0, dot) : featureId}`
 }
 
-function shadowFamily(family: string): family is ShadowFamily {
-  return family === "sgr" || family === "outer-command" || family.startsWith("headless:")
+/** A non-SGR term/mux row's family: its feature id's prefix (#30932 AC1). */
+export function termFamily(featureId: string): `term:${string}` {
+  const dot = featureId.indexOf(".")
+  return `term:${dot > 0 ? featureId.slice(0, dot) : featureId}`
 }
 
-function familyOf(featureId: string, subject: Pick<ProbeSubject, "kind">): ShadowFamily | string {
+function shadowFamily(family: string): family is ShadowFamily {
+  return family === "sgr" || family === "outer-command" || family.startsWith("headless:") || family.startsWith("term:")
+}
+
+/**
+ * Legacy pre-AC1 term/mux runs recorded only the inner `nativeTTYHost` (`write` + `matchResponse`) for non-SGR rows.
+ * A full-source `TermProbeSource` log carries `kind` on its root. Unparseable bytes count as full-source so the
+ * replay reports them incomplete loudly rather than excluding them silently.
+ */
+function isLegacyHostLevelOnlyLog(raw: unknown): boolean {
+  if (typeof raw !== "string") return false
+  try {
+    const parsed = parseJsonStrict("call log shape", raw)
+    return !recordedRootValue(parsed, "kind").present && recordedRootValue(parsed, "matchResponse").present
+  } catch {
+    // silent-fallback-allow: malformed call log JSON is classified as in-scope so replay reports it incomplete loudly
+    return false
+  }
+}
+
+function hasFullSourceNonSgrTermLog(stored: CapturedRunDraft): boolean {
+  if (stored.subject?.kind === "lib") return false
+  for (const result of stored.results ?? []) {
+    if (result.attempt?.scope === "none") continue
+    const id = result.featureId
+    if (id.startsWith("sgr.")) continue
+    if (stored.subject?.kind === "mux" && hasOuterCommandMatcher(id)) continue
+    const raw = stored.rawReplies?.[id + ".callLog"]
+    if (typeof raw === "string" && !isLegacyHostLevelOnlyLog(raw)) return true
+  }
+  return false
+}
+
+function familyOf(
+  featureId: string,
+  subject: Pick<ProbeSubject, "kind">,
+  fullSourceTermRun: boolean,
+  rawLog: unknown,
+): ShadowFamily | string {
   // A headless run's family comes from its definition, never from whether a log exists: a missing log is then
   // counted incomplete in that family instead of vanishing from it.
   if (subject.kind === "lib") {
     return ALL_PROBES.find(({ id }) => id === featureId)?.lib ? headlessFamily(featureId) : "no lib callback"
   }
   if (featureId.startsWith("sgr.")) return "sgr"
-  // The live collector records a full-source log for an outer-command row only on a mux subject (unified.ts).
+  if (hasOuterCommandMatcher(featureId) && subject.kind === "mux") return "outer-command"
+  const hasTermCallback = Boolean(ALL_PROBES.find(({ id }) => id === featureId)?.term)
+  if (!hasTermCallback) return "no term callback"
+  if (rawLog !== undefined ? !isLegacyHostLevelOnlyLog(rawLog) : fullSourceTermRun) {
+    return termFamily(featureId)
+  }
   if (hasOuterCommandMatcher(featureId)) {
-    return subject.kind === "mux" ? "outer-command" : "outer-command row on a non-mux subject: host-level log only"
+    return "outer-command row on a non-mux subject: host-level log only"
   }
   return "host-level log only (" + featureId.slice(0, featureId.indexOf(".") + 1 || featureId.length) + "*)"
 }
@@ -299,6 +356,20 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
     return "live callback-error arm"
   }
   if (validated.rawReplies[id + ".outerCommands"] !== undefined) return "outer command read"
+  const spilloverRaw = validated.rawReplies[id + ".spillover"]
+  if (spilloverRaw !== undefined) {
+    const spillover = parseJsonStrict(id + " spillover", spilloverRaw)
+    if (object(spillover) && object(spillover.verdict) && spillover.verdict.status === "refused") {
+      return "window-basis witness spillover ungraded this row"
+    }
+  }
+  if (
+    validated.subject?.kind === "mux" &&
+    validated.subject.id === "screen" &&
+    stored.criterionBranch === "app-title-control"
+  ) {
+    return "screen mux title-control post-override"
+  }
   if (stored.criterionBranch === "colour-only-mismatch" || stored.criterionBranch === "underline-band") {
     return "live colour attempt policy"
   }
@@ -495,6 +566,7 @@ export async function shadowStoredRun(
       error instanceof IncompleteReplay ? error.message : `${errorName(error)}: ${errorMessage(error)}`
   }
   const excluded = new Map<string, string[]>()
+  const fullSourceTermRun = hasFullSourceNonSgrTermLog(stored)
   for (const result of stored.results ?? []) {
     const featureId = result.featureId
     if (result.attempt?.scope === "none") {
@@ -507,7 +579,7 @@ export async function shadowStoredRun(
       excluded.set(APP_ONLY_EXCLUSION, [...(excluded.get(APP_ONLY_EXCLUSION) ?? []), featureId])
       continue
     }
-    const family = familyOf(featureId, stored.subject)
+    const family = familyOf(featureId, stored.subject, fullSourceTermRun, stored.rawReplies?.[featureId + ".callLog"])
     if (!shadowFamily(family)) {
       excluded.set(family, [...(excluded.get(family) ?? []), featureId])
       continue
@@ -516,7 +588,13 @@ export async function shadowStoredRun(
   }
   for (const [reason, featureIds] of excluded) report.excluded.push({ reason, rows: featureIds.length, featureIds })
   const families: ShadowFamily[] =
-    stored.subject.kind === "lib" ? [...new Set(report.rows.map((row) => row.family))].sort() : ["sgr", "outer-command"]
+    stored.subject.kind === "lib"
+      ? [...new Set(report.rows.map((row) => row.family))].sort()
+      : [
+          "sgr",
+          "outer-command",
+          ...[...new Set(report.rows.filter((row) => row.family.startsWith("term:")).map((row) => row.family))].sort(),
+        ]
   for (const family of families) {
     const rows = report.rows.filter((row) => row.family === family)
     report.families.push({
@@ -533,6 +611,57 @@ export async function shadowStoredRun(
     throw new Error(`Shadow counted ${counted} rows of ${(stored.results ?? []).length} in ${basename(runPath)}`)
   }
   return report
+}
+
+/** The TTY query attempts `unified.ts` handed `withReplyFailureEvidence` for this row, read from its retained trace. */
+function retainedTTYQueries(
+  validated: ValidatedRun,
+  featureId: string,
+): Array<{
+  sequence: string
+  received: string
+  timeoutMs: number
+  match: readonly string[] | null
+  reason: TerminalQueryOutcome["reason"]
+}> {
+  const raw = validated.rawReplies[featureId + ".trace"] ?? validated.rawReplies[featureId]
+  if (typeof raw !== "string" || !raw.trimStart().startsWith("{")) return []
+  const parsed = parseJsonStrict(featureId + " trace", raw)
+  const queries = object(parsed) ? parsed.queries : undefined
+  if (!Array.isArray(queries)) return []
+  const attempts: Array<{
+    sequence: string
+    received: string
+    timeoutMs: number
+    match: readonly string[] | null
+    reason: TerminalQueryOutcome["reason"]
+  }> = []
+  for (const item of queries) {
+    if (
+      !object(item) ||
+      typeof item.sequence !== "string" ||
+      typeof item.raw !== "string" ||
+      typeof item.timeoutMs !== "number" ||
+      !["reply", "timeout", "sentinel"].includes(String(item.reason))
+    ) {
+      throw new IncompleteReplay("Retained TTY trace queries are malformed: " + featureId)
+    }
+    const match =
+      item.match === null
+        ? null
+        : Array.isArray(item.match) && item.match.every((part) => typeof part === "string")
+          ? (item.match as string[])
+          : undefined
+    if (match === undefined) throw new IncompleteReplay("Retained TTY trace query match is malformed: " + featureId)
+    attempts.push({
+      sequence: item.sequence,
+      received: item.raw,
+      timeoutMs: item.timeoutMs,
+      match,
+      reason: item.reason as TerminalQueryOutcome["reason"],
+    })
+  }
+  return attempts
 }
 
 async function shadowRow(
@@ -586,7 +715,14 @@ async function shadowRow(
       captures,
     })
   } else {
-    const domain = recordReplayedRow({ featureId, ...replayed, rawReplies: {}, assertions: [] })
+    let attempts: ReturnType<typeof retainedTTYQueries>
+    try {
+      attempts = retainedTTYQueries(validated, featureId)
+    } catch (error) {
+      return { featureId, family, outcome: "incomplete", reason: errorMessage(error) }
+    }
+    const result = withReplyFailureEvidence(featureId, replayed.result, { producer: "TTY", attempts })
+    const domain = recordReplayedRow({ featureId, ...replayed, result, rawReplies: {}, assertions: [] })
     graded =
       subject && (subject.kind === "term" || subject.kind === "mux")
         ? finalizeVisualResult(domain, subject, replayed.frames)

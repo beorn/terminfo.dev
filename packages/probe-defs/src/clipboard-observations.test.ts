@@ -97,6 +97,8 @@ function writeProbe() {
 function termSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
     measureRenderedWidth: async () => ({ kind: "no-reply", step: "sample" }) as const,

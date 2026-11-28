@@ -17,6 +17,8 @@ function silentTerm(rows: number, cols: number): { ctx: TermProbeSource; writes:
   const timeout = async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" })
   const ctx: TermProbeSource = {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     write(text) {
       writes.push(text)
     },

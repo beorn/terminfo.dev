@@ -627,7 +627,11 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
                 attempts.push(read.text)
                 const matched = sgrPair.exec(read.text)
                 if (matched) return { read, matched, attempts }
-                if (attempt < 3) await new Promise<void>((resolve) => setTimeout(resolve, 150))
+                if (attempt < 3) {
+                  await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 150)
+                  })
+                }
               }
               return { read: { text: "", bytes: [] as number[] }, matched: null, attempts }
             }

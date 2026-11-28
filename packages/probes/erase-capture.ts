@@ -112,7 +112,10 @@ export function readProbeCapture(
     }
     const log = readCallLog(parseJsonStrict(key, raw), {
       onOperation(operation) {
-        if (operation.path === "context.capture" && "value" in operation.outcome) {
+        if (
+          (operation.path === "context.capture" || operation.path === "context.cells") &&
+          "value" in operation.outcome
+        ) {
           frameReference(operation.outcome.value)
         }
       },

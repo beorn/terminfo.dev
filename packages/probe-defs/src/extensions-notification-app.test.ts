@@ -47,6 +47,8 @@ function source(fault: Fault) {
   }
   const ctx = {
     kind: "live",
+    now: () => Date.now(),
+    randomUUID: () => globalThis.crypto.randomUUID(),
     mux: fault === "mux-no-outer" ? "screen" : undefined,
     write(text: string) {
       writes.push(text)
