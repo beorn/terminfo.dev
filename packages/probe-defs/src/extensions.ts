@@ -1,7 +1,7 @@
-import { sourceNow } from "./source-clock.ts"
+import { sourceNow, sourceRandomUUID } from "./source-clock.ts"
 import { heldOsc720, heldViewportReader } from "./held-viewport-rows.ts"
 import { warpPromptMarkAppResult, type WarpMarkKind } from "./warp-prompt-marks.ts"
-import { createHash, randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import { frameDigests } from "./types.ts"
 import { withAppSemanticObservation } from "./app-semantic-state.ts"
 import { programResumeProbes } from "./program-resume.ts"
@@ -1937,10 +1937,10 @@ async function wholeWindowOscAppCapture(
     }
     ctx.write(kind === "progress" ? "\x1b]9;4;1;50\x07" : "\x1b]555\x07")
     const targets: string[] = []
-    const start = Date.now()
+    const start = sourceNow(ctx)
     // The existing blink recipe's finite capture schedule, without adding a sampler API.
     for (const offset of kind === "flash" ? [0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000] : [0]) {
-      const wait = start + offset - Date.now()
+      const wait = start + offset - sourceNow(ctx)
       if (wait > 0) await kittyWait(wait)
       targets.push((await shoot(`effect sample +${offset}ms`, "target")).pixelsDigest)
     }
@@ -4156,7 +4156,7 @@ function kittyDisplayWithoutTransmit(code: string | null, imageNumber: number): 
 
 /** Same-run image prerequisite for the two pixel rows; successful allocation is released immediately. */
 async function kittyPixelPrerequisite(ctx: TermProbeSource, row: KittyImageRow): Promise<ProbeCallbackResult | null> {
-  const imageNumber = kittyImageNumber()
+  const imageNumber = kittyImageNumber(ctx)
   const transfer = await ctx.queryWithSentinelOutcome(
     imageTransferRequest(imageNumber, row),
     allocationReply(imageNumber),
@@ -4930,20 +4930,25 @@ interface SettledClipboardReply {
  */
 async function settledClipboardReply(
   query: () => Promise<TerminalQueryOutcome>,
-  options: { readonly ownEarlierNonce?: string; readonly deadlineMs: number; readonly pollMs: number },
+  options: {
+    readonly ownEarlierNonce?: string
+    readonly deadlineMs: number
+    readonly pollMs: number
+    readonly now: () => number
+  },
 ): Promise<SettledClipboardReply> {
   const own = options.ownEarlierNonce
-  const startedAt = Date.now()
+  const startedAt = options.now()
   const replies: { atMs: number; own: boolean }[] = []
   let outcome = await query()
   let isOwn = own !== undefined && decodedOsc52Reply(outcome) === own
   replies.push({ atMs: 0, own: isOwn })
   let requeries = 0
-  while (isOwn && Date.now() - startedAt < options.deadlineMs) {
+  while (isOwn && options.now() - startedAt < options.deadlineMs) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, options.pollMs)
     })
-    const atMs = Date.now() - startedAt
+    const atMs = options.now() - startedAt
     outcome = await query()
     requeries += 1
     isOwn = decodedOsc52Reply(outcome) === own
@@ -5036,7 +5041,7 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
     return { pass: false, note, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
   }
   return ctx.withNotificationObserver(async (fixture): Promise<ProbeCallbackResult> => {
-    const nonce = `terminfo-notify-${randomUUID()}`
+    const nonce = `terminfo-notify-${sourceRandomUUID(ctx)}`
     const sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
     const deadlineMs = Math.min(fixture.deadlineMs, 2000)
     if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
@@ -5055,10 +5060,10 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       ctx.write(sequence)
       wrote = true
       focusedAfter = await readFocus?.()
-      const deadline = Date.now() + deadlineMs
+      const deadline = sourceNow(ctx) + deadlineMs
       for (;;) {
         observed = fixture.readSince(cursor)
-        const remaining = deadline - Date.now()
+        const remaining = deadline - sourceNow(ctx)
         if (remaining <= 0) break
         await new Promise<void>((resolve) => {
           setTimeout(resolve, Math.min(25, remaining))
@@ -5231,7 +5236,7 @@ async function liveClipboardProbe(
         const refused = await realKeyEventBeforeWrite(ctx, fixture.realKeyEvent)
         if (refused) return refused
       }
-      const nonce = `terminfo-osc52-${randomUUID()}`
+      const nonce = `terminfo-osc52-${sourceRandomUUID(ctx)}`
       ownWriteNonce = nonce
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
       // A reply on the same TTY confirms the terminal processed the preceding write.
@@ -5243,10 +5248,10 @@ async function liveClipboardProbe(
         )
       }
       const baseline = fixture.baseline
-      const startedAt = Date.now()
+      const startedAt = sourceNow(ctx)
       let measured = await fixture.readText()
       let allBaseline = typeof baseline === "string" && baseline.length > 0 && measured === baseline
-      while (measured !== nonce && allBaseline && Date.now() - startedAt < deadlineMs) {
+      while (measured !== nonce && allBaseline && sourceNow(ctx) - startedAt < deadlineMs) {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, pollMs)
         })
@@ -5334,9 +5339,9 @@ async function liveClipboardProbe(
         }
       }
     }
-    const nonce = `terminfo-osc52-${randomUUID()}`
+    const nonce = `terminfo-osc52-${sourceRandomUUID(ctx)}`
     await fixture.writeText(nonce)
-    const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs }
+    const settleOptions = { ownEarlierNonce: ownWriteNonce, deadlineMs, pollMs, now: () => sourceNow(ctx) }
     // @cto 2026-11-13: a read's feature IS the query, so a control must prove this TTY answers queries at all before
     // silence can mean anything. Control fails = probe-todo naming the control; control passes and the query is
     // silent = unsupported. A profile reading names its profile and exact setting; a default reading names nothing.
@@ -5747,7 +5752,7 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
     }
     const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
     if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
-    const nonce = `terminfo-paste-${randomUUID()}`
+    const nonce = `terminfo-paste-${sourceRandomUUID(ctx)}`
     await fixture.writeText(nonce)
     const readPaste = async (enabled: boolean) => {
       ctx.write(enabled ? "\x1b[?2004h" : "\x1b[?2004l")
@@ -7078,7 +7083,7 @@ const extensionDefinitions: ProbeDefinition[] = [
             "Independent SGR reference in the second frame's own colour, same rectangle",
           )
           // Arm 3 — a one-frame image over the same intervals must hold still.
-          const stillId = kittyImageNumber()
+          const stillId = kittyImageNumber(ctx)
           ids.push(stillId)
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
@@ -7108,7 +7113,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           ctx.write(kittyDeleteImage(stillId))
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          const playbackId = kittyImageNumber()
+          const playbackId = kittyImageNumber(ctx)
           ids.push(playbackId)
           const replies: Array<{ label: string; readback: TerminalQueryOutcome }> = []
           const command = async (label: string, bytes: string) => {
@@ -7337,7 +7342,7 @@ const extensionDefinitions: ProbeDefinition[] = [
         beginCaptureLifecycle(ctx)
         try {
           ctx.write(KITTY_CLEAR)
-          const placeholderId = kittyPlaceholderNumber()
+          const placeholderId = kittyPlaceholderNumber(ctx)
           ids.push(placeholderId)
           // Text FIRST, then the virtual placement (#33033, @cto fd7747d9). The protocol's own order is
           // placement then text, but in Kitty 0.49.2 on our Linux container that order is a paint race:
@@ -7388,7 +7393,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           // alone can be leaked protocol text, as in the retained Screen control.
           ctx.write(KITTY_CLEAR)
           ctx.write(kittyPark())
-          const ordinaryId = kittyPlaceholderNumber()
+          const ordinaryId = kittyPlaceholderNumber(ctx)
           ids.push(ordinaryId)
           const blank = await shoot("control", "Blank rectangle captured before the ordinary placement")
           ctx.write(kittyFrameTransfer(ordinaryId, { ...size, rgb: colours.image }, { root: true }))
@@ -7823,16 +7828,16 @@ const extensionDefinitions: ProbeDefinition[] = [
         return null
       }
       const pollSize = async (accept: (reading: { rows: number; cols: number }) => boolean) => {
-        const deadline = Date.now() + 2000
+        const deadline = sourceNow(ctx) + 2000
         let count = 0
         let reading: Awaited<ReturnType<typeof readVerifiedSize>> = null
-        while (Date.now() < deadline) {
-          const nextPoll = Date.now() + 100
-          reading = await readVerifiedSize(Math.max(1, Math.min(200, deadline - Date.now())))
+        while (sourceNow(ctx) < deadline) {
+          const nextPoll = sourceNow(ctx) + 100
+          reading = await readVerifiedSize(Math.max(1, Math.min(200, deadline - sourceNow(ctx))))
           count++
           if (reading && accept(reading)) return { reading, count, matched: true }
-          const remaining = deadline - Date.now()
-          const pause = Math.min(nextPoll - Date.now(), remaining)
+          const remaining = deadline - sourceNow(ctx)
+          const pause = Math.min(nextPoll - sourceNow(ctx), remaining)
           if (pause > 0) {
             await new Promise<void>((resolve) => {
               setTimeout(resolve, pause)
@@ -9520,7 +9525,7 @@ const extensionDefinitions: ProbeDefinition[] = [
       },
       async (ctx) => {
         if (ctx.mux !== undefined) {
-          const controlWrite = osc22MuxControlWrite(muxTitleControlNonce())
+          const controlWrite = osc22MuxControlWrite(muxTitleControlNonce(ctx))
           // Target first, control second: the control's arrival after it is what makes a missing target line mean
           // the multiplexer did not forward the target (@cto 33919 condition 3, 33920 condition 2).
           ctx.write(OSC22_MUX_TARGET_WRITE)
@@ -9612,7 +9617,7 @@ const extensionDefinitions: ProbeDefinition[] = [
           return notificationQueryResult(rawQueryOutcome(raw, raw.match(pattern)), id, true)
         },
         async (ctx) => {
-          const id = globalThis.crypto.randomUUID()
+          const id = sourceRandomUUID(ctx)
           const reply = await ctx.queryWithSentinelOutcome(
             `\x1b]99;i=${id}:p=?;\x1b\\`,
             new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),

@@ -1,3 +1,4 @@
+import { sourceNow } from "./source-clock.ts"
 import type {
   LibProbeSource,
   LibKeyEvent,
@@ -553,16 +554,16 @@ export async function utf8Mouse1005(ctx: TermProbeSource): Promise<ProbeCallback
     return Number.isSafeInteger(rows) && rows > 0 && Number.isSafeInteger(cols) && cols > 0 ? { rows, cols } : null
   }
   const poll = async (accept: (reading: { rows: number; cols: number }) => boolean) => {
-    const deadline = Date.now() + 2000
+    const deadline = sourceNow(ctx) + 2000
     let count = 0
     let reading: Awaited<ReturnType<typeof size>> = null
-    while (Date.now() < deadline) {
-      const nextPoll = Date.now() + 100
-      reading = await size(Math.max(1, Math.min(100, deadline - Date.now())))
+    while (sourceNow(ctx) < deadline) {
+      const nextPoll = sourceNow(ctx) + 100
+      reading = await size(Math.max(1, Math.min(100, deadline - sourceNow(ctx))))
       count++
       if (reading && accept(reading)) return { reading, count, matched: true }
-      const remaining = deadline - Date.now()
-      const pause = Math.min(nextPoll - Date.now(), remaining)
+      const remaining = deadline - sourceNow(ctx)
+      const pause = Math.min(nextPoll - sourceNow(ctx), remaining)
       if (pause > 0) {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, pause)

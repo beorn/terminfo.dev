@@ -140,8 +140,9 @@ test("placeholder text pins the spec's code point, diacritics and foreground-col
   expect(kittyDiacritic(1)).toBe(KITTY_DIACRITIC_1)
   expect(() => kittyDiacritic(9)).toThrow(/no pinned value/u)
   expect(() => kittyPlaceholderText(256)).toThrow(/1\.\.255/u)
-  expect(kittyPlaceholderNumber()).toBeGreaterThanOrEqual(1)
-  expect(kittyPlaceholderNumber()).toBeLessThanOrEqual(255)
+  const source = { randomUUID: () => globalThis.crypto.randomUUID() }
+  expect(kittyPlaceholderNumber(source)).toBeGreaterThanOrEqual(1)
+  expect(kittyPlaceholderNumber(source)).toBeLessThanOrEqual(255)
   expect(text.startsWith(KITTY_CLEAR.slice(0, 0))).toBe(true)
 })
 

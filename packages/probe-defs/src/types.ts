@@ -1777,6 +1777,13 @@ export interface TermProbeSource {
    * give, and nothing falls back to the replaying machine's time.
    */
   now?: () => number
+  /**
+   * Fresh identifier drawn by the live source, named as Web Crypto names it (#30932 AC1). Term callbacks draw
+   * nonces and ids through `sourceRandomUUID`, so the source recorder keeps every draw and an offline replay
+   * hands back the exact same values in order; a log recorded before this method existed refuses loudly rather
+   * than drawing a fresh identifier.
+   */
+  randomUUID?: () => string
   /** Verified multiplexer identity when this run's subject is a multiplexer (#32774). */
   mux?: "tmux" | "screen"
   /** Same-session owned history. Absent when the terminal exposes no complete reading. */

@@ -14,8 +14,8 @@
  *   against a captured blank.
  */
 
-import { randomUUID } from "node:crypto"
-import type { CaptureLayoutGuard } from "./types.ts"
+import { sourceRandomUUID } from "./source-clock.ts"
+import type { CaptureLayoutGuard, TermProbeSource } from "./types.ts"
 
 /** The image block: two cells square, placed away from the cursor column. */
 export const KITTY_BLOCK_ROWS = 2
@@ -97,13 +97,13 @@ export const KITTY_ROW_IMAGES = {
 export type KittyImageRow = keyof typeof KITTY_ROW_IMAGES
 
 /** A fresh image number for the animation arms: any value the terminal will allocate. */
-export function kittyImageNumber(): number {
-  return (Number.parseInt(randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
+export function kittyImageNumber(ctx: Pick<TermProbeSource, "randomUUID">): number {
+  return (Number.parseInt(sourceRandomUUID(ctx).slice(0, 8), 16) % 0xfffffffe) + 1
 }
 
 /** A fresh placeholder id pinned to 1..255, so the foreground colour carries it with no third diacritic. */
-export function kittyPlaceholderNumber(): number {
-  return (Number.parseInt(randomUUID().slice(0, 6), 16) % 255) + 1
+export function kittyPlaceholderNumber(ctx: Pick<TermProbeSource, "randomUUID">): number {
+  return (Number.parseInt(sourceRandomUUID(ctx).slice(0, 6), 16) % 255) + 1
 }
 
 /** One wait, in milliseconds: the interval both rows measure and report. */

@@ -12,8 +12,8 @@
  * (`/hh/var/@dev2/33630/gate-table.md`), never a reading of terminal source. `editing.decrqcra` has no entry here:
  * that run found no line on either channel, so the reader refuses it by name and the row stays open.
  */
-import { randomUUID } from "node:crypto"
-import type { OuterCommandRead, ProbeCallbackResult, ProbeDefinition } from "./types.ts"
+import { sourceRandomUUID } from "./source-clock.ts"
+import type { OuterCommandRead, ProbeCallbackResult, ProbeDefinition, TermProbeSource } from "./types.ts"
 import { declaredUntestableResult, parserStateResult } from "./helpers.ts"
 
 /**
@@ -34,8 +34,8 @@ export const MUX_TITLE_CONTROL_WRITE = /^\u001b\]2;(tdv-title-[0-9a-f]{24})\u001
 export function muxTitleControlWrite(nonce: string): string {
   return `\u001b]2;tdv-title-${nonce}\u001b\\`
 }
-export function muxTitleControlNonce(): string {
-  return randomUUID().replaceAll("-", "").slice(0, 24)
+export function muxTitleControlNonce(ctx: Pick<TermProbeSource, "randomUUID">): string {
+  return sourceRandomUUID(ctx).replaceAll("-", "").slice(0, 24)
 }
 
 export type MuxOuterRow = {
@@ -158,7 +158,7 @@ export function withMuxOuterRows(
       term: async (ctx) => {
         if (ctx.mux !== "tmux") return term(ctx)
         ctx.write(row.write)
-        ctx.write(muxTitleControlWrite(muxTitleControlNonce()))
+        ctx.write(muxTitleControlWrite(muxTitleControlNonce(ctx)))
         return {
           pass: false,
           criterionBranch: row.branch,
