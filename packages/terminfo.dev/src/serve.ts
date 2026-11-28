@@ -125,6 +125,7 @@ import {
 } from "./owned-terminal.ts"
 import { cmuxHistoryEvidence } from "./cmux-history-record.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
+import { installWindowsInput, WINDOWS_INPUT_ENV } from "./windows-input.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
 import { holdLaunchSettle, stampMsAfterLaunchSettle } from "./launch-settle.ts"
 import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
@@ -1615,6 +1616,23 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      * One installer, two routes: an owned host (keys and pointer into the asserted window and tab) or keys only
      * into the window a hosted capture install selected (34313). The caller decides what the fixture becomes.
      */
+    /**
+     * The same-TTY self-test both OS input installs share: post the key through the fresh adapter and
+     * return what the run's own TTY echoed, matching only the self-test keys in `pattern`.
+     */
+    const echoSelfTest =
+      (pattern: RegExp) =>
+      async (inject: () => Promise<void>): Promise<string | null> => {
+        // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
+        // and it must restore the flowing state that withRawMode's lease restores, or the
+        // collector holds the launcher's poll open long after its run.json (run 43102072805).
+        try {
+          const echoed = await readResponse(pattern, 2500, inject)
+          return echoed === null ? null : echoed.join("")
+        } finally {
+          if (process.stdin.isTTY && process.stdin.readableFlowing === true) process.stdin.pause()
+        }
+      }
     const installDarwinInput = async (
       terminal: OwnedTerminal,
       owned: { windowId?: number; windowTty?: string },
@@ -1662,19 +1680,9 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
           ...owned,
           ...(route === "ownedHost" ? { ownedHost: true } : { keysOnly: true }),
           log: (line) => process.stderr.write(`collector.input ${line}\n`),
-          selfTest: async (inject) => {
-            // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
-            // and it must restore the flowing state that withRawMode's lease restores, or the
-            // collector holds the launcher's poll open long after its run.json (run 43102072805).
-            try {
-              // Both self-test probes post a printable key and expect its echo; the pattern covers
-              // exactly those two (z, then x by bare keycode), so unrelated traffic cannot satisfy it.
-              const echoed = await readResponse(/[zx]/, 2500, inject)
-              return echoed === null ? null : echoed.join("")
-            } finally {
-              if (process.stdin.isTTY && process.stdin.readableFlowing === true) process.stdin.pause()
-            }
-          },
+          // Both self-test probes post a printable key and expect its echo; the pattern covers
+          // exactly those two (z, then x by bare keycode), so unrelated traffic cannot satisfy it.
+          selfTest: echoSelfTest(/[zx]/),
           report: (fact) => {
             inputInstallFact = `installed: ${fact}`
             out.write(`${fact}\n`)
@@ -1686,6 +1694,46 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
       } catch (error) {
         helper?.dispose()
         return refuse(error instanceof Error ? error.message : String(error))
+      }
+    }
+    /**
+     * Hosted Windows input (#30723): SendInput into the run's own TermControl, keys only until the
+     * context qualifies. It is off unless a declared qualification job sets the opt-in, because @cto's
+     * PROCEED on the plan grants no native collection. Every outcome is recorded on the run.
+     */
+    const installWindowsHostedInput = async (terminal: OwnedTerminal): Promise<InputFixture | undefined> => {
+      const record = (fact: string, screen: boolean) => {
+        inputInstallFact = fact
+        if (screen) out.write(`input not installed: ${fact.replace(/^refused: /, "")}\n`)
+        process.stderr.write(`collector.inputInstall ${fact}\n`)
+        return undefined
+      }
+      if (process.env[WINDOWS_INPUT_ENV] !== "1") {
+        return record(
+          `not installed: ${WINDOWS_INPUT_ENV} is not 1, so hosted Windows input stays off until a declared ` +
+            "qualification job turns it on (#30723)",
+          false,
+        )
+      }
+      if (terminal.hostedAppId !== "windows-terminal") {
+        return record(
+          `refused: no Windows input route for ${terminal.hostedAppId ?? "this app"}; only Windows Terminal's TermControl is bound (#30723)`,
+          true,
+        )
+      }
+      if (!terminal.appPid) return record("refused: the verified Windows Terminal has no measured app PID", true)
+      try {
+        return await installWindowsInput({
+          pid: terminal.appPid,
+          selfTest: echoSelfTest(/z/),
+          report: (fact) => {
+            inputInstallFact = `installed: ${fact}`
+            out.write(`${fact}\n`)
+            process.stderr.write(`collector.inputInstall ${fact}\n`)
+          },
+        })
+      } catch (error) {
+        return record(`refused: ${error instanceof Error ? error.message : String(error)}`, true)
       }
     }
     let darwinTitleRead: TermProbeSource["readTitle"]
@@ -1868,6 +1916,8 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
         assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
         // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
         installTextCapture(ownedTerminal)
+        const windowsInput = await installWindowsHostedInput(ownedTerminal)
+        if (windowsInput) input = windowsInput
       }
       clipboard = ownedTerminal?.clipboard
       attachment = ownedTerminal?.muxAttachmentProof

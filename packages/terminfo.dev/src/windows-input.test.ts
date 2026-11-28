@@ -14,6 +14,8 @@ import { describeInputContract } from "./testing/input-contract.ts"
 import {
   createWindowsInput,
   createWindowsInputMechanism,
+  installWindowsInput,
+  WINDOWS_INPUT_SELF_TEST_KEYSYM,
   keyEvents,
   owedReleases,
   readTermControl,
@@ -46,6 +48,7 @@ const US: Record<string, { vk: number; shiftState: number }> = {
   b: { vk: 0x42, shiftState: 0 },
   i: { vk: 0x49, shiftState: 0 },
   v: { vk: 0x56, shiftState: 0 },
+  z: { vk: 0x5a, shiftState: 0 },
   "[": { vk: 0xdb, shiftState: 0 },
   "{": { vk: 0xdb, shiftState: 1 },
   "+": { vk: 0xbb, shiftState: 1 },
@@ -464,5 +467,63 @@ describe("user32 binding", () => {
     expect(integrityFromLabel(label, address)).toBe(0x2000)
     view.setBigUint64(0, 0x9000n, true)
     expect(integrityFromLabel(label, address)).toBeNull()
+  })
+})
+
+describe("installWindowsInput (#30723 slice 2)", () => {
+  const install = (
+    os: Win32InputOs,
+    selfTest: (inject: () => Promise<void>) => Promise<string | null>,
+    report?: (fact: string) => void,
+  ) => installWindowsInput({ pid: WT_PID, os, readControl: () => reading(), selfTest, ...(report && { report }) })
+
+  it("refuses the install by name when the self-test key does not come back on the run's TTY", async () => {
+    const { os, sent } = fakeOs()
+    await expect(
+      install(os, async (inject) => {
+        await inject()
+        return null
+      }),
+    ).rejects.toThrow(
+      /input not delivered to Windows Terminal: SendInput posted keysym "z" to pid 4242 \(.*bound to 0x100a2c by UIA ancestry\) and the run's TTY echoed nothing; refusing to measure input rows through it/,
+    )
+    // The one key that was posted is the self-test key, pressed and released in one call.
+    expect(sent).toHaveLength(1)
+  })
+
+  it("installs keys only after the echo, and reports the binding and the echo", async () => {
+    const { os, sent } = fakeOs()
+    const facts: string[] = []
+    const input = await install(
+      os,
+      async (inject) => {
+        await inject()
+        return WINDOWS_INPUT_SELF_TEST_KEYSYM
+      },
+      (fact) => facts.push(fact),
+    )
+    expect(facts).toEqual([
+      expect.stringMatching(
+        /^windows input installed \(keys only until this context's hosted qualification gives a pointer witness\): pid 4242, .*self-test echoed "z"$/,
+      ),
+    ])
+    await input.injectKey("ctrl+i")
+    expect(sent).toHaveLength(2)
+    await expect(input.injectClick(1)).rejects.toThrow(
+      "Windows pointer placement refused: pointer posts wait for this context's hosted qualification",
+    )
+    expect(sent).toHaveLength(2)
+  })
+
+  it("posts no key but the self-test key before delivery is proven", async () => {
+    const { os, sent } = fakeOs()
+    await expect(
+      install(os, async () => {
+        await createWindowsInput(build(os).mechanism).injectKey("a")
+        return null
+      }),
+    ).rejects.toThrow("input not delivered")
+    // The bare mechanism above is not the gated one; the gated install itself posted nothing.
+    expect(sent).toHaveLength(1)
   })
 })

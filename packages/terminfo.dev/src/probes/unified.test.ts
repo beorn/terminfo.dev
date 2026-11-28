@@ -7,6 +7,7 @@
  * @reach fs-read vendor/terminfo.dev/content/probes-apps/iterm2-3.6.11-macos-baafb08bace3486d4f97bacbae912412.json
  * @reach fs-read vendor/terminfo.dev/content/suites/8533e1c9630b.json
  */
+import { WindowsInputNotInserted } from "../windows-input.ts"
 import { createHash, randomUUID } from "node:crypto"
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import * as nodeFs from "node:fs"
@@ -148,6 +149,33 @@ it("34941 stops an active callback at the disconnect edge and writes nothing aft
     expect(writes.slice(writesAtEdge).filter((write) => write.includes("late-write"))).toEqual([])
   } finally {
     process.stdout.write = stdoutWrite
+    definition.term = original.term
+    definition.termWrites = original.termWrites
+  }
+})
+
+// @failure A short SendInput on hosted Windows is graded as the terminal's answer instead of harness evidence
+// (#30723 correction 4, @dev/6 slice-1 note): the row must carry no grade and name the insert as a collector-error.
+it("records a Windows short insert as an ungraded collector-error, never a grade", async () => {
+  const id = "input.kitty-click-events"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = { term: definition.term, termWrites: definition.termWrites }
+  try {
+    definition.termWrites = "query"
+    definition.term = async () => {
+      throw new WindowsInputNotInserted("SendInput inserted 0 of 2 events for a primary click (GetLastError 5)")
+    }
+    const batch = await runProbeBatch({ ids: [id] })
+    const result = batch.results.find((entry) => entry.featureId === id)
+    expect(result?.status).not.toBe("supported")
+    expect(result?.status).not.toBe("unsupported")
+    expect(batch.assertions.filter((entry) => entry.featureId === id)).toEqual([])
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      kind: "collector-error",
+      name: "WindowsInputNotInserted",
+      message: expect.stringContaining("SendInput inserted 0 of 2 events"),
+    })
+  } finally {
     definition.term = original.term
     definition.termWrites = original.termWrites
   }
