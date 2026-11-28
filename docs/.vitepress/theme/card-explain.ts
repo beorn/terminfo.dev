@@ -1468,6 +1468,9 @@ function untestableCauseExplanation(featureId: string, subjectKind: string | und
     case "prereq-kitty-transmit-absent":
       return "Kitty graphics transmit got no reply here, so there was no stored image to display or animate."
     case "prereq-color-setup-absent":
+      if (featureId === "sgr.underline-color-reset") {
+        return "SGR 58 left the underline plain, so there is no underline colour for SGR 59 to reset."
+      }
       return "Setting the base color did not take effect here, so resetting or stacking it had no change to observe."
     case "prereq-alt-screen-absent":
       return "Entering the alternate screen did not work here, so exiting it could not be tested."
@@ -2665,7 +2668,9 @@ export function buildCardModel(input: {
     // "Setting the base color did not take effect" is only true when a starting color was read. When the probe's
     // starting-color question went unanswered, that is the reason, whatever was written after it (#38777).
     const unansweredColorQuery =
-      causeSlug === "prereq-color-setup-absent" ? unansweredColorQueryCode(exchange, parserState) : undefined
+      causeSlug === "prereq-color-setup-absent" && featureId !== "sgr.underline-color-reset"
+        ? unansweredColorQueryCode(exchange, parserState)
+        : undefined
     const specific = cleanReview
       ? capitalizeFirst(/[.!?]$/.test(cleanReview) ? cleanReview : `${cleanReview}.`)
       : unansweredColorQuery

@@ -36,12 +36,6 @@ export const DERIVED_UNSUPPORTED: readonly DerivedPair[] = [
     needs: "a placeholder shows a transmitted image",
   },
   {
-    child: "sgr.underline-color-reset",
-    parent: "sgr.underline.color",
-    parentName: "underline colour (SGR 58)",
-    needs: "a terminal that cannot colour an underline has nothing to reset",
-  },
-  {
     child: "extensions.osc117-reset-highlight-bg",
     parent: "extensions.osc17-highlight-bg",
     parentName: "highlight background colour (OSC 17)",

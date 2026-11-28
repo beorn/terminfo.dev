@@ -332,6 +332,29 @@ describe("unsupported, derived (33019)", () => {
     })
   })
 
+  it("publishes the direct underline reset result even when underline colour was refused", () => {
+    const colour = "sgr.underline.color"
+    const reset = "sgr.underline-color-reset"
+    const catalog = [colour, reset]
+    const measured = run(
+      "reset-capture",
+      {
+        [colour]: { status: "unsupported", witness: "effect" },
+        [reset]: { status: "untestable", reason: "SGR 58 left the underline plain in the reset capture" },
+      },
+      catalog,
+    )
+    const projection = projectResults([measured], catalog, { currentProbeHash: "suite", reopened: [] }, [])
+    const published = publicResults(projection, new Map()).projection.contexts["term:xterm"]!
+
+    expect(published.featureResults[colour]?.status).toBe("unsupported")
+    expect(published.featureResults[reset]).toMatchObject({
+      status: "untestable",
+      origin: { runId: "reset-capture", resultId: reset },
+    })
+    expect(published.derivedIds).not.toContain(reset)
+  })
+
   it("every declared pair names features in the catalogue, and no child is its own parent", () => {
     for (const pair of DERIVED_UNSUPPORTED) {
       // #33441: a misspelt child silently never fires - applyDerived skips an id it cannot find - so membership is
