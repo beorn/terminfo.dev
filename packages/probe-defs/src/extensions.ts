@@ -5041,20 +5041,30 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
     const note = `No owned desktop notification observer for OSC ${selector}`
     return { pass: false, note, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
   }
-  return ctx.withNotificationObserver(async (fixture): Promise<ProbeCallbackResult> => {
-    const nonce = `terminfo-notify-${sourceRandomUUID(ctx)}`
-    const sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
-    const deadlineMs = Math.min(fixture.deadlineMs, 2000)
+  let capturedFixture: Parameters<Parameters<NonNullable<TermProbeSource["withNotificationObserver"]>>[0]>[0] | undefined
+  let nonce = ""
+  let sequence = ""
+  let deadlineMs = 0
+  let focusedBefore: string | undefined
+  let focusedAfter: string | undefined
+  let ownedWindowId: string | undefined
+  let helperWindowId: string | undefined
+  let focusError: string | undefined
+  let observed: { entries: Array<{ body: string; summary: string }>; problems: string[] } = {
+    entries: [],
+    problems: [],
+  }
+  // Return void from the observer callback so viprobe verifies call order and completion without comparing
+  // JSON.stringify(fixture.*) strings whose key order changes under viprobe's canonical object encoding (#30932).
+  await ctx.withNotificationObserver(async (fixture): Promise<void> => {
+    capturedFixture = fixture
+    nonce = `terminfo-notify-${sourceRandomUUID(ctx)}`
+    sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
+    deadlineMs = Math.min(fixture.deadlineMs, 2000)
     if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
       throw new Error("Notification observation needs a positive deadline")
     }
-    let focusedBefore: string | undefined
-    let focusedAfter: string | undefined
-    let ownedWindowId: string | undefined
-    let helperWindowId: string | undefined
-    let focusError: string | undefined
     let wrote = false
-    let observed: ReturnType<typeof fixture.readSince> = { entries: [], problems: [] }
     const observe = async (readFocus?: () => Promise<string>): Promise<void> => {
       const cursor = fixture.cursor()
       focusedBefore = await readFocus?.()
@@ -5085,95 +5095,99 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       await observe()
       focusError = "No owned fixture can hold the terminal unfocused"
     }
-    const matches = observed.entries.filter((entry) => entry.body.includes(nonce) || entry.summary.includes(nonce))
-    const unfocusedAtWrite =
-      helperWindowId !== undefined &&
-      helperWindowId !== ownedWindowId &&
-      focusedBefore === helperWindowId &&
-      focusedAfter === helperWindowId
-    const missing = [
-      ...(fixture.terminalSideControl === undefined
-        ? [
-            fixture.terminalSideControlRefusal ??
-              "No control Notify sent from the terminal's own process environment was recorded in this window",
-          ]
-        : []),
-      ...(fixture.terminalBus.state !== "same" ? [fixture.terminalBus.reason] : []),
-      ...(fixture.profile.state !== "default" ? [fixture.profile.reason] : []),
-      ...(!unfocusedAtWrite
-        ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
-        : []),
-      ...(ctx.mux && !fixture.outerTerminalRecord
-        ? [fixture.outerTerminalRecordRefusal ?? "No matching outer-terminal record for this multiplexer"]
-        : []),
-      ...observed.problems,
-    ]
-    // A parse loss makes notification rows Open even if another recorded call happens to match.
-    const supported = matches.length > 0 && observed.problems.length === 0
-    const unsupported = matches.length === 0 && missing.length === 0
-    const outcome = supported ? "supported" : unsupported ? "unsupported" : "inconclusive"
-    const response = JSON.stringify({
-      selector,
-      nonce,
-      sequence,
-      deadlineMs,
-      recordPath: fixture.recordPath,
-      busInTerminalEnvironment: fixture.terminalBus,
-      controlRecorded: fixture.control,
-      terminalSideControl: fixture.terminalSideControl,
-      defaultProfile: fixture.profile,
-      noNonceCallByDeadline: matches.length === 0,
-      unfocusedAtWrite: {
-        verified: unfocusedAtWrite,
-        ownedWindowId,
-        helperWindowId,
-        focusedBefore,
-        focusedAfter,
-        error: focusError,
-      },
-      outerTerminalRecord: fixture.outerTerminalRecord,
-      notifications: observed.entries,
-      problems: observed.problems,
-      missing,
-    })
-    const note = supported
-      ? `OSC ${selector} delivered the run nonce to the owned desktop service`
-      : unsupported
-        ? `OSC ${selector} sent no nonce Notify within ${deadlineMs}ms on the qualified default, unfocused run`
-        : `OSC ${selector} delivery remains open: ${missing.join("; ")}`
-    if (
-      !supported &&
-      matches.length === 0 &&
-      ownedWindowId !== undefined &&
-      (focusedBefore === ownedWindowId || focusedAfter === ownedWindowId)
-    ) {
-      const reason = "Notification negative trial invalid: the terminal was focused at the target write"
-      return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-invalid", reason }] }
-    }
-    return {
-      pass: supported,
-      response,
-      note,
-      observation: {
-        outcome,
-        assertionType: "notification",
-        note,
-        ...(outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
-      },
-      ...(supported || unsupported
-        ? {
-            assertions: [
-              {
-                assertionType: "notification" as const,
-                kind: supported ? ("positive" as const) : ("negative" as const),
-                expected: "The terminal sends a Notify carrying the target OSC nonce to the owned desktop service",
-                observed: response,
-              },
-            ],
-          }
-        : {}),
-    }
   })
+  if (!capturedFixture) {
+    throw new Error(`Notification observer did not invoke its callback for OSC ${selector}`)
+  }
+  const fixture = capturedFixture
+  const matches = observed.entries.filter((entry) => entry.body.includes(nonce) || entry.summary.includes(nonce))
+  const unfocusedAtWrite =
+    helperWindowId !== undefined &&
+    helperWindowId !== ownedWindowId &&
+    focusedBefore === helperWindowId &&
+    focusedAfter === helperWindowId
+  const missing = [
+    ...(fixture.terminalSideControl === undefined
+      ? [
+          fixture.terminalSideControlRefusal ??
+            "No control Notify sent from the terminal's own process environment was recorded in this window",
+        ]
+      : []),
+    ...(fixture.terminalBus.state !== "same" ? [fixture.terminalBus.reason] : []),
+    ...(fixture.profile.state !== "default" ? [fixture.profile.reason] : []),
+    ...(!unfocusedAtWrite
+      ? [focusError ?? "Terminal was not proven unfocused immediately before and after the target write"]
+      : []),
+    ...(ctx.mux && !fixture.outerTerminalRecord
+      ? [fixture.outerTerminalRecordRefusal ?? "No matching outer-terminal record for this multiplexer"]
+      : []),
+    ...observed.problems,
+  ]
+  // A parse loss makes notification rows Open even if another recorded call happens to match.
+  const supported = matches.length > 0 && observed.problems.length === 0
+  const unsupported = matches.length === 0 && missing.length === 0
+  const outcome = supported ? "supported" : unsupported ? "unsupported" : "inconclusive"
+  const response = JSON.stringify({
+    selector,
+    nonce,
+    sequence,
+    deadlineMs,
+    recordPath: fixture.recordPath,
+    busInTerminalEnvironment: fixture.terminalBus,
+    controlRecorded: fixture.control,
+    terminalSideControl: fixture.terminalSideControl,
+    defaultProfile: fixture.profile,
+    noNonceCallByDeadline: matches.length === 0,
+    unfocusedAtWrite: {
+      verified: unfocusedAtWrite,
+      ownedWindowId,
+      helperWindowId,
+      focusedBefore,
+      focusedAfter,
+      error: focusError,
+    },
+    outerTerminalRecord: fixture.outerTerminalRecord,
+    notifications: observed.entries,
+    problems: observed.problems,
+    missing,
+  })
+  const note = supported
+    ? `OSC ${selector} delivered the run nonce to the owned desktop service`
+    : unsupported
+      ? `OSC ${selector} sent no nonce Notify within ${deadlineMs}ms on the qualified default, unfocused run`
+      : `OSC ${selector} delivery remains open: ${missing.join("; ")}`
+  if (
+    !supported &&
+    matches.length === 0 &&
+    ownedWindowId !== undefined &&
+    (focusedBefore === ownedWindowId || focusedAfter === ownedWindowId)
+  ) {
+    const reason = "Notification negative trial invalid: the terminal was focused at the target write"
+    return { pass: false, response, note: reason, tests: [{ id: "criterion", status: "probe-invalid", reason }] }
+  }
+  return {
+    pass: supported,
+    response,
+    note,
+    observation: {
+      outcome,
+      assertionType: "notification",
+      note,
+      ...(outcome === "inconclusive" ? { reason: "insufficient-evidence" as const } : {}),
+    },
+    ...(supported || unsupported
+      ? {
+          assertions: [
+            {
+              assertionType: "notification" as const,
+              kind: supported ? ("positive" as const) : ("negative" as const),
+              expected: "The terminal sends a Notify carrying the target OSC nonce to the owned desktop service",
+              observed: response,
+            },
+          ],
+        }
+      : {}),
+  }
 }
 
 /** PTY bytes seen this long after the press refuse the sample; a bare shift sends none in any default key mode. */

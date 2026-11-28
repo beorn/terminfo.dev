@@ -764,7 +764,12 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
   // Only now is this request admitted: a duplicate run fails above with EEXIST, before any header.
   options.onAdmitted?.()
-  const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
+  const checkpoint = () => {
+    writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
+    // Reclaim the transient full-draft JSON string + UTF-8 buffer immediately; large mux runs (~80+ MB drafts)
+    // otherwise exhaust the 2 GiB Linux container memory limit under Bun's lazy GC.
+    if (typeof Bun !== "undefined") Bun.gc(true)
+  }
   if (options.ids?.length === 0) {
     recordCollectorAttempt(draft, { ids: selectedIds, result: "empty" })
     checkpoint()
@@ -2641,6 +2646,7 @@ export function startDaemon(port = 0): void {
             ),
           )
         }
+        if (typeof Bun !== "undefined") Bun.gc(true)
         res.end(JSON.stringify(run))
         return
       }
