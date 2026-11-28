@@ -1201,10 +1201,14 @@ export const TERMINAL_APP_TAB_TITLE_SCRIPT = `function run(argv) {
   function reply(value) { return JSON.stringify(value) }
   function text(value) { return value === null || value === undefined ? null : String(value) }
   function owned(app) {
+    var ids = app.windows.id();
+    var ttys = app.windows.tabs.tty();
     var hits = [];
-    for (var w = 0; w < app.windows.length; w++) {
-      var win = app.windows[w], tabs = win.tabs;
-      for (var t = 0; t < tabs.length; t++) if (String(tabs[t].tty()) === ttyPath) hits.push({ tab: tabs[t], win: win });
+    for (var w = 0; w < ids.length; w++) {
+      var wttys = ttys[w] || [];
+      for (var t = 0; t < wttys.length; t++) {
+        if (String(wttys[t]) === ttyPath) hits.push({ id: Number(ids[w]), tabIndex: t, tabCount: wttys.length });
+      }
     }
     return hits;
   }
@@ -1213,19 +1217,20 @@ export const TERMINAL_APP_TAB_TITLE_SCRIPT = `function run(argv) {
     if (!app.running()) return reply({ status: "refused", phase: "owner", reason: "Terminal is not running" });
     var hits = owned(app);
     if (hits.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned TTY is the TTY of " + hits.length + " Terminal tabs" });
-    var tab = hits[0].tab, win = hits[0].win, windowId = Number(win.id());
-    if (win.tabs.length !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has " + win.tabs.length + " tabs" });
+    var hit = hits[0], windowId = hit.id;
+    if (hit.tabCount !== 1) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has " + hit.tabCount + " tabs" });
+    var win = app.windows.byId(windowId);
     var windowTitle = String(win.name());
     if (windowTitle.length === 0) return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window has an empty name" });
     var custom;
     try {
-      custom = text(tab.customTitle());
+      custom = text(win.tabs[hit.tabIndex].customTitle());
     } catch (error) {
       return reply({ status: "refused", phase: "custom-title", reason: "the owned tab has no readable custom title", errorNumber: error && typeof error.errorNumber === "number" ? error.errorNumber : null });
     }
     if (custom === null) return reply({ status: "refused", phase: "custom-title", reason: "the owned tab's custom title is not a string" });
     var after = owned(app);
-    if (after.length !== 1 || Number(after[0].win.id()) !== windowId) {
+    if (after.length !== 1 || after[0].id !== windowId || after[0].tabCount !== 1) {
       return reply({ status: "refused", phase: "owner", reason: "the owned Terminal window changed during the read" });
     }
     return reply({ status: "read", title: custom, windowTitle: windowTitle, windowId: windowId });
