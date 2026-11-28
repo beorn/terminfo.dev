@@ -721,7 +721,12 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Accepted history requirement: page data retains older complete collections automatically.
   // The existing manual reopen test cannot detect a newest-only page loader.
-  it("retains complete ordinary history in page data without changing accepted results", { timeout: 30_000 }, () => {
+  // 120 s, not 30: the row loads the whole live store three times and timed out at 30 s on Terminfo main b981a0f7
+  // (@dev/18 0041087d); the cap is hang protection, as in the app-pass row above.
+  it("retains complete ordinary history in page data without changing accepted results", { timeout: 120_000 }, () => {
+    // The live store names each cell placed because its probe changed, on console.error (34925); those lines are the
+    // reader's own record, so they are captured and each must be that record. Any other error line still fails.
+    const placed = vi.spyOn(console, "error").mockImplementation(() => {})
     const bounded = liveContentRoot()
     const older = collection()
     collection(older.parent, PARTIAL)
@@ -757,6 +762,11 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(older.parent, WRITING)
     const sameBuild = loadClientProbesWithHistory()
     expect(sameBuild.workingHistoryPayload?.workingHistory.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    const lines = placed.mock.calls.map((call) => call.map(String).join(" "))
+    expect(
+      lines.filter((line) => !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line)),
+      lines.join("\n"),
+    ).toEqual([])
   })
 
   // #33037: every hourly run repeated an identical status map per context, and the theme chunk crossed
