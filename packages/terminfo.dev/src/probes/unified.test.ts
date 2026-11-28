@@ -1461,7 +1461,7 @@ it("gives no clipboard fixture to an OSC 52 row that does not need ownership whe
         readAncestry: liveAncestryToApp(),
       },
     })
-    expect(seen).toEqual([undefined])
+    expect(seen).toEqual([undefined, undefined])
     expect(batch.results.find((result) => result.featureId === "extensions.osc52-read")).toBeDefined()
   } finally {
     definition.term = originalTerm
@@ -2867,12 +2867,13 @@ it.each([
         })
       },
     })
-    expect(handedSources[1]?.captureGeometry).toEqual(resets ? (renewalRefusal ? undefined : renewed) : initial)
-    expect(handedSources[1]?.captureGeometryRefusal).toBe(resets && renewalRefusal ? "renewal refused" : undefined)
+    // #30932 AC3: each probe runs once live (record) and once offline (replay), so handedSources has 2 entries per row.
+    expect(handedSources[2]?.captureGeometry).toEqual(resets ? (renewalRefusal ? undefined : renewed) : initial)
+    expect(handedSources[2]?.captureGeometryRefusal).toBe(resets && renewalRefusal ? "renewal refused" : undefined)
     expect(order).toEqual(
       resets
-        ? ["prepare:1", "callback:0", "prepare:2", "callback:1", "finish"]
-        : ["prepare:1", "callback:0", "callback:1", "finish"],
+        ? ["prepare:1", "callback:0", "callback:0", "prepare:2", "callback:1", "callback:1", "finish"]
+        : ["prepare:1", "callback:0", "callback:0", "callback:1", "callback:1", "finish"],
     )
     // 34306 AC1: the recursion that renews is the later ROW's read, so the preparation must name
     // that row. Without it the published fact can only name the pass number, never the row.
@@ -2987,15 +2988,19 @@ it("keeps a capture recorded after preparation returns, with identical pixels ke
     for (const definition of definitions) {
       delete definition.termNeedsGeometry
       definition.termWrites = "query"
+      let emittedLate = false
       definition.term = async () => {
-        // 34261 retention: the same recorder the preparation handed out, invoked after it returned.
+        // 34261 retention: the same recorder the preparation handed out, invoked after it returned (live pass only).
         // Two acquisitions of identical pixels are two observations, so both rows must survive even
         // though recordCapture deduplicates their shared content reference.
-        for (const capturedAt of [1_764_000_000_123, 1_764_000_000_456]) {
-          lateRecorder?.({
-            frame: { role: "control", ref: samePixels, capturedAt, label: "reset.ris: pre-paint" },
-            trace: { acquisition: { label: "reset.ris: pre-paint", role: "control", totalMs: 237 } },
-          })
+        if (!emittedLate) {
+          emittedLate = true
+          for (const capturedAt of [1_764_000_000_123, 1_764_000_000_456]) {
+            lateRecorder?.({
+              frame: { role: "control", ref: samePixels, capturedAt, label: "reset.ris: pre-paint" },
+              trace: { acquisition: { label: "reset.ris: pre-paint", role: "control", totalMs: 237 } },
+            })
+          }
         }
         return {
           pass: false,
@@ -3116,20 +3121,24 @@ it("keeps each preparation's late acquisitions with the preparation that handed 
     for (const [index, definition] of definitions.entries()) {
       delete definition.termNeedsGeometry
       definition.termWrites = "query"
+      let emittedLate = false
       definition.term = async (source) => {
         if (index === 0) {
           // RIS expires the geometry, so the next row prepares again; the first preparation's recorder
-          // is still the one that took this frame, and it must stay with that preparation.
+          // is still the one that took this frame, and it must stay with that preparation (live pass only).
           source.write("\x1bc")
-          recorders[0]?.({
-            frame: {
-              role: "control",
-              ref: `sha256:${"3".repeat(64)}`,
-              capturedAt: 1_764_000_000_300,
-              label: "reset.ris: pre-paint",
-            },
-            trace: {},
-          })
+          if (!emittedLate) {
+            emittedLate = true
+            recorders[0]?.({
+              frame: {
+                role: "control",
+                ref: `sha256:${"3".repeat(64)}`,
+                capturedAt: 1_764_000_000_300,
+                label: "reset.ris: pre-paint",
+              },
+              trace: {},
+            })
+          }
         }
         return {
           pass: false,
@@ -3238,8 +3247,8 @@ it.each([undefined, "after-probes"] as const)(
       })
       expect(order).toEqual(
         phase === undefined
-          ? ["prepare", "callback:reset.ris", "callback:reset.decaln"]
-          : ["callback:reset.ris", "callback:reset.decaln", "prepare"],
+          ? ["prepare", "callback:reset.ris", "callback:reset.ris", "callback:reset.decaln", "callback:reset.decaln"]
+          : ["callback:reset.ris", "callback:reset.ris", "callback:reset.decaln", "callback:reset.decaln", "prepare"],
       )
       expect(writes).toContain("calibration:paint-witness")
       if (phase === undefined) {
@@ -3333,7 +3342,7 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
           probeSource.captureGeometry = { ...geometry, geometry: { ...geometry.geometry, cellWidth: 16 } }
         },
       })
-      expect(probeOrder).toEqual(["calibrate", "callback", "qualify"])
+      expect(probeOrder).toEqual(["calibrate", "callback", "callback", "qualify"])
       expect(callbackSource?.captureGeometry).toEqual(state !== "refusal" ? geometry : undefined)
       expect(callbackSource?.captureGeometryRefusal).toBe(state === "refusal" ? priorRefusal : undefined)
       expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
@@ -3361,7 +3370,7 @@ describe("an after-probes finish beside a before-probes preparation (32670)", ()
         },
       }),
     ).rejects.toThrow("qualification fixture failed after probes")
-    expect(probeOrder).toEqual(["calibrate", "callback"])
+    expect(probeOrder).toEqual(["calibrate", "callback", "callback"])
   })
 })
 
@@ -4210,7 +4219,7 @@ it.each([
         throw new Error("Routing test must not capture")
       },
     })
-    expect(seen).toEqual([entry.allowed, true])
+    expect(seen).toEqual([entry.allowed, entry.allowed, true, true])
   } finally {
     definitions.forEach((definition, index) => Object.assign(definition, originals[index]!))
   }
@@ -4803,7 +4812,7 @@ it("stops the batch when modes.deccolm leaves a different stty size", async () =
       ids: [deccolm.id, next.id],
       ownedTerminal: geometryOwner(measured(30, 120), readGeometry),
     })
-    expect(calls).toEqual(["modes.deccolm"])
+    expect(calls).toEqual(["modes.deccolm", "modes.deccolm"])
     expect(readGeometry).toHaveBeenCalledTimes(2)
     expect(batch.results.find((result) => result.featureId === next.id)).toMatchObject({
       status: "probe-invalid",
@@ -6841,7 +6850,7 @@ it("measures the decode context once per run and records it beside the other col
   }
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
-    expect(seen).toEqual(["8-bit", "8-bit"])
+    expect(seen).toEqual(["8-bit", "8-bit", "8-bit", "8-bit"])
     expect(vi.mocked(measureUtf8Decoding)).toHaveBeenCalledTimes(1)
     expect(pending).toEqual([])
     const writes = emitted.filter((sequence) => sequence !== "\x1b[6n")
@@ -6943,7 +6952,12 @@ it("keeps a failed attempt failed for the batch, so no later row re-measures the
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(attempts).toBe(1)
-    expect(seen).toEqual(["failed: the decode round trip failed", "failed: the decode round trip failed"])
+    expect(seen).toEqual([
+      "failed: the decode round trip failed",
+      "failed: the decode round trip failed",
+      "failed: the decode round trip failed",
+      "failed: the decode round trip failed",
+    ])
     const retained = batch.rawReplies["collector.utf8Decoding"]
     expect(retained).toBeTruthy()
     expect(JSON.parse(retained!)).not.toHaveProperty("decoding")
@@ -7621,9 +7635,9 @@ it("forwards explicit callback tests through the actual native batch attempt wit
       criterionBranch: "same-crop-comparison",
       tests: [{ id: "comparison", status: "probe-invalid", attempt: { scope: "probe" } }],
     })
-    let next = 0
-    definition.term = async () =>
-      sgrCaptureFrames(
+    definition.term = async () => {
+      let next = 0
+      return sgrCaptureFrames(
         {
           write() {},
           capture: async () => frames[next++]!,
@@ -7632,6 +7646,7 @@ it("forwards explicit callback tests through the actual native batch attempt wit
         "target",
         "visual target",
       )
+    }
     const pending = await runProbeBatch({ ids: [id] })
     const recorded = pending.results.find((result) => result.featureId === id)!
     expect(recorded.status).toBe("probe-todo")
@@ -8606,7 +8621,7 @@ describe("a colour-attempt disagreement reaches the recorded grade (osc104)", ()
       [{ id: "criterion", status: "unsupported" }],
       "unsupported",
     )
-    expect(asked, "both attempts reached the capture list").toHaveLength(6)
+    expect(asked, "both attempts reached the capture list (recorded + replayed)").toHaveLength(12)
     // @cto 96a8d82c: the established attempted-inconclusive result is a probe-invalid criterion, not a
     // probe-todo one - the row ran and could not decide, it was not never-attempted.
     expect(result.status).toBe("probe-invalid")
@@ -9209,6 +9224,67 @@ describe("iTerm2 Allow Terminal-Initiated Display modal prompt reason (#37678)",
       expect(row?.status).toBe("probe-invalid")
       expect(row?.reason).not.toContain("Allow Terminal-Initiated Display?")
       expect(row?.reason).toContain("projected frame modal background (202,202,202)")
+    } finally {
+      probe.term = original
+    }
+  })
+})
+
+describe("#30932 AC3 + #30933: runProbeBatch derives domain status strictly from offline replay (live grading deleted)", () => {
+  it("discards the live return value and grades from the strict offline replay verdict", async () => {
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find((entry) => entry.id === "device.primary-da")!
+    const original = probe.term
+    let invocations = 0
+    try {
+      probe.term = async (ctx) => {
+        invocations += 1
+        ctx.write("\x1b[c")
+        if (invocations === 1) {
+          return {
+            pass: true,
+            response: "live-return-must-be-discarded",
+            observation: { outcome: "supported", assertionType: "query_reply", note: "live" },
+            assertions: [{ assertionType: "query_reply", kind: "positive", expected: "reply", observed: "live" }],
+          }
+        }
+        return {
+          pass: false,
+          response: "replayed-verdict",
+          observation: { outcome: "unsupported", assertionType: "query_reply", note: "replayed" },
+          assertions: [{ assertionType: "query_reply", kind: "negative", expected: "reply", observed: "replayed" }],
+        }
+      }
+      const batch = await runProbeBatch({ ids: [probe.id] })
+      expect(invocations).toBe(2)
+      expect(batch.ungradedDiagnostics).toEqual({})
+      expect(batch.results.find((entry) => entry.featureId === probe.id)?.status).toBe("unsupported")
+      expect(batch.rawReplies[`${probe.id}.callbackResponse`]).toBe("replayed-verdict")
+    } finally {
+      probe.term = original
+    }
+  })
+
+  it("refuses as collector-error (IncompleteReplay) on replay divergence instead of falling back to live grading", async () => {
+    verifiedBatchFixture()
+    const probe = ALL_PROBES.find((entry) => entry.id === "device.primary-da")!
+    const original = probe.term
+    let invocations = 0
+    try {
+      probe.term = async (ctx) => {
+        invocations += 1
+        ctx.write(invocations === 1 ? "\x1b[c" : "\x1b[>c")
+        return {
+          pass: true,
+          response: "live-pass",
+          observation: { outcome: "supported", assertionType: "query_reply", note: "live" },
+          assertions: [{ assertionType: "query_reply", kind: "positive", expected: "reply", observed: "live" }],
+        }
+      }
+      const batch = await runProbeBatch({ ids: [probe.id] })
+      expect(invocations).toBe(2)
+      expect(batch.ungradedDiagnostics[probe.id]?.name).toBe("IncompleteReplay")
+      expect(batch.results.find((entry) => entry.featureId === probe.id)?.status).toBe("probe-invalid")
     } finally {
       probe.term = original
     }
