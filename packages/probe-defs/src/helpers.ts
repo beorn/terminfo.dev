@@ -2948,6 +2948,13 @@ export const UNTESTABLE_ONLY_REVIEW_BRANCHES: ReadonlySet<string> = new Set([HEA
 export const DECLARED_UNTESTABLE_TEST = "declared-untestable"
 
 /**
+ * The named PROBE TODO for a run whose context installed no input route (#30723). A missing route is the
+ * harness's gap, not the terminal's, so it never grades Untestable (@cto 1870a1b3, superseding @chief ab9fa8aa
+ * now that the SendInput and CGEvent routes exist); a per-app declaration still wins where one exists.
+ */
+export const NO_INPUT_ROUTE = "no installed input route for this context (#30723)"
+
+/**
  * A library or multiplexer result the operator declared Untestable (Nov 4 16:55 PST: no library can show it; D160 on
  * #32762: a multiplexer only emits text cells and shapes no glyphs). The calling probe writes its reason once, in its
  * own definition, and names any exception there; this carries no source reference.
