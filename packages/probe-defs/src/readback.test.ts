@@ -272,14 +272,15 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
  * @consumer the stored assertion text of reset.sgr, sgr.reset, sgr.fg.default and sgr.bg.default.
  * @testonly none
  *
- * reset.sgr requires nothing and forbids bold, italic and inverse, so its expected text names those
- * codes instead of being empty. sgr.selective-reset.italic still requires bold, so its expected text
- * is the required code alone and is unchanged.
+ * reset.sgr requires nothing and forbids bold, italic, underline, inverse and colour (the five
+ * attributes its claim seeds, 01M7ZDZXK75PEEYWSH3C5QT0NK), so its expected text names those codes
+ * instead of being empty. sgr.selective-reset.italic still requires bold, so its expected text is the
+ * required code alone and is unchanged.
  */
 test("a forbid-only SGR claim names the forbidden codes in its expected text", async () => {
   const { capture: _capture, ...ctx } = kittySource(true)
   const result = await termProbe("reset.sgr")(ctx)
-  expect(result.assertions?.[0]?.expected).toContain("reset.sgr: DECRQSS reports none of 1;3;7 after")
+  expect(result.assertions?.[0]?.expected).toContain("reset.sgr: DECRQSS reports none of 1;3;4;7;31 after")
 })
 
 test("an SGR claim that requires a code keeps the required code as its expected text", async () => {

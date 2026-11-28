@@ -56,7 +56,7 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * ED (`\x1b[2J`) clears cells only: it never changes SGR state and is not the sequence under test.
  *
  * RIS is the reference for the SIX single-attribute rows. The three rows whose reset clears TWO OR
- * MORE attributes (reset.sgr: three, sgr.reset: three, sgr.selective-reset.bold: bold+faint) cannot
+ * MORE attributes (reset.sgr: five, sgr.reset: three, sgr.selective-reset.bold: bold+faint) cannot
  * use it: a reset under test and a RIS that both miss the same part of the cleared set leave
  * expected equal to after and different from ignored, so the row reads supported while the attribute
  * survived. They carry
@@ -128,12 +128,29 @@ const SAVED_SGR0_CAPTURE = {
 } satisfies Omit<RegionReadback, "pixelGeometry">
 
 /**
+ * reset.sgr seeds the FIVE attributes its claim names (bold, italic, underline, inverse, colour:
+ * 01M7ZDZXK75PEEYWSH3C5QT0NK, @cpo/term extend ruling). The qualification subsets keep the three
+ * code-graded attributes and end on the full five-attribute setup, so a terminal that paints no colour
+ * still qualifies its rendition by its bold/italic/inverse frames: the five-attribute seed and target
+ * decide the row, the subsets only prove the rendition capture works.
+ */
+const RESET_SGR_FIVE_ATTRIBUTE_CAPTURE = {
+  ...SAVED_SGR0_CAPTURE,
+  seed: `\x1b[1;3;4;7;31m\x1b[3;5HYY\x1b[${CURSOR_ROW};1H`,
+  savedRendition: {
+    ...SAVED_SGR0_CAPTURE.savedRendition,
+    // The setup frame must equal the LAST subset's crop, so the full rendition closes the list.
+    subsets: [...SAVED_SGR0_CAPTURE.savedRendition.subsets, { label: "SGR 1;3;4;7;31", sequence: "\x1b[1;3;4;7;31m" }],
+  },
+} satisfies Omit<RegionReadback, "pixelGeometry">
+
+/**
  * The nine reset-family rows, keyed by the probe id that owns each claim.
  * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "reset.sgr": SAVED_SGR0_CAPTURE,
+  "reset.sgr": RESET_SGR_FIVE_ATTRIBUTE_CAPTURE,
   "sgr.reset": {
     ...SAVED_SGR0_CAPTURE,
     savedRendition: {

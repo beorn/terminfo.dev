@@ -110,7 +110,11 @@ const RESET_SEMANTIC_SURFACE_CONTROLS: readonly {
 
 /** The 5 Reset features of 28018's Reset row; ids drawn from reset.ts, claims are the contract. */
 const RESET_CONTRACT: GroupContract = [
-  { id: "reset.sgr", expected: "decided", claim: "SGR 0 clears measured bold, italic and inverse styling" },
+  {
+    id: "reset.sgr",
+    expected: "decided",
+    claim: "SGR 0 clears measured bold, italic, underline, inverse and colour styling on Y",
+  },
   { id: "reset.ris", expected: "decided", claim: "RIS returns the cursor home and clears measured text" },
   { id: "reset.soft", expected: "decided", claim: "DECSTR clears an enabled application-cursor mode" },
   { id: "reset.decaln", expected: "decided", claim: "DECALN fills the measured cell with E" },

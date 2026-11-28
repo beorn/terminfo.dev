@@ -1831,7 +1831,9 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
         color.uc = codes.slice(index).join(";")
         index = codes.length
       } else if (code === 59) clearColour("uc")
-      else if (code === 99 && options.invalidSgrChanges) state.underline = true
+      // A made-up SGR must corrupt a facet the row's seed does NOT already paint (reset.sgr seeds
+      // underline since 01M7ZDZXK75PEEYWSH3C5QT0NK), or the corrupt control reads as a legit setup.
+      else if (code === 99 && options.invalidSgrChanges) state.faint = true
     }
   }
   const snapshot = () =>
@@ -2104,11 +2106,13 @@ test.each(
     const checks = evidence.resetReference.checks
     const baseline = checks[0]!.digest
     const styled = checks.filter((check) => check.phase === "styled")
-    expect(styled).toHaveLength(7)
+    // The subset count is the row's own: reset.sgr closes its list with the full five-attribute setup.
+    const subsetCount = RESET_FAMILY_CAPTURE[id]!.savedRendition!.subsets.length
+    expect(styled).toHaveLength(subsetCount)
     expect(terminal.snapshot()).toEqual(new Set())
     expect(styled.every((check) => check.digest !== baseline)).toBe(true)
     const restored = checks.filter((check) => check.phase === "restored")
-    expect(restored).toHaveLength(7)
+    expect(restored).toHaveLength(subsetCount)
     expect(restored.every((check) => check.digest === baseline)).toBe(true)
     const savedN = terminal.writes.indexOf("\x1b[4;1H\x1b7")
     expect(savedN).toBeGreaterThanOrEqual(0)
@@ -2401,7 +2405,7 @@ test.each([
 )
 
 test("an answering DECRQSS decides after a saved reset subset fails, retaining the failed step", async () => {
-  const terminal = statefulTerminal(ALL_ATTRS, { invisible: ["italic"], replies: ["0", "1;3;7", "0"] })
+  const terminal = statefulTerminal(ALL_ATTRS, { invisible: ["italic"], replies: ["0", "1;3;4;7", "0"] })
   const result = await resetProbes.find((candidate) => candidate.id === "reset.sgr")!.term!(terminal.ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.observation?.note).toMatch(/subset.*3/)

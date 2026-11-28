@@ -69,7 +69,7 @@ const RESET_SETUP: Readonly<Record<string, string>> = {
   "sgr.fg.default": "31",
   "sgr.bg.default": "42",
   "sgr.underline-color-reset": "4;58;2;255;0;128",
-  "reset.sgr": "1;3;7",
+  "reset.sgr": "1;3;4;7;31",
 }
 
 /** Existing final-state cases now supply independently qualified baseline and setup responses. */

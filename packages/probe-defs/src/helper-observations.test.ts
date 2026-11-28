@@ -255,15 +255,16 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
     if (!definition?.lib) throw new Error(`Missing ${id} headless callback`)
     return definition.lib
   }
-  const sgr = (before: Partial<typeof baseCell>, after: Partial<typeof baseCell> = {}) =>
+  type CellOverrides = Omit<Partial<typeof baseCell>, "underline" | "fg"> & {
+    underline?: "none" | "single" | "double" | "curly" | "dotted" | "dashed" | false
+    fg?: { r: number; g: number; b: number } | null
+  }
+  const sgr = (before: CellOverrides, after: CellOverrides = {}) =>
     find("reset.sgr")(
       headless({
         getCell: (_row, col) => ({
           ...baseCell,
-          ...[
-            { char: "X", ...before },
-            { char: "Y", ...after },
-          ][col],
+          ...[{ char: "C" }, { char: "X", ...before }, { char: "Y", ...after }][col],
         }),
       }),
     )
@@ -273,6 +274,15 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
     note: expect.stringContaining("italic"),
   })
   expect(sgr({ bold: true, inverse: true }, { inverse: true }).observation).toMatchObject({ outcome: "unsupported" })
+  // The 01M7ZDZXK75PEEYWSH3C5QT0NK extend ruling: underline and colour are seeded and graded too, so a
+  // terminal that resets three attributes and keeps either of these must read unsupported.
+  expect(
+    sgr({ underline: "single", fg: { r: 255, g: 0, b: 0 } }, { underline: "none", fg: null }).observation,
+  ).toMatchObject({ outcome: "supported" })
+  expect(sgr({ underline: "single" }, { underline: "single" }).observation).toMatchObject({ outcome: "unsupported" })
+  expect(sgr({ fg: { r: 255, g: 0, b: 0 } }, { fg: { r: 255, g: 0, b: 0 } }).observation).toMatchObject({
+    outcome: "unsupported",
+  })
   const unstyled = sgr({})
   expect(unstyled.observation).toBeUndefined()
   expect(unstyled.notTested?.noObservable).toContain("styled control")

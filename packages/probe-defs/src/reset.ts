@@ -1,4 +1,4 @@
-import type { ProbeCallbackResult, ProbeDefinition } from "./types.ts"
+import type { LibProbeSource, ProbeCallbackResult, ProbeDefinition } from "./types.ts"
 import { captureRegionCallbackResult, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
@@ -12,12 +12,32 @@ import {
   probe,
   queryDecrpm,
   reviewResult,
+  sameRgb,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
   sgrReadbackDecision,
   type DecrpmPs,
 } from "./helpers.ts"
 import { raiseRefusedCapture } from "./refused-capture.ts"
+
+/** The boolean styles reset.sgr seeds and grades; underline and colour have their own cell fields. */
+const RESET_SGR_BOOLEAN_STYLES = ["bold", "italic", "inverse"] as const
+
+/** The cell a headless readback exposes: the parser reports fewer fields than a full Cell. */
+type SgrCell = ReturnType<LibProbeSource["getCell"]>
+
+/** Underline is a style name, not a boolean: only a named style is a measured underline. */
+const UNDERLINE_STYLES: readonly unknown[] = ["single", "double", "curly", "dotted", "dashed"]
+
+function showsUnderline(cell: SgrCell): boolean {
+  return UNDERLINE_STYLES.includes(cell.underline)
+}
+
+/** Colour is graded against the run's own default cell, never an assumed RGB or a null convention. */
+function sameColor(a: SgrCell["fg"], b: SgrCell["fg"]): boolean {
+  if (a === null || b === null) return a === b
+  return sameRgb(a, b)
+}
 
 /**
  * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
@@ -61,27 +81,48 @@ export const resetProbes: ProbeDefinition[] = [
     ...probe(
       "reset.sgr",
       (ctx) => {
-        ctx.feed("\x1b[1;3;7mX\x1b[0mY")
-        const before = ctx.getCell(0, 0)
-        const after = ctx.getCell(0, 1)
-        const state = { before, after }
-        const expected = "SGR 0 clears measured bold, italic, and inverse styling on Y"
-        if (before.char !== "X" || after.char !== "Y") {
-          return parserStateResult(null, expected, state, "Styled control or reset cell was not measured")
+        // Seed all five attributes the claim names (01M7ZDZXK75PEEYWSH3C5QT0NK, @cpo/term extend ruling).
+        // The neutral C leads so colour is graded against this run's own default, not an assumed value.
+        ctx.feed("C\x1b[1;3;4;7;31mX\x1b[0mY")
+        const baseline = ctx.getCell(0, 0)
+        const before = ctx.getCell(0, 1)
+        const after = ctx.getCell(0, 2)
+        const state = { baseline, before, after }
+        const expected = "SGR 0 clears measured bold, italic, underline, inverse and colour styling on Y"
+        if (baseline.char !== "C" || before.char !== "X" || after.char !== "Y") {
+          return parserStateResult(
+            null,
+            expected,
+            state,
+            "Neutral baseline, styled control or reset cell was not measured",
+          )
         }
-        // #30701, @cto ruling C: graded on the styles the control measurably shows. A style field the
+        // #30701, @cto ruling C: graded on the attributes the control measurably shows. A field the
         // adapter never populates is left out, and a control that shows none has no observable.
-        const styles = (["bold", "italic", "inverse"] as const).filter((style) => before[style] === true)
-        if (styles.length === 0) {
-          return notTestedResult("bold, italic and inverse on the styled control cell in the headless readback", state)
+        const styles = RESET_SGR_BOOLEAN_STYLES.filter((style) => before[style] === true)
+        const underline = showsUnderline(before)
+        const colour = !sameColor(baseline.fg, before.fg)
+        if (styles.length === 0 && !underline && !colour) {
+          return notTestedResult(
+            "bold, italic, underline, inverse and colour on the styled control cell in the headless readback",
+            state,
+          )
         }
-        const unshown = (["bold", "italic", "inverse"] as const).filter((style) => before[style] !== true)
+        const unshown = [
+          ...RESET_SGR_BOOLEAN_STYLES.filter((style) => !styles.includes(style)),
+          ...(underline ? [] : ["underline"]),
+          ...(colour ? [] : ["colour"]),
+        ]
+        const cleared =
+          styles.every((style) => after[style] !== true) &&
+          (!underline || !showsUnderline(after)) &&
+          (!colour || sameColor(after.fg, baseline.fg))
         return parserStateResult(
-          styles.every((style) => !after[style]),
+          cleared,
           expected,
           state,
           unshown.length > 0
-            ? `Graded on ${styles.join(" and ")}; ${unshown.join(" and ")} not shown by the styled control`
+            ? `Graded on the measured attributes; ${unshown.join(", ")} not shown by the styled control`
             : undefined,
         )
       },
@@ -108,11 +149,13 @@ export const resetProbes: ProbeDefinition[] = [
             ctx,
             "reset.sgr",
             "\x1b[0m",
-            { require: [], forbid: [1, 3, 7] },
+            { require: [], forbid: [1, 3, 4, 7, 31] },
             {
-              sequence: "\x1b[1;3;7m",
-              baseline: { require: [], forbid: [1, 3, 7] },
-              readback: { require: [1, 3, 7] },
+              sequence: "\x1b[1;3;4;7;31m",
+              baseline: { require: [], forbid: [1, 3, 4, 7, 31] },
+              // Colour is decided by the parser and capture arms; this reply only has to show the
+              // code-graded attributes the setup set, so no reply shape can shadow a colour grade.
+              readback: { require: [1, 3, 4, 7] },
             },
           )
           if (readback) {
@@ -158,11 +201,11 @@ export const resetProbes: ProbeDefinition[] = [
           try {
             return await sgrCaptureFrames(
               ctx,
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX",
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX\x1b[0mY",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;4;7;31mX",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;4;7;31mX\x1b[0mY",
               "reset.sgr",
-              { setup: "\x1b[1;3;7m", reset: "\x1b[0m" },
-              "The control shows a bold+italic+inverse X; the target adds reset Y; the capture alone does not decide the reset effect",
+              { setup: "\x1b[1;3;4;7;31m", reset: "\x1b[0m" },
+              "The control shows a bold+italic+underline+inverse+red X; the target adds reset Y; the capture alone does not decide the reset effect",
             )
           } finally {
             ctx.write("\x1b[0m")
