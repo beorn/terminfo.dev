@@ -48,7 +48,9 @@ it("lists no suite that no placed run uses, and each listed suite's placed runs 
     .filter((run) => run.sourceRevision !== legacy[run.probeHash as string]?.sourceRevision)
     .map((run) => `${run.runId} on ${run.probeHash}`)
   expect(foreign).toEqual([])
-}, 60_000) // loads and validates every placed run (~8 s)
+  // Loads and validates every placed run: ~8 s when written, 86-94 s isolated on 2026-11-28 as the corpus grew
+  // (83 s at load 76; @dev/18 1b8f5d73, @cto db312756). 300 s holds that with headroom; a slower row is a red.
+}, 300_000)
 
 it("refuses a listed suite whose manifest records its own entry hashes when the join reads it", () => {
   const recordedSuite = readdirSync(join(content, "suites"))

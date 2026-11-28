@@ -721,7 +721,12 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Accepted history requirement: page data retains older complete collections automatically.
   // The existing manual reopen test cannot detect a newest-only page loader.
-  it("retains complete ordinary history in page data without changing accepted results", { timeout: 30_000 }, () => {
+  // 120 s, not 30: the row loads the whole live store three times and timed out at 30 s on Terminfo main b981a0f7
+  // (@dev/18 0041087d); the cap is hang protection, as in the app-pass row above.
+  it("retains complete ordinary history in page data without changing accepted results", { timeout: 120_000 }, () => {
+    // The live store names each cell placed because its probe changed, on console.error (34925); those lines are the
+    // reader's own record, so they are captured and each must be that record. Any other error line still fails.
+    const placed = vi.spyOn(console, "error").mockImplementation(() => {})
     const bounded = liveContentRoot()
     const older = collection()
     collection(older.parent, PARTIAL)
@@ -757,11 +762,17 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
     collection(older.parent, WRITING)
     const sameBuild = loadClientProbesWithHistory()
     expect(sameBuild.workingHistoryPayload?.workingHistory.map((entry) => entry.run.id)).toEqual([OLD, PARTIAL])
+    const lines = placed.mock.calls.map((call) => call.map(String).join(" "))
+    expect(
+      lines.filter((line) => !/^placed \S+ \S+ harness \S+ because the probe changed$/.test(line)),
+      lines.join("\n"),
+    ).toEqual([])
   })
 
   // #33037: every hourly run repeated an identical status map per context, and the theme chunk crossed
   // the 26,214,400-byte Pages asset limit (2,151 maps carried, 240 distinct). Equal maps are sent once.
-  it("sends an identical historical status map once and points every context at it", () => {
+  // Reads the live store: 7.5 s at load 139 against the 5 s default (2026-11-28); 60 s is hang protection.
+  it("sends an identical historical status map once and points every context at it", { timeout: 60_000 }, () => {
     const parent = runsDir()
     collection(parent, OLD)
     collection(parent, PARTIAL)
@@ -1003,7 +1014,8 @@ describe("loadWorkingRun: a selected run's raw captures load loudly", () => {
 
   // Actual build hit 17.6 GB: 273 feature routes repeated 255 MB of history params.
   // The shared client loader must preserve all statuses/receipts without repeating per-cell provenance.
-  it("shares complete historical statuses with original capture receipts in the client data", () => {
+  // Reads the live store: 8.0 s at load 139 against the 5 s default (2026-11-28); 60 s is hang protection.
+  it("shares complete historical statuses with original capture receipts in the client data", { timeout: 60_000 }, () => {
     const fixture = collection()
     vi.stubEnv("TERMINFO_SITE_WORKING_RUNS_DIR", fixture.parent)
     const original = loadWorkingRun(newestCompleteRun(fixture.parent), { root, catalogIds }).runs[0]!
