@@ -18,6 +18,11 @@ on:
         type: string
         required: false
         default: "{}"
+      windows_input:
+        description: "Install hosted SendInput on the windows-terminal row only (#30723 qualification; default off)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -201,6 +206,7 @@ jobs:
         id: collect
         env:
           APP_ID: ${{ matrix.id }}
+          WINDOWS_INPUT: ${{ inputs.windows_input }}
         run: |
           set -euo pipefail
           OUT="$RUNNER_TEMP/measurement-artifacts"
@@ -238,6 +244,10 @@ jobs:
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
 
+          # Hosted input stays off unless the dispatch opts in, and only Windows Terminal has a bound route (#30723).
+          WINDOWS_INPUT_FLAG=0
+          if [[ "$WINDOWS_INPUT" == true && "$APP_ID" == windows-terminal ]]; then WINDOWS_INPUT_FLAG=1; fi
+
           PROBE_IDS_ARGS=""
           if [[ "$PROBE_IDS" != null ]]; then
             # PowerShell 5.1 passes this JSON to a native process; retain its embedded quotes.
@@ -250,6 +260,7 @@ jobs:
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
           \$env:TERMINFO_CAPTURE_RUN_ID = "$CAPTURE_RUN_ID"
+          \$env:TERMINFO_WINDOWS_INPUT = "$WINDOWS_INPUT_FLAG"
 
           \$attempts = 0
           while (-not (Test-Path "$WIN_OUT\\collector-ready")) {
