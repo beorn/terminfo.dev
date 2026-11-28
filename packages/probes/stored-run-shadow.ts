@@ -15,7 +15,10 @@ import { basename, dirname } from "node:path"
 import {
   ALL_PROBES,
   HARNESS_INCOMPLETE_TEST,
+  declaredUntestableResult,
+  finalizeProbeResult,
   finalizeVisualResult,
+  fontLigatureMuxCoverage,
   recordExecutedProbe,
   withReplyFailureEvidence,
   type AssertionType,
@@ -33,7 +36,11 @@ import {
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { IncompleteReplay, readCallLog, withCallLog } from "viprobe"
 import { isDeclaredUntestable } from "../probe-defs/src/helpers.ts"
-import { hasOuterCommandMatcher } from "../terminfo.dev/src/app-semantic-state.ts"
+import {
+  appSemanticDeclarations,
+  hasOuterCommandMatcher,
+  type readSessionBus,
+} from "../terminfo.dev/src/app-semantic-state.ts"
 import { readProbeCapture } from "./erase-capture.ts"
 import { declaredLibAssertionTypes, gradeLibRow } from "./headless-batch.ts"
 
@@ -106,13 +113,29 @@ export async function replayRow(validated: ValidatedRun, featureId: string): Pro
   if (typeof raw !== "string") throw new IncompleteReplay("Missing full-source call log: " + featureId)
   const parsed = parseJsonStrict(featureId + " call log", raw)
   const frames: ObservationFrame[] = []
+  const pushHeldFrame = (candidate: unknown) => {
+    if (object(candidate) && object(candidate.recorded)) {
+      frames.push(candidate.recorded as unknown as ObservationFrame)
+    }
+  }
   const log = readCallLog(parsed, {
     onOperation(operation) {
-      if (
-        (operation.path === "context.capture" || operation.path === "context.cells") &&
-        "value" in operation.outcome
-      ) {
+      if (!("value" in operation.outcome)) return
+      if (operation.path === "context.capture" || operation.path === "context.cells") {
         frames.push(operation.outcome.value as ObservationFrame)
+      } else if (operation.path === "context.readViewportReference" && object(operation.outcome.value)) {
+        pushHeldFrame(operation.outcome.value.frame)
+      } else if (operation.path === "context.readHeldViewport" && object(operation.outcome.value)) {
+        const value = operation.outcome.value
+        if (object(value.candidate)) {
+          pushHeldFrame(value.candidate.b0)
+          if (Array.isArray(value.candidate.held)) {
+            for (const item of value.candidate.held) pushHeldFrame(item)
+          }
+          pushHeldFrame(value.candidate.b1)
+        } else if (Array.isArray(value.frames)) {
+          for (const item of value.frames) pushHeldFrame(item)
+        }
       }
     },
   })
@@ -372,6 +395,9 @@ function liveOnlyInput(validated: ValidatedRun, stored: ProbeResult): string | u
   }
   if (stored.criterionBranch === "colour-only-mismatch" || stored.criterionBranch === "underline-band") {
     return "live colour attempt policy"
+  }
+  if (stored.criterionBranch === "colour-sibling-separation") {
+    return "colour-sibling-separation post-pass"
   }
   const geometry = rowGeometryChange(validated.rawReplies, id)
   if (geometry) return geometry
@@ -721,12 +747,93 @@ async function shadowRow(
     } catch (error) {
       return { featureId, family, outcome: "incomplete", reason: errorMessage(error) }
     }
-    const result = withReplyFailureEvidence(featureId, replayed.result, { producer: "TTY", attempts })
+    let result = withReplyFailureEvidence(featureId, replayed.result, { producer: "TTY", attempts })
+    const sessionBusRaw = validated.rawReplies["collector.sessionBus"]
+    let sessionBus: ReturnType<typeof readSessionBus> | undefined
+    if (typeof sessionBusRaw === "string") {
+      try {
+        sessionBus = parseJsonStrict("collector.sessionBus", sessionBusRaw) as ReturnType<typeof readSessionBus>
+      } catch (error) {
+        return { featureId, family, outcome: "incomplete", reason: errorMessage(error) }
+      }
+    }
+    const appDeclarations = subject && subject.version !== undefined ? appSemanticDeclarations(subject, sessionBus) : {}
+    const declaration = appDeclarations[featureId]
+    const claimsMeasurement =
+      result.observation !== undefined || Boolean((result as { assertions?: readonly unknown[] }).assertions?.length)
+    const onlyTodoTests = !result.tests?.some((test) => test.status !== "probe-todo")
+    const unresolved = result.notTested
+      ? result.notTested.reason === "no-semantic-observable" &&
+        result.notTested.noObservable.trim().length > 0 &&
+        onlyTodoTests
+      : Boolean(result.tests?.length) && onlyTodoTests
+    if (declaration && !claimsMeasurement && unresolved) {
+      const response = result.response
+      result = {
+        ...declaredUntestableResult(declaration, { featureId }),
+        ...(response === undefined ? {} : { response }),
+      }
+    }
+    if (
+      featureId === "editing.decsace" &&
+      subject &&
+      result.notTested?.noObservable.startsWith("Untestable (no setup): DECCARA") &&
+      result.tests?.every((test) => test.status === "untestable")
+    ) {
+      const route =
+        subject.kind === "mux"
+          ? `the ${subject.id} mux route with outer terminal ${subject.outerTerminal ?? "unrecorded"} (either may stop DECCARA)`
+          : `the ${subject.id} app`
+      const reason = result.notTested.noObservable.replace("this app", route)
+      result = {
+        ...result,
+        notTested: { ...result.notTested, noObservable: reason },
+        tests: result.tests.map((test) => ({ ...test, reason })),
+      }
+    }
     const domain = recordReplayedRow({ featureId, ...replayed, result, rawReplies: {}, assertions: [] })
     graded =
       subject && (subject.kind === "term" || subject.kind === "mux")
         ? finalizeVisualResult(domain, subject, replayed.frames)
         : domain
+    if (featureId === "extensions.font-ligatures" && subject) {
+      const ligatureCoverage = fontLigatureMuxCoverage(subject, { raw: validated.rawReplies[featureId] ?? "" })
+      if (ligatureCoverage) {
+        graded = recordExecutedProbe({
+          featureId,
+          attempt: { scope: "probe", startedAt: replayed.startedAt },
+          coverage: { featureId, ...ligatureCoverage.notTested, rawReplyRef: featureId },
+          criterionBranch: ligatureCoverage.criterionBranch,
+          tests: ligatureCoverage.tests,
+          assertions: [],
+          rawReplyRef: featureId,
+        })
+      }
+    }
+    if (
+      featureId === "modes.alt-screen.exit" &&
+      graded.status === "probe-todo" &&
+      validated.results?.find((entry) => entry.featureId === "modes.alt-screen.enter")?.status === "unsupported"
+    ) {
+      const reason =
+        "Untestable (no setup): this run reads switching to the alternate screen (modes.alt-screen.enter) Unsupported, so this step was never reached and was not measured."
+      const declared = declaredUntestableResult(reason, {
+        entry: "modes.alt-screen.enter",
+        entryStatus: "unsupported",
+      })
+      const { status: _status, reason: _reason, ...kept } = graded
+      graded = finalizeProbeResult({
+        ...kept,
+        criterionBranch: declared.criterionBranch,
+        reason,
+        tests: (declared.tests ?? []).map((test) => ({
+          ...test,
+          attempt: graded.attempt,
+          assertionRefs: [],
+          ...(graded.rawReplyRef === undefined ? {} : { rawReplyRef: graded.rawReplyRef }),
+        })),
+      })
+    }
   }
   if (graded.status === stored.status) {
     return { featureId, family, outcome: "agree", status: graded.status, reasonsEqual: graded.reason === stored.reason }

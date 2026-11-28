@@ -1357,14 +1357,15 @@ test.each([
       {
         ...definition,
         lib(ctx) {
-          if (corrupt) {
-            const cell = ctx.getCell.bind(ctx)
-            ctx.getCell = (row, col) => {
+          if (!corrupt) return definition.lib!(ctx)
+          const cell = ctx.getCell.bind(ctx)
+          return definition.lib!({
+            ...ctx,
+            getCell: (row, col) => {
               const value = cell(row, col)
               return col === 0 && value.char === "R" ? { ...value, char: "X" } : value
-            }
-          }
-          return definition.lib!(ctx)
+            },
+          })
         },
       },
     ],
@@ -1406,40 +1407,43 @@ test.each(["witness-loss", "width-control", "bad-counts", "control-counts", "vie
           let seeded = false
           let resized = false
           let control = false
-          ctx.feed = (text) => {
-            if (text.includes("\r\nR000")) seeded = true
-            if (seeded && resized && text.startsWith("W")) {
-              control = true
-              if (fault === "width-control") text = text.slice(0, -1)
-            }
-            feed(text)
+          const wrapped: LibProbeSource = {
+            ...ctx,
+            feed(text) {
+              if (text.includes("\r\nR000")) seeded = true
+              if (seeded && resized && text.startsWith("W")) {
+                control = true
+                if (fault === "width-control") text = text.slice(0, -1)
+              }
+              feed(text)
+            },
+            resize(cols, rows) {
+              resize(cols, rows)
+              if (seeded) resized = true
+            },
+            reset() {
+              reset()
+              seeded = false
+              resized = false
+              control = false
+            },
+            getScrollback() {
+              const value = scrollback()
+              if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control))) {
+                return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
+              }
+              if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
+              return value
+            },
+            getCell(row, col) {
+              if (seeded && fault === "bad-counts") throw new Error("Unbounded history read attempted")
+              const value = cell(row, col)
+              return seeded && resized && !control && fault === "witness-loss" && value.char === "R" && col === 0
+                ? { ...value, char: "X" }
+                : value
+            },
           }
-          ctx.resize = (cols, rows) => {
-            resize(cols, rows)
-            if (seeded) resized = true
-          }
-          ctx.reset = () => {
-            reset()
-            seeded = false
-            resized = false
-            control = false
-          }
-          ctx.getScrollback = () => {
-            const value = scrollback()
-            if (seeded && (fault === "bad-counts" || (fault === "control-counts" && control))) {
-              return { ...value, totalLines: Number.MAX_SAFE_INTEGER }
-            }
-            if (seeded && fault === "viewport") return { ...value, viewportOffset: 1, viewportTop: 1 }
-            return value
-          }
-          ctx.getCell = (row, col) => {
-            if (seeded && fault === "bad-counts") throw new Error("Unbounded history read attempted")
-            const value = cell(row, col)
-            return seeded && resized && !control && fault === "witness-loss" && value.char === "R" && col === 0
-              ? { ...value, char: "X" }
-              : value
-          }
-          return definition.lib!(ctx)
+          return definition.lib!(wrapped)
         },
       },
     ])
@@ -1480,41 +1484,44 @@ test("reflow qualifies main, history, and alternate phases when primary ED 2 scr
         const scrollback = ctx.getScrollback.bind(ctx)
         const cell = ctx.getCell.bind(ctx)
         let mainShrinkAfter = false
-        ctx.feed = (text) => {
-          mainShrinkAfter = false
-          const entersAlt = text.includes("\x1b[?1049h")
-          const leavesAlt = text.includes("\x1b[?1049l")
-          const onPrimary = !entersAlt && (leavesAlt || !ctx.getMode("altScreen"))
-          if (onPrimary && text.includes("\x1b[2J")) {
-            const { y, x } = ctx.getCursor()
-            const { screenLines } = scrollback()
-            const scroll = `\x1b[${screenLines};1H${"\n".repeat(y + 1)}\x1b[${y + 1};${x + 1}H\x1b[2J`
-            feed(text.replace("\x1b[2J", scroll))
-            return
-          }
-          feed(text)
+        const wrapped: LibProbeSource = {
+          ...ctx,
+          feed(text) {
+            mainShrinkAfter = false
+            const entersAlt = text.includes("\x1b[?1049h")
+            const leavesAlt = text.includes("\x1b[?1049l")
+            const onPrimary = !entersAlt && (leavesAlt || !ctx.getMode("altScreen"))
+            if (onPrimary && text.includes("\x1b[2J")) {
+              const { y, x } = ctx.getCursor()
+              const { screenLines } = scrollback()
+              const scroll = `\x1b[${screenLines};1H${"\n".repeat(y + 1)}\x1b[${y + 1};${x + 1}H\x1b[2J`
+              feed(text.replace("\x1b[2J", scroll))
+              return
+            }
+            feed(text)
+          },
+          resize(cols, rows) {
+            const before = scrollback()
+            resize(cols, rows)
+            if (!ctx.getMode("altScreen") && cols === 12 && before.totalLines === rows) {
+              mainShrinkAfter = true
+            }
+          },
+          getScrollback() {
+            const state = scrollback()
+            if (mainShrinkAfter && state.totalLines === state.screenLines && cell(0, 0).char === "A") {
+              return { ...state, totalLines: state.screenLines + 1, viewportOffset: 1 }
+            }
+            return state
+          },
+          getCell(row, col) {
+            if (mainShrinkAfter && row === scrollback().screenLines) {
+              return { ...cell(0, 0), char: " ", wide: false }
+            }
+            return cell(row, col)
+          },
         }
-        ctx.resize = (cols, rows) => {
-          const before = scrollback()
-          resize(cols, rows)
-          if (!ctx.getMode("altScreen") && cols === 12 && before.totalLines === rows) {
-            mainShrinkAfter = true
-          }
-        }
-        ctx.getScrollback = () => {
-          const state = scrollback()
-          if (mainShrinkAfter && state.totalLines === state.screenLines && cell(0, 0).char === "A") {
-            return { ...state, totalLines: state.screenLines + 1, viewportOffset: 1 }
-          }
-          return state
-        }
-        ctx.getCell = (row, col) => {
-          if (mainShrinkAfter && row === scrollback().screenLines) {
-            return { ...cell(0, 0), char: " ", wide: false }
-          }
-          return cell(row, col)
-        }
-        return definition.lib!(ctx)
+        return definition.lib!(wrapped)
       },
     },
   ])
@@ -1560,32 +1567,35 @@ test.each(["reflowed", "unadjusted", "stayed-alternate"] as const)(
           let restored = false
           let primaryParked = false
           let referenceResized = false
-          ctx.feed = (text) => {
-            feed(text)
-            if (text === "\x1b[5;7H") primaryParked = mode("altScreen") === false
-            if (text === "\x1b[?1049h") primaryParked = false
-            if (text === "\x1b[?1049l" && alternateShrank) restored = true
+          const wrapped: LibProbeSource = {
+            ...ctx,
+            feed(text) {
+              feed(text)
+              if (text === "\x1b[5;7H") primaryParked = mode("altScreen") === false
+              if (text === "\x1b[?1049h") primaryParked = false
+              if (text === "\x1b[?1049l" && alternateShrank) restored = true
+            },
+            resize(cols, rows) {
+              const alternate = mode("altScreen") === true
+              resize(cols, rows)
+              if (columns === 20 && cols === 12) {
+                if (alternate) alternateShrank = true
+                else if (primaryParked) referenceReplayed = referenceResized = true
+              }
+              columns = cols
+            },
+            reset() {
+              reset()
+              alternateShrank = restored = primaryParked = referenceResized = false
+            },
+            getMode: (name) =>
+              name === "altScreen" && restored && scenario === "stayed-alternate" ? true : mode(name),
+            getCursor() {
+              if (referenceResized) return { ...cursor(), x: 6, y: 3 }
+              return restored ? { ...cursor(), x: scenario === "unadjusted" ? 6 : 2, y: 4 } : cursor()
+            },
           }
-          ctx.resize = (cols, rows) => {
-            const alternate = mode("altScreen") === true
-            resize(cols, rows)
-            if (columns === 20 && cols === 12) {
-              if (alternate) alternateShrank = true
-              else if (primaryParked) referenceReplayed = referenceResized = true
-            }
-            columns = cols
-          }
-          ctx.reset = () => {
-            reset()
-            alternateShrank = restored = primaryParked = referenceResized = false
-          }
-          ctx.getMode = (name) =>
-            name === "altScreen" && restored && scenario === "stayed-alternate" ? true : mode(name)
-          ctx.getCursor = () => {
-            if (referenceResized) return { ...cursor(), x: 6, y: 3 }
-            return restored ? { ...cursor(), x: scenario === "unadjusted" ? 6 : 2, y: 4 } : cursor()
-          }
-          return definition.lib!(ctx)
+          return definition.lib!(wrapped)
         },
       },
     ])
@@ -1729,56 +1739,59 @@ test.each([
           let resized = false
           let control = false
           let marker = false
-          ctx.getMode = (name) => {
-            if (name === "altScreen" && fault.endsWith("-false")) return false
-            if (name === "altScreen" && fault.endsWith("-null")) return null
-            if (name === "altScreen" && fault === "missing-mode") return null
-            if (name === "altScreen" && fault === "target-mode-missing" && seeded && resized && !control) return null
-            if (name === "altScreen" && fault === "bogus-mode") return entered
-            if (name === "altScreen" && fault === "control-identity" && control) return false
-            return mode(name)
+          const wrapped: LibProbeSource = {
+            ...ctx,
+            getMode(name) {
+              if (name === "altScreen" && fault.endsWith("-false")) return false
+              if (name === "altScreen" && fault.endsWith("-null")) return null
+              if (name === "altScreen" && fault === "missing-mode") return null
+              if (name === "altScreen" && fault === "target-mode-missing" && seeded && resized && !control) return null
+              if (name === "altScreen" && fault === "bogus-mode") return entered
+              if (name === "altScreen" && fault === "control-identity" && control) return false
+              return mode(name)
+            },
+            feed(text) {
+              if (text.includes("ALT-MARK")) marker = true
+              if (text.includes("\x1b[?1049h")) {
+                entered = true
+                if (fault === "no-entry" || fault === "bogus-mode") return
+              }
+              if (mode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
+              if (seeded && resized && text.startsWith("W")) {
+                control = true
+                if (fault === "control-switch") feed("\x1b[?1049l")
+              }
+              feed(text)
+            },
+            resize(cols, rows) {
+              resize(cols, rows)
+              if (seeded && mode("altScreen") === true) resized = true
+            },
+            reset() {
+              reset()
+              entered = seeded = resized = control = marker = false
+            },
+            getCell(r, c) {
+              if (marker && fault.startsWith("marker-readback-")) throw new Error("alternate marker readback failed")
+              if (seeded && mode("altScreen") === true && fault === "slot-read") {
+                throw new Error("alternate slot read failed")
+              }
+              const value = cell(r, c)
+              if (marker && fault.startsWith("marker-missing-") && r === 0 && c === 0) return { ...value, char: "X" }
+              if (fault === "restore" && entered && seeded && mode("altScreen") === false && r === 0 && c === 0) {
+                return { ...value, char: "X" }
+              }
+              const corrupt =
+                seeded &&
+                resized &&
+                !control &&
+                mode("altScreen") === true &&
+                c === 0 &&
+                ((fault === "hard-row" && r === 2) || (fault === "blank-tail" && r === 23))
+              return corrupt ? { ...value, char: "X" } : value
+            },
           }
-          ctx.feed = (text) => {
-            if (text.includes("ALT-MARK")) marker = true
-            if (text.includes("\x1b[?1049h")) {
-              entered = true
-              if (fault === "no-entry" || fault === "bogus-mode") return
-            }
-            if (mode("altScreen") === true && text.includes("ABCDEFGHIJKLMNOPQR")) seeded = true
-            if (seeded && resized && text.startsWith("W")) {
-              control = true
-              if (fault === "control-switch") feed("\x1b[?1049l")
-            }
-            feed(text)
-          }
-          ctx.resize = (cols, rows) => {
-            resize(cols, rows)
-            if (seeded && mode("altScreen") === true) resized = true
-          }
-          ctx.reset = () => {
-            reset()
-            entered = seeded = resized = control = marker = false
-          }
-          ctx.getCell = (r, c) => {
-            if (marker && fault.startsWith("marker-readback-")) throw new Error("alternate marker readback failed")
-            if (seeded && mode("altScreen") === true && fault === "slot-read") {
-              throw new Error("alternate slot read failed")
-            }
-            const value = cell(r, c)
-            if (marker && fault.startsWith("marker-missing-") && r === 0 && c === 0) return { ...value, char: "X" }
-            if (fault === "restore" && entered && seeded && mode("altScreen") === false && r === 0 && c === 0) {
-              return { ...value, char: "X" }
-            }
-            const corrupt =
-              seeded &&
-              resized &&
-              !control &&
-              mode("altScreen") === true &&
-              c === 0 &&
-              ((fault === "hard-row" && r === 2) || (fault === "blank-tail" && r === 23))
-            return corrupt ? { ...value, char: "X" } : value
-          }
-          return definition.lib!(ctx)
+          return definition.lib!(wrapped)
         },
       },
     ])
@@ -3460,11 +3473,13 @@ test.each([
         lib(context) {
           const capture = context.feedCapture.bind(context)
           let sizeReplies = 0
-          context.feedCapture = (sequence) => {
-            if (disagree && sequence === "\x1b[18t" && ++sizeReplies === 2) return "\x1b[8;24;100t"
-            return sequence === query ? reply : capture(sequence)
-          }
-          return definition.lib!(context)
+          return definition.lib!({
+            ...context,
+            feedCapture: (sequence) => {
+              if (disagree && sequence === "\x1b[18t" && ++sizeReplies === 2) return "\x1b[8;24;100t"
+              return sequence === query ? reply : capture(sequence)
+            },
+          })
         },
       },
     ])
@@ -4874,7 +4889,9 @@ for (const [name, create, available] of [
         ],
         draft,
       )
-      expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
+      // #30932 AC3: collectBatch runs the callback once to record and once on strict offline replay, producing the same
+      // 3 captured replies without calling the live backend's onResponse a second time.
+      expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R", "\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
       expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
       expect(value.onResponse).toBe(previous)
     } finally {
@@ -5574,7 +5591,8 @@ test.each([
       },
     ),
   ])
-  expect(order).toEqual(["when", "callback"])
+  // #30932 AC3: declaration predicate runs before callback in both live record and strict offline replay.
+  expect(order).toEqual(["when", "callback", "when", "callback"])
   expect(batch.ungradedDiagnostics).toEqual({})
   expect(batch.observations).toHaveLength(1)
   expect(batch.observations[0]).toMatchObject({
@@ -6856,3 +6874,52 @@ test.runIf(OWNED_LAYOUT).each(["kitty", "wezterm"] as const)(
     expect(batch.assertions).toEqual([])
   },
 )
+
+test("#30932 AC3 + #30933: collectBatch discards live return value and grades strictly from offline replay", async () => {
+  let invocations = 0
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition("ac3.replay-wins", (ctx) => {
+      invocations += 1
+      ctx.feed("A")
+      const cell = ctx.getCell(0, 0).char
+      if (invocations === 1) {
+        return {
+          pass: true,
+          response: `live:${cell}`,
+          observation: { outcome: "supported", assertionType: "buffer_state" },
+          assertions: [{ assertionType: "buffer_state", kind: "positive", expected: "A", observed: `live:${cell}` }],
+        }
+      }
+      return {
+        pass: false,
+        response: `replay:${cell}`,
+        observation: { outcome: "unsupported", assertionType: "buffer_state" },
+        assertions: [{ assertionType: "buffer_state", kind: "negative", expected: "A", observed: `replay:${cell}` }],
+      }
+    }),
+  ])
+  expect(invocations).toBe(2)
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.results).toMatchObject([{ featureId: "ac3.replay-wins", status: "unsupported" }])
+  expect(batch.rawReplies["ac3.replay-wins"]).toBe("replay:A")
+
+  let divergeCalls = 0
+  const diverged = await collectBatch(backend, "xtermjs", [
+    definition("ac3.replay-diverges", (ctx) => {
+      divergeCalls += 1
+      ctx.feed(divergeCalls === 1 ? "A" : "B")
+      return {
+        pass: true,
+        response: "live-pass",
+        observation: { outcome: "supported", assertionType: "buffer_state" },
+        assertions: [{ assertionType: "buffer_state", kind: "positive", expected: "A", observed: "live-pass" }],
+      }
+    }),
+  ])
+  expect(divergeCalls).toBe(2)
+  expect(diverged.ungradedDiagnostics["ac3.replay-diverges"]).toMatchObject({
+    kind: "collector-error",
+    name: "IncompleteReplay",
+  })
+  expect(diverged.results).toMatchObject([{ featureId: "ac3.replay-diverges", status: "probe-invalid" }])
+})
