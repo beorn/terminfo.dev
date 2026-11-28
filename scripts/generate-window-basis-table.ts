@@ -33,6 +33,7 @@ import {
   type LedgerAttribute,
 } from "../packages/terminfo.dev/src/probes/attribute-ledger.ts"
 import { classifyWindowWrite } from "../packages/terminfo.dev/src/probes/window-basis-writes.ts"
+import { selectWindowTraces, type FreezeRun } from "../packages/terminfo.dev/src/probes/window-basis-freeze.ts"
 
 const ROOT = join(import.meta.dir, "..")
 const TRACES = "content/probes-apps"
@@ -85,9 +86,10 @@ function entryWrites(raw: string): string[] | { readonly unreadable: string } {
 }
 
 /**
- * The deliberate re-freeze: read content/probes-apps as committed at `revision` and keep every
- * window-cell entry that carries writes, in file order — the same selection the generator made when
- * it read the directory live. A file that is not JSON holds no entry and is counted out loud.
+ * The deliberate re-freeze: read content/probes-apps as committed at `revision` and keep, per
+ * (subject, window cell), the entries of the newest run whose result for that cell completed
+ * (window-basis-freeze.ts, #39207, @cto 313ea37a); older runs stay on disk and are counted as
+ * superseded. A file that is not JSON holds no entry and is counted out loud.
  */
 function freeze(revision: string): FrozenInputs {
   const git = (...args: string[]): Buffer => {
@@ -101,21 +103,23 @@ function freeze(revision: string): FrozenInputs {
     .split("\n")
     .filter((path) => path.endsWith(".json"))
     .sort()
-  const sources: FrozenSource[] = []
+  const read: Array<{ path: string; bytes: Buffer; entries: FrozenEntry[]; run: FreezeRun }> = []
   let notJson = 0
   let notWrites = 0
   for (const path of files) {
     const bytes = git("show", `${commit}:${path}`)
-    let data: { rawReplies?: Record<string, unknown> }
+    let data: { rawReplies?: Record<string, unknown>; subject?: unknown; measuredAt?: unknown; results?: unknown }
     try {
-      data = JSON.parse(bytes.toString("utf8")) as { rawReplies?: Record<string, unknown> }
+      data = JSON.parse(bytes.toString("utf8")) as typeof data
     } catch {
       notJson++
       continue
     }
     const entries: FrozenEntry[] = []
+    const cells = new Map<string, string[]>()
     for (const [key, raw] of Object.entries(data.rawReplies ?? {})) {
-      if (!windowCells.includes(key.replace(TRACE_KEY_SUFFIX, "")) || typeof raw !== "string") continue
+      const cell = key.replace(TRACE_KEY_SUFFIX, "")
+      if (!windowCells.includes(cell) || typeof raw !== "string") continue
       if (!Array.isArray(entryWrites(raw))) {
         // Such an entry contributed nothing when the generator read the directory live, so freezing
         // keeps that selection; the count is printed below.
@@ -123,11 +127,29 @@ function freeze(revision: string): FrozenInputs {
         continue
       }
       entries.push({ key, sha256: sha256(raw), raw })
+      cells.set(cell, [...(cells.get(cell) ?? []), key])
     }
-    if (entries.length > 0) sources.push({ path, sha256: sha256(bytes), entries })
+    if (entries.length === 0) continue
+    read.push({
+      path,
+      bytes,
+      entries,
+      run: { path, subject: data.subject, measuredAt: data.measuredAt, results: data.results, cells },
+    })
+  }
+  // The newest completed run per (subject, cell) decides that cell's trace (#39207, @cto 313ea37a).
+  const { keep } = selectWindowTraces(read.map((file) => file.run))
+  const sources: FrozenSource[] = []
+  let superseded = 0
+  for (const file of read) {
+    const kept = keep.get(file.path)
+    const entries = file.entries.filter((entry) => kept?.has(entry.key) === true)
+    superseded += file.entries.length - entries.length
+    if (entries.length > 0) sources.push({ path: file.path, sha256: sha256(file.bytes), entries })
   }
   console.log(
     `froze ${sources.length} of ${files.length} trace files at ${commit}` +
+      `; ${superseded} window-cell entr(ies) superseded by a newer completed run of the same subject` +
       (notJson > 0 ? `; ${notJson} file(s) were not JSON and hold no entry` : "") +
       (notWrites > 0 ? `; ${notWrites} window-cell entr(ies) held no readable writes and were left out` : ""),
   )
@@ -334,6 +356,16 @@ if (noTrace.length > 0) {
 
 const sortedAdmitted = [...admitted].sort(([a], [b]) => a.localeCompare(b))
 const sortedUnclassifiable = [...unclassifiable].sort(([a], [b]) => a.localeCompare(b))
+/** Per cell, the retained runs whose frozen traces decided it, so a reader can see which trace did (#39207). */
+const traceRuns = new Map<string, Set<string>>()
+for (const source of frozen.sources) {
+  const runId = /-([0-9a-f]{32})\.json$/.exec(source.path)?.[1] ?? source.path
+  for (const entry of source.entries) {
+    const cell = entry.key.replace(TRACE_KEY_SUFFIX, "")
+    traceRuns.set(cell, (traceRuns.get(cell) ?? new Set<string>()).add(runId))
+  }
+}
+const sortedTraceRuns = [...traceRuns].sort(([a], [b]) => a.localeCompare(b))
 
 const lines = [
   "/**",
@@ -346,6 +378,7 @@ const lines = [
   " * `WINDOW_BASIS_UNCLASSIFIABLE` names each cell whose retained writes still refuse @cto's closed",
   " * lists after tokenization, with the exact cause (@cto: no hand-written splitter, and a run-time",
   " * unclassifiable write is run-fatal, so the decision has to happen here).",
+  " * `WINDOW_BASIS_TRACE_RUNS` names, per cell, the retained runs whose frozen traces decided it (#39207).",
   " */",
   "",
   'import type { LedgerAttribute } from "./attribute-ledger.ts"',
@@ -369,6 +402,10 @@ const lines = [
   "export const WINDOW_BASIS_UNCLASSIFIABLE: Readonly<Record<string, string>> = {",
   // Key and sentence on separate lines, which is the shape the formatter leaves for a long entry.
   ...sortedUnclassifiable.flatMap(([cell, reason]) => [`  ${JSON.stringify(cell)}:`, `    ${JSON.stringify(reason)},`]),
+  "}",
+  "",
+  "export const WINDOW_BASIS_TRACE_RUNS: Readonly<Record<string, readonly string[]>> = {",
+  ...sortedTraceRuns.map(([cell, runs]) => `  ${JSON.stringify(cell)}: [${[...runs].sort().map((run) => JSON.stringify(run)).join(", ")}],`),
   "}",
   "",
 ]
