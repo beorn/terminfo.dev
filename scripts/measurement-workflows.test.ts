@@ -2169,7 +2169,9 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
   const iterm = macos.split("<<'ITERM_STARTUP'\n")[1]!.split("\n          ITERM_STARTUP")[0]!
   const opens = iterm.match(/run\('open', '\/usr\/bin\/open', \[[^\]]*\]/gu) ?? []
   expect(opens).toEqual(["run('open', '/usr/bin/open', ['-a', bundle, ...marker, '--args', command]"])
-  expect(iterm).toContain("const marker = ['--env', `TERMINFO_TERM_FEATURES_LAUNCH=${runId}`, '--env', `TERMINFO_RUN_ID=${runId}`];")
+  expect(iterm).toContain(
+    "const marker = ['--env', `TERMINFO_TERM_FEATURES_LAUNCH=${runId}`, '--env', `TERMINFO_RUN_ID=${runId}`];",
+  )
   const beforeOpen = iterm.slice(0, iterm.indexOf("run('open'")).trim().split("\n").slice(-5).join("\n")
   expect(beforeOpen).toContain("run('pgrep before open', '/usr/bin/pgrep', ['-x', 'iTerm2'])")
 
@@ -2222,4 +2224,32 @@ test("the direct-binary arms launch under the TERM_FEATURES marker helper, which
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// 30723 (@cto 505d8c89): hosted Windows input stays off unless a dispatch opts in, and then only the
+// windows-terminal row gets it. serve.ts installs SendInput only when TERMINFO_WINDOWS_INPUT is exactly "1",
+// so a default dispatch, or an alacritty/wezterm row of an opted-in one, must write something else.
+test.each([
+  { input: "false", app: "windows-terminal", expected: "0" },
+  { input: "true", app: "windows-terminal", expected: "1" },
+  { input: "true", app: "alacritty", expected: "0" },
+  { input: "true", app: "wezterm", expected: "0" },
+])("Windows input opt-in $input on $app writes TERMINFO_WINDOWS_INPUT=$expected", ({ input, app, expected }) => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/windows-measurement.yml"), "utf8"))
+  const declared = workflow.on.workflow_dispatch.inputs.windows_input
+  expect(declared, "windows_input is a dispatch input").toBeDefined()
+  expect(declared.type).toBe("boolean")
+  expect(declared.default).toBe(false)
+  const step = workflow.jobs["measure-windows"].steps.find((s: { id?: string }) => s.id === "collect")
+  expect(step.env.WINDOWS_INPUT).toBe("${{ inputs.windows_input }}")
+  const collect = step.run as string
+  const select = collect.match(/WINDOWS_INPUT_FLAG=0\n[^\n]*\n/)
+  expect(select, "the collect step selects the Windows input flag").not.toBeNull()
+  const run = spawnSync("bash", ["-c", `set -euo pipefail\n${select![0]}printf %s "$WINDOWS_INPUT_FLAG"`], {
+    env: { PATH: process.env.PATH ?? "", WINDOWS_INPUT: input, APP_ID: app },
+    encoding: "utf8",
+  })
+  expect(run.stderr).toBe("")
+  expect(run.stdout).toBe(expected)
+  expect(collect).toContain('\\$env:TERMINFO_WINDOWS_INPUT = "$WINDOWS_INPUT_FLAG"')
 })
