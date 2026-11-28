@@ -4,12 +4,12 @@
  * projection runs over real readings in seconds rather than the whole corpus.
  *
  * Case 1 (must refuse): Warp hosted run 44792556294 (fixture, sha256 0ccbcf10…5c4e) over the original Warp macOS
- * readings pinned below: the projection serves 79 decided cells that would become undecided. Case 3 (must place): the Cursor
+ * readings pinned below: the projection serves 78 decided cells that would become undecided. Case 3 (must place): the Cursor
  * 3.30.14 cohort run de27164b over the other placed Cursor 3.30.14 macOS readings: 0 downgrades, same context served.
  *
  * @failure  a placement that downgrades served cells goes through silently, or a harmless partial run is refused
  * @level    l3
- * @consumer #37245 placement refusals: the 79-cell Warp downgrade of hosted run 44792556294
+ * @consumer #37245 placement refusals: the 78-cell Warp downgrade of hosted run 44792556294
  * @reach    fs-walk vendor/terminfo.dev/content/**
  * @testonly none
  */
@@ -81,7 +81,7 @@ const placedRuns = (prefix: string) =>
     .filter((name) => name.startsWith(prefix))
     .map((name) => join(APPS, name))
 
-test("a hosted Warp run that would turn 79 served decided cells undecided is refused, naming the count", () => {
+test("a hosted Warp run that would turn 78 served decided cells undecided is refused, naming the count", () => {
   const text = gunzipSync(readFileSync(join(ROOT, "packages/admin/fixtures/warp-44792556294-run.json.gz"))).toString(
     "utf8",
   )
@@ -115,17 +115,19 @@ test("a hosted Warp run that would turn 79 served decided cells undecided is ref
   const report = placementDowngrades(run, corpusOf("warp", warpRuns))
   notes.mockRestore()
 
-  expect(report.downgrades).toHaveLength(79)
+  expect(report.downgrades).toHaveLength(78)
+  // #39009: SGR 59 needs its own observation. The SGR 58 result cannot supply a decision for it.
+  expect(report.downgrades.map(({ featureId }) => featureId)).not.toContain("sgr.underline-color-reset")
   expect(report.flips).toEqual([])
   expect(report.downgrades.slice(0, 2)).toEqual([
     { featureId: "charsets.dec-line-drawing", was: "supported", now: "probe-invalid" },
     { featureId: "charsets.dec-special", was: "supported", now: "probe-invalid" },
   ])
   expect(() => checkDowngrades("warp-run.json", report)).toThrow(
-    /would turn 79 decided cell\(s\) of term:warp@macos undecided .*--accept-downgrades 79 --reason/,
+    /would turn 78 decided cell\(s\) of term:warp@macos undecided .*--accept-downgrades 78 --reason/,
   )
   expect(() =>
-    checkDowngrades("warp-run.json", report, { count: 79, reason: "probe rework under review" }),
+    checkDowngrades("warp-run.json", report, { count: 78, reason: "probe rework under review" }),
   ).not.toThrow()
 }, 120_000)
 
