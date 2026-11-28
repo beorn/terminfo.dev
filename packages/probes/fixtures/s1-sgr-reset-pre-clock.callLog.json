@@ -1,1 +1,3613 @@
-{"calls":[{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":0,"path":"context.rows#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":24},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":1,"path":"context.cols#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":80},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":2,"path":"context.rows#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":24},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":3,"path":"context.cols#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":80},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":4,"path":"context.cols#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":80},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":5,"path":"context.rows#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":24},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":6,"path":"context.rows#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":24},{"args":[],"asynchronous":false,"callbacks":[],"finished":true,"id":7,"path":"context.cols#get","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":80},{"args":["\u001b[?25l"],"asynchronous":false,"callbacks":[],"finished":true,"id":8,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":["\u001b[2J\u001b[H"],"asynchronous":false,"callbacks":[],"finished":true,"id":9,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":["\u001b[3;5HYY\u001b[4;1H"],"asynchronous":false,"callbacks":[],"finished":true,"id":10,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":[{"entries":[["cells",{"entries":[["bottom",3],["left",5],["right",6],["top",3]],"kind":"object"}],["label","sgr.reset: capture stability 1"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":11,"path":"context.capture","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"entries":[["capturedAt",1],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: capture stability 1"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:8667e718294e9e0df1d30600ba3eeb201f764aad2dad72748643e4a285e1d1f7"],["regionRectangle",{"entries":[["height",4],["width",4],["x",8],["y",8]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",3],["left",5],["right",6],["top",3]],"kind":"object"}],["label","sgr.reset: capture stability 2"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":12,"path":"context.capture","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"entries":[["capturedAt",2],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: capture stability 2"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:8667e718294e9e0df1d30600ba3eeb201f764aad2dad72748643e4a285e1d1f7"],["regionRectangle",{"entries":[["height",4],["width",4],["x",8],["y",8]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":["\u001b[3;5HYY\u001b[4;1H"],"asynchronous":false,"callbacks":[],"finished":true,"id":13,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":["\u001b[4;1H"],"asynchronous":false,"callbacks":[],"finished":true,"id":14,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":["\u001b[1;1H "],"asynchronous":false,"callbacks":[],"finished":true,"id":15,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — baseline"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":16,"path":"context.capture","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"entries":[["capturedAt",3],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — baseline"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":["\u001b[1;1H0"],"asynchronous":false,"callbacks":[],"finished":true,"id":17,"path":"context.write","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"kind":"undefined"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":18,"path":"context.capture","timing":{"settledAtMs":1794954734361,"settledPerformanceMs":0,"startedAtMs":1794954734361,"startedPerformanceMs":0},"value":{"entries":[["capturedAt",4],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":19,"path":"context.capture","timing":{"settledAtMs":1794954734611,"settledPerformanceMs":250,"startedAtMs":1794954734611,"startedPerformanceMs":250},"value":{"entries":[["capturedAt",5],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":20,"path":"context.capture","timing":{"settledAtMs":1794954734861,"settledPerformanceMs":500,"startedAtMs":1794954734861,"startedPerformanceMs":500},"value":{"entries":[["capturedAt",6],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":21,"path":"context.capture","timing":{"settledAtMs":1794954735111,"settledPerformanceMs":750,"startedAtMs":1794954735111,"startedPerformanceMs":750},"value":{"entries":[["capturedAt",7],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":22,"path":"context.capture","timing":{"settledAtMs":1794954735361,"settledPerformanceMs":1000,"startedAtMs":1794954735361,"startedPerformanceMs":1000},"value":{"entries":[["capturedAt",8],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":23,"path":"context.capture","timing":{"settledAtMs":1794954735611,"settledPerformanceMs":1250,"startedAtMs":1794954735611,"startedPerformanceMs":1250},"value":{"entries":[["capturedAt",9],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":24,"path":"context.capture","timing":{"settledAtMs":1794954735861,"settledPerformanceMs":1500,"startedAtMs":1794954735861,"startedPerformanceMs":1500},"value":{"entries":[["capturedAt",10],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":25,"path":"context.capture","timing":{"settledAtMs":1794954736111,"settledPerformanceMs":1750,"startedAtMs":1794954736111,"startedPerformanceMs":1750},"value":{"entries":[["capturedAt",11],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":26,"path":"context.capture","timing":{"settledAtMs":1794954736361,"settledPerformanceMs":2000,"startedAtMs":1794954736361,"startedPerformanceMs":2000},"value":{"entries":[["capturedAt",12],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":27,"path":"context.capture","timing":{"settledAtMs":1794954736611,"settledPerformanceMs":2250,"startedAtMs":1794954736611,"startedPerformanceMs":2250},"value":{"entries":[["capturedAt",13],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":28,"path":"context.capture","timing":{"settledAtMs":1794954736861,"settledPerformanceMs":2500,"startedAtMs":1794954736861,"startedPerformanceMs":2500},"value":{"entries":[["capturedAt",14],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":29,"path":"context.capture","timing":{"settledAtMs":1794954737111,"settledPerformanceMs":2750,"startedAtMs":1794954737111,"startedPerformanceMs":2750},"value":{"entries":[["capturedAt",15],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":30,"path":"context.capture","timing":{"settledAtMs":1794954737361,"settledPerformanceMs":3000,"startedAtMs":1794954737361,"startedPerformanceMs":3000},"value":{"entries":[["capturedAt",16],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":31,"path":"context.capture","timing":{"settledAtMs":1794954737611,"settledPerformanceMs":3250,"startedAtMs":1794954737611,"startedPerformanceMs":3250},"value":{"entries":[["capturedAt",17],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":32,"path":"context.capture","timing":{"settledAtMs":1794954737861,"settledPerformanceMs":3500,"startedAtMs":1794954737861,"startedPerformanceMs":3500},"value":{"entries":[["capturedAt",18],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":33,"path":"context.capture","timing":{"settledAtMs":1794954738111,"settledPerformanceMs":3750,"startedAtMs":1794954738111,"startedPerformanceMs":3750},"value":{"entries":[["capturedAt",19],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":34,"path":"context.capture","timing":{"settledAtMs":1794954738361,"settledPerformanceMs":4000,"startedAtMs":1794954738361,"startedPerformanceMs":4000},"value":{"entries":[["capturedAt",20],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":35,"path":"context.capture","timing":{"settledAtMs":1794954738611,"settledPerformanceMs":4250,"startedAtMs":1794954738611,"startedPerformanceMs":4250},"value":{"entries":[["capturedAt",21],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":36,"path":"context.capture","timing":{"settledAtMs":1794954738861,"settledPerformanceMs":4500,"startedAtMs":1794954738861,"startedPerformanceMs":4500},"value":{"entries":[["capturedAt",22],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":37,"path":"context.capture","timing":{"settledAtMs":1794954739111,"settledPerformanceMs":4750,"startedAtMs":1794954739111,"startedPerformanceMs":4750},"value":{"entries":[["capturedAt",23],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":[{"entries":[["cells",{"entries":[["bottom",1],["left",1],["right",1],["top",1]],"kind":"object"}],["label","sgr.reset: initial N — paint witness"],["pixelGeometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["role","control"]],"kind":"object"}],"asynchronous":true,"callbacks":[],"finished":true,"id":38,"path":"context.capture","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"entries":[["capturedAt",24],["cellCrop",{"entries":[["basisDetail","whole-frame fixture"],["cell",{"entries":[["height",4],["width",2]],"kind":"object"}],["grid",{"entries":[["columns",80],["rows",24]],"kind":"object"}],["image",{"entries":[["height",96],["width",160]],"kind":"object"}],["origin",{"entries":[["x",0],["y",0]],"kind":"object"}]],"kind":"object"}],["kind","pixels"],["label","sgr.reset: initial N — paint witness"],["pixelsDigest","sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],["ref","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],["regionDigest","sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],["regionRectangle",{"entries":[["height",4],["width",2],["x",0],["y",0]],"kind":"object"}],["rendering",{"entries":[["background","#ffffff"],["contrast",0],["inkColour","#ffffff"],["inkCount",0]],"kind":"object"}],["role","control"],["sourceRef","sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]],"kind":"object"}},{"args":["\u001b[?25h"],"asynchronous":false,"callbacks":[],"finished":true,"id":39,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}},{"args":["\u001b[2J\u001b[H"],"asynchronous":false,"callbacks":[],"finished":true,"id":40,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}},{"args":["\u001b[0m"],"asynchronous":false,"callbacks":[],"finished":true,"id":41,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}},{"args":["\u001bP$qm\u001b\\",{"flags":"","kind":"regexp","value":"\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\"}],"asynchronous":true,"callbacks":[],"finished":true,"id":42,"path":"context.queryWithSentinelOutcome","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"entries":[["match",{"entries":[],"kind":"array","values":["\u001bP1$r0m\u001b\\","0"]}],["raw","\u001bP1$r0m\u001b\\\u001b[?1;2c"],["rawBase64","G1AxJHIwbRtcG1s/MTsyYw=="],["reason","reply"]],"kind":"object"}},{"args":["\u001b[1;3;4m"],"asynchronous":false,"callbacks":[],"finished":true,"id":43,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}},{"args":["\u001bP$qm\u001b\\",{"flags":"","kind":"regexp","value":"\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\"}],"asynchronous":true,"callbacks":[],"finished":true,"id":44,"path":"context.queryWithSentinelOutcome","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"entries":[["match",{"entries":[],"kind":"array","values":["\u001bP1$r1;3;4m\u001b\\","1;3;4"]}],["raw","\u001bP1$r1;3;4m\u001b\\\u001b[?1;2c"],["rawBase64","G1AxJHIxOzM7NG0bXBtbPzE7MmM="],["reason","reply"]],"kind":"object"}},{"args":["\u001b[0m"],"asynchronous":false,"callbacks":[],"finished":true,"id":45,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}},{"args":["\u001bP$qm\u001b\\",{"flags":"","kind":"regexp","value":"\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\"}],"asynchronous":true,"callbacks":[],"finished":true,"id":46,"path":"context.queryWithSentinelOutcome","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"entries":[["match",{"entries":[],"kind":"array","values":["\u001bP1$r0m\u001b\\","0"]}],["raw","\u001bP1$r0m\u001b\\\u001b[?1;2c"],["rawBase64","G1AxJHIwbRtcG1s/MTsyYw=="],["reason","reply"]],"kind":"object"}},{"args":["\u001b[0m"],"asynchronous":false,"callbacks":[],"finished":true,"id":47,"path":"context.write","timing":{"settledAtMs":1794954739361,"settledPerformanceMs":5000,"startedAtMs":1794954739361,"startedPerformanceMs":5000},"value":{"kind":"undefined"}}],"format":"viprobe.call-log","root":{"entries":[["capture",{"kind":"function"}],["captureGeometry",{"entries":[["geometry",{"entries":[["cellHeight",4],["cellWidth",2],["textHeight",96],["textWidth",160]],"kind":"object"}],["sentinel",{"entries":[["form","basic"],["rgb",{"entries":[],"kind":"array","values":[255,0,0]}]],"kind":"object"}],["source","measured by complete raster calibration"]],"kind":"object"}],["captureGeometryRefusal",{"kind":"undefined"}],["cols",{"kind":"accessor"}],["inputMechanism","XTEST"],["kind","live"],["measureRenderedWidth",{"kind":"function"}],["query",{"kind":"function"}],["queryCursorPosition",{"kind":"function"}],["queryMode",{"kind":"function"}],["queryOutcome",{"kind":"function"}],["queryWithSentinel",{"kind":"function"}],["queryWithSentinelOutcome",{"kind":"function"}],["readInjected",{"kind":"function"}],["readInput",{"kind":"function"}],["readTermFeatures",{"kind":"undefined"}],["rows",{"kind":"accessor"}],["runCaptureKind","pixels"],["utf8Decoding",{"kind":"function"}],["write",{"kind":"function"}]],"kind":"object"},"version":1}
+{
+  "calls": [
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 0,
+      "path": "context.rows#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 24
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 1,
+      "path": "context.cols#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 80
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 2,
+      "path": "context.rows#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 24
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 3,
+      "path": "context.cols#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 80
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 4,
+      "path": "context.cols#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 80
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 5,
+      "path": "context.rows#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 24
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 6,
+      "path": "context.rows#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 24
+    },
+    {
+      "args": [],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 7,
+      "path": "context.cols#get",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": 80
+    },
+    {
+      "args": ["\u001b[?25l"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 8,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[2J\u001b[H"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 9,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[3;5HYY\u001b[4;1H"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 10,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 3],
+                  ["left", 5],
+                  ["right", 6],
+                  ["top", 3]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: capture stability 1"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 11,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 1],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: capture stability 1"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:8667e718294e9e0df1d30600ba3eeb201f764aad2dad72748643e4a285e1d1f7"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 4],
+                ["x", 8],
+                ["y", 8]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 3],
+                  ["left", 5],
+                  ["right", 6],
+                  ["top", 3]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: capture stability 2"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 12,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 2],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: capture stability 2"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:8667e718294e9e0df1d30600ba3eeb201f764aad2dad72748643e4a285e1d1f7"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 4],
+                ["x", 8],
+                ["y", 8]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[3;5HYY\u001b[4;1H"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 13,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[4;1H"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 14,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[1;1H "],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 15,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — baseline"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 16,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 3],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — baseline"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[1;1H0"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 17,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 18,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734361,
+        "settledPerformanceMs": 0,
+        "startedAtMs": 1794954734361,
+        "startedPerformanceMs": 0
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 4],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 19,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734611,
+        "settledPerformanceMs": 250,
+        "startedAtMs": 1794954734611,
+        "startedPerformanceMs": 250
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 5],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 20,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954734861,
+        "settledPerformanceMs": 500,
+        "startedAtMs": 1794954734861,
+        "startedPerformanceMs": 500
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 6],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 21,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954735111,
+        "settledPerformanceMs": 750,
+        "startedAtMs": 1794954735111,
+        "startedPerformanceMs": 750
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 7],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 22,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954735361,
+        "settledPerformanceMs": 1000,
+        "startedAtMs": 1794954735361,
+        "startedPerformanceMs": 1000
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 8],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 23,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954735611,
+        "settledPerformanceMs": 1250,
+        "startedAtMs": 1794954735611,
+        "startedPerformanceMs": 1250
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 9],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 24,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954735861,
+        "settledPerformanceMs": 1500,
+        "startedAtMs": 1794954735861,
+        "startedPerformanceMs": 1500
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 10],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 25,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954736111,
+        "settledPerformanceMs": 1750,
+        "startedAtMs": 1794954736111,
+        "startedPerformanceMs": 1750
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 11],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 26,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954736361,
+        "settledPerformanceMs": 2000,
+        "startedAtMs": 1794954736361,
+        "startedPerformanceMs": 2000
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 12],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 27,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954736611,
+        "settledPerformanceMs": 2250,
+        "startedAtMs": 1794954736611,
+        "startedPerformanceMs": 2250
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 13],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 28,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954736861,
+        "settledPerformanceMs": 2500,
+        "startedAtMs": 1794954736861,
+        "startedPerformanceMs": 2500
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 14],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 29,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954737111,
+        "settledPerformanceMs": 2750,
+        "startedAtMs": 1794954737111,
+        "startedPerformanceMs": 2750
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 15],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 30,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954737361,
+        "settledPerformanceMs": 3000,
+        "startedAtMs": 1794954737361,
+        "startedPerformanceMs": 3000
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 16],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 31,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954737611,
+        "settledPerformanceMs": 3250,
+        "startedAtMs": 1794954737611,
+        "startedPerformanceMs": 3250
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 17],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 32,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954737861,
+        "settledPerformanceMs": 3500,
+        "startedAtMs": 1794954737861,
+        "startedPerformanceMs": 3500
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 18],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 33,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954738111,
+        "settledPerformanceMs": 3750,
+        "startedAtMs": 1794954738111,
+        "startedPerformanceMs": 3750
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 19],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 34,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954738361,
+        "settledPerformanceMs": 4000,
+        "startedAtMs": 1794954738361,
+        "startedPerformanceMs": 4000
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 20],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 35,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954738611,
+        "settledPerformanceMs": 4250,
+        "startedAtMs": 1794954738611,
+        "startedPerformanceMs": 4250
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 21],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 36,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954738861,
+        "settledPerformanceMs": 4500,
+        "startedAtMs": 1794954738861,
+        "startedPerformanceMs": 4500
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 22],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 37,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954739111,
+        "settledPerformanceMs": 4750,
+        "startedAtMs": 1794954739111,
+        "startedPerformanceMs": 4750
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 23],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": [
+        {
+          "entries": [
+            [
+              "cells",
+              {
+                "entries": [
+                  ["bottom", 1],
+                  ["left", 1],
+                  ["right", 1],
+                  ["top", 1]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["label", "sgr.reset: initial N — paint witness"],
+            [
+              "pixelGeometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["role", "control"]
+          ],
+          "kind": "object"
+        }
+      ],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 38,
+      "path": "context.capture",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": {
+        "entries": [
+          ["capturedAt", 24],
+          [
+            "cellCrop",
+            {
+              "entries": [
+                ["basisDetail", "whole-frame fixture"],
+                [
+                  "cell",
+                  {
+                    "entries": [
+                      ["height", 4],
+                      ["width", 2]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "grid",
+                  {
+                    "entries": [
+                      ["columns", 80],
+                      ["rows", 24]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "image",
+                  {
+                    "entries": [
+                      ["height", 96],
+                      ["width", 160]
+                    ],
+                    "kind": "object"
+                  }
+                ],
+                [
+                  "origin",
+                  {
+                    "entries": [
+                      ["x", 0],
+                      ["y", 0]
+                    ],
+                    "kind": "object"
+                  }
+                ]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["kind", "pixels"],
+          ["label", "sgr.reset: initial N — paint witness"],
+          ["pixelsDigest", "sha256:b8950b5aa548301df35d9f33f872c439c35067b8c8a6510093271c88d1972fcd"],
+          ["ref", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"],
+          ["regionDigest", "sha256:af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"],
+          [
+            "regionRectangle",
+            {
+              "entries": [
+                ["height", 4],
+                ["width", 2],
+                ["x", 0],
+                ["y", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          [
+            "rendering",
+            {
+              "entries": [
+                ["background", "#ffffff"],
+                ["contrast", 0],
+                ["inkColour", "#ffffff"],
+                ["inkCount", 0]
+              ],
+              "kind": "object"
+            }
+          ],
+          ["role", "control"],
+          ["sourceRef", "sha256:2640059609118b695c139804676372eca75c30d30e5906775902d13e44f5356c"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[?25h"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 39,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[2J\u001b[H"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 40,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001b[0m"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 41,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001bP$qm\u001b\\", { "flags": "", "kind": "regexp", "value": "\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\" }],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 42,
+      "path": "context.queryWithSentinelOutcome",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": {
+        "entries": [
+          ["match", { "entries": [], "kind": "array", "values": ["\u001bP1$r0m\u001b\\", "0"] }],
+          ["raw", "\u001bP1$r0m\u001b\\\u001b[?1;2c"],
+          ["rawBase64", "G1AxJHIwbRtcG1s/MTsyYw=="],
+          ["reason", "reply"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[1;3;4m"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 43,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001bP$qm\u001b\\", { "flags": "", "kind": "regexp", "value": "\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\" }],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 44,
+      "path": "context.queryWithSentinelOutcome",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": {
+        "entries": [
+          ["match", { "entries": [], "kind": "array", "values": ["\u001bP1$r1;3;4m\u001b\\", "1;3;4"] }],
+          ["raw", "\u001bP1$r1;3;4m\u001b\\\u001b[?1;2c"],
+          ["rawBase64", "G1AxJHIxOzM7NG0bXBtbPzE7MmM="],
+          ["reason", "reply"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[0m"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 45,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    },
+    {
+      "args": ["\u001bP$qm\u001b\\", { "flags": "", "kind": "regexp", "value": "\\x1bP1\\$r([0-9;:]*)m\\x1b\\\\" }],
+      "asynchronous": true,
+      "callbacks": [],
+      "finished": true,
+      "id": 46,
+      "path": "context.queryWithSentinelOutcome",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": {
+        "entries": [
+          ["match", { "entries": [], "kind": "array", "values": ["\u001bP1$r0m\u001b\\", "0"] }],
+          ["raw", "\u001bP1$r0m\u001b\\\u001b[?1;2c"],
+          ["rawBase64", "G1AxJHIwbRtcG1s/MTsyYw=="],
+          ["reason", "reply"]
+        ],
+        "kind": "object"
+      }
+    },
+    {
+      "args": ["\u001b[0m"],
+      "asynchronous": false,
+      "callbacks": [],
+      "finished": true,
+      "id": 47,
+      "path": "context.write",
+      "timing": {
+        "settledAtMs": 1794954739361,
+        "settledPerformanceMs": 5000,
+        "startedAtMs": 1794954739361,
+        "startedPerformanceMs": 5000
+      },
+      "value": { "kind": "undefined" }
+    }
+  ],
+  "format": "viprobe.call-log",
+  "root": {
+    "entries": [
+      ["capture", { "kind": "function" }],
+      [
+        "captureGeometry",
+        {
+          "entries": [
+            [
+              "geometry",
+              {
+                "entries": [
+                  ["cellHeight", 4],
+                  ["cellWidth", 2],
+                  ["textHeight", 96],
+                  ["textWidth", 160]
+                ],
+                "kind": "object"
+              }
+            ],
+            [
+              "sentinel",
+              {
+                "entries": [
+                  ["form", "basic"],
+                  ["rgb", { "entries": [], "kind": "array", "values": [255, 0, 0] }]
+                ],
+                "kind": "object"
+              }
+            ],
+            ["source", "measured by complete raster calibration"]
+          ],
+          "kind": "object"
+        }
+      ],
+      ["captureGeometryRefusal", { "kind": "undefined" }],
+      ["cols", { "kind": "accessor" }],
+      ["inputMechanism", "XTEST"],
+      ["kind", "live"],
+      ["measureRenderedWidth", { "kind": "function" }],
+      ["query", { "kind": "function" }],
+      ["queryCursorPosition", { "kind": "function" }],
+      ["queryMode", { "kind": "function" }],
+      ["queryOutcome", { "kind": "function" }],
+      ["queryWithSentinel", { "kind": "function" }],
+      ["queryWithSentinelOutcome", { "kind": "function" }],
+      ["readInjected", { "kind": "function" }],
+      ["readInput", { "kind": "function" }],
+      ["readTermFeatures", { "kind": "undefined" }],
+      ["rows", { "kind": "accessor" }],
+      ["runCaptureKind", "pixels"],
+      ["utf8Decoding", { "kind": "function" }],
+      ["write", { "kind": "function" }]
+    ],
+    "kind": "object"
+  },
+  "version": 1
+}

@@ -246,7 +246,11 @@ it.runIf(OWNED_LAYOUT)(
     // alacritty's 239 excluded rows carried - says the callback asked the host nothing, so the row replays and
     // agrees; a query that failed live is still refused by name rather than replayed as an empty answer.
     const hostEmpty = await shadowTampered(run, "hostrecipe-empty", (draft) => {
-      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({ runId: stored.runId, captures: [], causes: [] })
+      draft.rawReplies["collector.hostRecipes." + agreed] = JSON.stringify({
+        runId: stored.runId,
+        captures: [],
+        causes: [],
+      })
     })
     expect(row(hostEmpty, agreed), JSON.stringify(row(hostEmpty, agreed))).toMatchObject({ outcome: "agree" })
     const hostFailed = await shadowTampered(run, "hostrecipe-error", (draft) => {

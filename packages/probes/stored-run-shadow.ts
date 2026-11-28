@@ -372,7 +372,10 @@ const LIB_EXTERNAL_READS: Readonly<Record<string, string>> = {
  * The query pairs a native host-recipe row recorded, in the order the callback asked. `error` is kept so a row whose
  * live query failed is refused by name rather than replayed as an empty answer.
  */
-function hostRecipeCaptures(validated: ValidatedRun, featureId: string): { query: string; response: string; error: unknown }[] {
+function hostRecipeCaptures(
+  validated: ValidatedRun,
+  featureId: string,
+): { query: string; response: string; error: unknown }[] {
   const raw = validated.rawReplies["collector.hostRecipes." + featureId]
   if (typeof raw !== "string") throw new IncompleteReplay("Missing native host-recipe record: " + featureId)
   const parsed = parseJsonStrict(featureId + " host recipes", raw)

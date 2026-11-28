@@ -188,9 +188,7 @@
       "evidence": "@cpo/term request 5af9e33d: the only Supported evidence is the query reply; the pixel series could not decide",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "8533e1c9630b"
-        ]
+        "suiteIds": ["8533e1c9630b"]
       },
       "witnesses": [
         {
@@ -211,10 +209,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -239,10 +234,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -267,10 +259,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -295,10 +284,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -323,10 +309,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -351,10 +334,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -379,10 +359,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -407,10 +384,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "4b01b0117e18",
-          "07a42ec1d359"
-        ]
+        "suiteIds": ["4b01b0117e18", "07a42ec1d359"]
       },
       "witnesses": [
         {
@@ -435,9 +409,7 @@
       "evidence": "@dev/2 issue 38772 /hh/var/@dev2/38772-sgr-stale-22.tsv: deciding run before 455b028f1 reached main (2026-11-03 21:15Z), Unsupported by query_reply; no post-fix run of the same release reads it Unsupported (/hh/var/@dev2/38772-sgr-rows.jsonl)",
       "exit": {
         "kind": "remeasured",
-        "suiteIds": [
-          "8533e1c9630b"
-        ]
+        "suiteIds": ["8533e1c9630b"]
       },
       "witnesses": [
         {

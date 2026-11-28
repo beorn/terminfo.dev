@@ -56,7 +56,9 @@ import { isPublishedStatus } from "../docs/data/app-cells.ts"
 import { collectGarbage } from "../packages/admin/corpus-placement.ts"
 
 const sanitizePublicStates = (states: Readonly<Record<string, string>>) =>
-  Object.fromEntries(Object.entries(states).map(([fid, status]) => [fid, isPublishedStatus(status) ? status : "no-result"]))
+  Object.fromEntries(
+    Object.entries(states).map(([fid, status]) => [fid, isPublishedStatus(status) ? status : "no-result"]),
+  )
 
 /**
  * A rollup as the hourly tool writes it into `summary.json` (#33600): probes data through the ONE
