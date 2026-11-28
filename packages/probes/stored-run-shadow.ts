@@ -757,8 +757,7 @@ async function shadowRow(
         return { featureId, family, outcome: "incomplete", reason: errorMessage(error) }
       }
     }
-    const appDeclarations =
-      subject && subject.version !== undefined ? appSemanticDeclarations(subject, sessionBus) : {}
+    const appDeclarations = subject && subject.version !== undefined ? appSemanticDeclarations(subject, sessionBus) : {}
     const declaration = appDeclarations[featureId]
     const claimsMeasurement =
       result.observation !== undefined || Boolean((result as { assertions?: readonly unknown[] }).assertions?.length)

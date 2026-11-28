@@ -6887,18 +6887,14 @@ test("#30932 AC3 + #30933: collectBatch discards live return value and grades st
           pass: true,
           response: `live:${cell}`,
           observation: { outcome: "supported", assertionType: "buffer_state" },
-          assertions: [
-            { assertionType: "buffer_state", kind: "positive", expected: "A", observed: `live:${cell}` },
-          ],
+          assertions: [{ assertionType: "buffer_state", kind: "positive", expected: "A", observed: `live:${cell}` }],
         }
       }
       return {
         pass: false,
         response: `replay:${cell}`,
         observation: { outcome: "unsupported", assertionType: "buffer_state" },
-        assertions: [
-          { assertionType: "buffer_state", kind: "negative", expected: "A", observed: `replay:${cell}` },
-        ],
+        assertions: [{ assertionType: "buffer_state", kind: "negative", expected: "A", observed: `replay:${cell}` }],
       }
     }),
   ])
