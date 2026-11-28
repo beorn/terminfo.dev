@@ -1456,6 +1456,16 @@ export function readVerifiedArtifact(
     bytes = readFileSync(artifactPath)
   } catch (error) {
     if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+      // hh#39162: a `yrd env open` environment leaves the whole corpus out unless opened with --full, so a missing
+      // directory is a checkout choice, not a lost artifact; name the cure rather than the first absent file.
+      const artifactsDir = join(contentDir, "artifacts")
+      if (!existsSync(artifactsDir)) {
+        fail(
+          sourcePath,
+          `${artifactsDir} is absent: this checkout leaves the retained artifact corpus out (yrd env open omits it); ` +
+            "reopen with yrd env open --full to read artifacts",
+        )
+      }
       fail(sourcePath, `missing ${rules.noun.toLowerCase()} artifact ${artifactPath}`)
     }
     throw error

@@ -886,6 +886,20 @@ describe("run-trace captures (pixel + real expected frames + text-cells) & check
     expect(dec?.captures?.regionText).toBe("row 1, columns 1–7")
   })
 
+  it("names the omitted corpus and --full when content/artifacts is absent, and the one file when it is not (hh#39162)", () => {
+    const content = mkdtempSync(join(tmpdir(), "terminfo-artifacts-absent-"))
+    try {
+      const ref = `sha256:${"a".repeat(64)}`
+      expect(() => readVerifiedArtifact(content, ref, "run.json")).toThrow(
+        /artifacts is absent: this checkout leaves the retained artifact corpus out.*yrd env open --full/u,
+      )
+      mkdirSync(join(content, "artifacts"))
+      expect(() => readVerifiedArtifact(content, ref, "run.json")).toThrow(/missing screenshot artifact .*a{64}\.png/u)
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
   it("refuses forged or mismatched capture files in dist/api/v3/captures/", () => {
     const tmp = mkdtempSync(join(tmpdir(), "terminfo-cap-leak-"))
     try {
