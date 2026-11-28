@@ -318,6 +318,7 @@ test.each([
   "input.xtest-key",
   "input.xtest-click",
   "input.xtest-wheel",
+  "input.kitty-click-events",
   "input.button-event-mouse",
   "input.pixel-mouse",
   "input.urxvt-mouse",

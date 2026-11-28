@@ -1243,7 +1243,7 @@ async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
 async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
-  if (!input || !readInput) return xtestCoverage("click injection", inputMechanism(ctx))
+  if (!input || !readInput) return xtestCoverage(undefined, inputMechanism(ctx))
   const control = await withMouseModes(ctx, () =>
     deliveryControl(
       () => input.injectClick(1),

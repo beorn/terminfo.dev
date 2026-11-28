@@ -713,11 +713,19 @@ export function windowsKeysOnly(mechanism: InputMechanism, delivered: () => bool
   }
 }
 
+/**
+ * How the self-test reads its echo back. A Windows console read outside raw mode is line input
+ * (ENABLE_LINE_INPUT): ReadConsoleW returns no byte until Enter, so a lone posted key never reaches the
+ * reader (run 46151931460 echoed nothing with every pre-post check passing). Raw mode delivers it at
+ * once, as the probe batch's own raw lease does for every input row.
+ */
+export type WindowsSelfTestRead = "raw" | "cooked"
+
 export interface WindowsInputInstallOptions {
   /** The run's proven WindowsTerminal.exe pid. */
   readonly pid: number
   /** Post the self-test key through the fresh adapter and return what the run's own TTY echoed, or null. */
-  readonly selfTest: (inject: () => Promise<void>) => Promise<string | null>
+  readonly selfTest: (inject: () => Promise<void>, read: WindowsSelfTestRead) => Promise<string | null>
   /** Records the route and self-test outcome on the run; never silent. */
   readonly report?: (fact: string) => void
   /** Test seams: the OS layer and the UIA read in place of user32 and powershell.exe. */
@@ -740,11 +748,11 @@ export async function installWindowsInput(options: WindowsInputInstallOptions): 
   })
   let proven = false
   const input = createWindowsInput(windowsKeysOnly(mechanism, () => proven))
-  const echoed = await options.selfTest(() => input.injectKey(WINDOWS_INPUT_SELF_TEST_KEYSYM))
+  const echoed = await options.selfTest(() => input.injectKey(WINDOWS_INPUT_SELF_TEST_KEYSYM), "raw")
   if (echoed === null || !echoed.includes(WINDOWS_INPUT_SELF_TEST_KEYSYM)) {
     throw new Error(
       `input not delivered to Windows Terminal: SendInput posted keysym "${WINDOWS_INPUT_SELF_TEST_KEYSYM}" to pid ` +
-        `${options.pid} (${binding.evidence}) and the run's TTY echoed ${echoed === null ? "nothing" : JSON.stringify(echoed)}; ` +
+        `${options.pid} (${binding.evidence}) and the run's TTY, read in raw mode, echoed ${echoed === null ? "nothing" : JSON.stringify(echoed)}; ` +
         "refusing to measure input rows through it",
     )
   }

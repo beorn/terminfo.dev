@@ -26,6 +26,7 @@ import {
   type TermControlReading,
   type Win32InputEvent,
   type Win32InputOs,
+  type WindowsSelfTestRead,
 } from "./windows-input.ts"
 import {
   encodeInputs,
@@ -473,7 +474,7 @@ describe("user32 binding", () => {
 describe("installWindowsInput (#30723 slice 2)", () => {
   const install = (
     os: Win32InputOs,
-    selfTest: (inject: () => Promise<void>) => Promise<string | null>,
+    selfTest: (inject: () => Promise<void>, read: WindowsSelfTestRead) => Promise<string | null>,
     report?: (fact: string) => void,
   ) => installWindowsInput({ pid: WT_PID, os, readControl: () => reading(), selfTest, ...(report && { report }) })
 
@@ -485,7 +486,7 @@ describe("installWindowsInput (#30723 slice 2)", () => {
         return null
       }),
     ).rejects.toThrow(
-      /input not delivered to Windows Terminal: SendInput posted keysym "z" to pid 4242 \(.*bound to 0x100a2c by UIA ancestry\) and the run's TTY echoed nothing; refusing to measure input rows through it/,
+      /input not delivered to Windows Terminal: SendInput posted keysym "z" to pid 4242 \(.*bound to 0x100a2c by UIA ancestry\) and the run's TTY, read in raw mode, echoed nothing; refusing to measure input rows through it/,
     )
     // The one key that was posted is the self-test key, pressed and released in one call.
     expect(sent).toHaveLength(1)
@@ -513,6 +514,20 @@ describe("installWindowsInput (#30723 slice 2)", () => {
       "Windows pointer placement refused: pointer posts wait for this context's hosted qualification",
     )
     expect(sent).toHaveLength(2)
+  })
+
+  // Run 46151931460: every pre-post check passed and the TTY still echoed nothing. A Windows console read outside
+  // raw mode is line input (ENABLE_LINE_INPUT), so ReadConsoleW returns no byte until Enter and a lone "z" never
+  // reaches the reader; raw mode delivers it at once, as the probe batch's own raw lease does for every input row.
+  it("asks for the self-test echo in raw mode, because a Windows console's cooked read waits for Enter", async () => {
+    const { os } = fakeOs()
+    const reads: WindowsSelfTestRead[] = []
+    await install(os, async (inject, read) => {
+      reads.push(read)
+      await inject()
+      return WINDOWS_INPUT_SELF_TEST_KEYSYM
+    })
+    expect(reads).toEqual(["raw"])
   })
 
   it("posts no key but the self-test key before delivery is proven", async () => {

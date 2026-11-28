@@ -1628,7 +1628,15 @@ export async function collectProbeRun(options: ProbeCollectionOptions = {}): Pro
      */
     const echoSelfTest =
       (pattern: RegExp) =>
-      async (inject: () => Promise<void>): Promise<string | null> => {
+      async (inject: () => Promise<void>, read: "raw" | "cooked" = "cooked"): Promise<string | null> => {
+        // Windows asks for raw: its console's cooked read is line input and returns nothing before Enter (#30723).
+        if (read === "raw") {
+          if (!process.stdin.isTTY) {
+            throw new Error("the collector's stdin is not a console, so no posted key can be read back in raw mode")
+          }
+          const echoed = await withRawMode(() => readResponse(pattern, 2500, inject))
+          return echoed === null ? null : echoed.join("")
+        }
         // The app echoes a typed key only in cooked mode, so this read stays out of raw mode -
         // and it must restore the flowing state that withRawMode's lease restores, or the
         // collector holds the launcher's poll open long after its run.json (run 43102072805).
