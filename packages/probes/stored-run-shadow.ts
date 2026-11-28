@@ -760,7 +760,8 @@ async function shadowRow(
     const appDeclarations =
       subject && subject.version !== undefined ? appSemanticDeclarations(subject, sessionBus) : {}
     const declaration = appDeclarations[featureId]
-    const claimsMeasurement = result.observation !== undefined || Boolean(result.assertions?.length)
+    const claimsMeasurement =
+      result.observation !== undefined || (Array.isArray(result.assertions) && result.assertions.length > 0)
     const onlyTodoTests = !result.tests?.some((test) => test.status !== "probe-todo")
     const unresolved = result.notTested
       ? result.notTested.reason === "no-semantic-observable" &&
@@ -777,7 +778,6 @@ async function shadowRow(
     if (
       featureId === "editing.decsace" &&
       subject &&
-      subject.kind !== "lib" &&
       result.notTested?.noObservable.startsWith("Untestable (no setup): DECCARA") &&
       result.tests?.every((test) => test.status === "untestable")
     ) {

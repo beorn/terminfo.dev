@@ -5041,7 +5041,8 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
     const note = `No owned desktop notification observer for OSC ${selector}`
     return { pass: false, note, tests: [{ id: "criterion", status: "probe-todo", reason: note }] }
   }
-  let capturedFixture: Parameters<Parameters<NonNullable<TermProbeSource["withNotificationObserver"]>>[0]>[0] | undefined
+  type NotificationFixtureArg = Parameters<Parameters<NonNullable<TermProbeSource["withNotificationObserver"]>>[0]>[0]
+  let capturedFixture: NotificationFixtureArg | undefined
   let nonce = ""
   let sequence = ""
   let deadlineMs = 0
@@ -5050,13 +5051,13 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
   let ownedWindowId: string | undefined
   let helperWindowId: string | undefined
   let focusError: string | undefined
-  let observed: { entries: Array<{ body: string; summary: string }>; problems: string[] } = {
+  let observed: ReturnType<NotificationFixtureArg["readSince"]> = {
     entries: [],
     problems: [],
   }
-  // Return void from the observer callback so viprobe verifies call order and completion without comparing
-  // JSON.stringify(fixture.*) strings whose key order changes under viprobe's canonical object encoding (#30932).
-  await ctx.withNotificationObserver(async (fixture): Promise<void> => {
+  // Return a constant ProbeCallbackResult from the observer callback so viprobe verifies call order and completion
+  // without comparing JSON.stringify(fixture.*) strings whose key order changes under viprobe canonical encoding (#30932).
+  await ctx.withNotificationObserver(async (fixture): Promise<ProbeCallbackResult> => {
     capturedFixture = fixture
     nonce = `terminfo-notify-${sourceRandomUUID(ctx)}`
     sequence = selector === "9" ? `\x1b]9;${nonce}\x07` : `\x1b]777;notify;${nonce};${nonce}\x07`
@@ -5095,6 +5096,7 @@ async function liveNotificationProbe(ctx: TermProbeSource, selector: "9" | "777"
       await observe()
       focusError = "No owned fixture can hold the terminal unfocused"
     }
+    return { pass: false }
   })
   if (!capturedFixture) {
     throw new Error(`Notification observer did not invoke its callback for OSC ${selector}`)
